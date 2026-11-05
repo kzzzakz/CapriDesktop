@@ -183,6 +183,7 @@ export class SystemObserver {
         // Check for proactive media comment (YouTube, TikTok, Reels, Twitch, Netflix, Spotify)
         if (
           detectedMedia &&
+          !windowManager.isGamingModeActive() &&
           (detectedMedia.title !== this.lastCommentedMediaTitle || Date.now() - this.triggers.media_watching.lastTriggered > 4 * 60 * 1000) &&
           this.canTrigger('media_watching')
         ) {
@@ -571,7 +572,7 @@ export class SystemObserver {
             const lowerTitle = rawTitle.toLowerCase()
 
             // YouTube Video
-            if (lowerTitle.includes('youtube') && !freshRegistry.youtube) {
+            if (lowerTitle.includes('youtube') && !lowerTitle.includes('youtube music') && !freshRegistry.youtube) {
               let cleanTitle = rawTitle
                 .replace(/\s*-\s*YouTube.*$/i, '')
                 .replace(/\s*-\s*(?:Google Chrome|Microsoft Edge|Brave|Mozilla Firefox|Opera(?:\s+GX)?).*$/i, '')
