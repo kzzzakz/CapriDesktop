@@ -14,11 +14,21 @@ export class ClaudeCodeError extends Error {
   }
 }
 
-function executable(): string {
+function findExecutable(): string | undefined {
   for (const dir of [...(process.env.PATH || '').split(delimiter), join(homedir(), '.local', 'bin')]) {
     const candidate = join(dir, process.platform === 'win32' ? 'claude.exe' : 'claude')
     if (existsSync(candidate)) return candidate
   }
+  return undefined
+}
+
+export function isClaudeCodeInstalled(): boolean {
+  return findExecutable() !== undefined
+}
+
+function executable(): string {
+  const command = findExecutable()
+  if (command) return command
   throw new ClaudeCodeError('Claude Code is not installed or is missing from PATH.', 'auth')
 }
 
