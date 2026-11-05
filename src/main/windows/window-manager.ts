@@ -19,6 +19,7 @@ export class WindowManager {
   private deckWin: BrowserWindow | null = null
   private scannerWin: BrowserWindow | null = null
   private isGamingMode = false
+  private gameForeground = true
   private savedGamingPosition: { x: number; y: number } | null = null
   private gamingKeepAliveInterval: NodeJS.Timeout | null = null
   private gamingModeListeners: Array<(enabled: boolean) => void> = []
@@ -262,7 +263,7 @@ export class WindowManager {
 
     // Restore companion floating/walking on desktop
     if (this.companionWin && !this.companionWin.isDestroyed()) {
-      this.companionWin.show()
+      this.companionWin.showInactive()
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.companionWin.moveTop()
     }
@@ -313,7 +314,7 @@ export class WindowManager {
 
       this.companionWin.setBounds({ x, y, width, height }, false)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver')
-      this.companionWin.show()
+      this.companionWin.showInactive()
 
       this.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE, true)
       // Broadcast appropriate sitting state: 'idle_front' for center pose, 'idle' for tab perch
@@ -374,26 +375,36 @@ export class WindowManager {
     this.companionWin.setBounds({ x, y, width, height }, false)
   }
 
-    public isGamingModeActive(): boolean {
+  public isGamingModeActive(): boolean {
     return this.isGamingMode
   }
 
-  /**
-   * In Gaming Mode Capri is click-through so she never eats clicks meant for the game
-   * (mouse events are still forwarded so the renderer can re-enable clicks while Ctrl is held).
-   */
+  public isGameForeground(): boolean {
+    return this.isGamingMode && this.gameForeground
+  }
+
+  public setGameForeground(foreground: boolean): void {
+    if (this.gameForeground === foreground) return
+    this.gameForeground = foreground
+    if (!this.isGamingMode) return
+    this.setCompanionClickThrough(true)
+    this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true, foreground)
+  }
+
   public setCompanionClickThrough(ignore: boolean): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
-    const effective = ignore && this.isGamingMode
+    const blocked = this.isGameForeground()
+    const effective = this.isGamingMode && (ignore || blocked)
+    this.companionWin.setFocusable(!blocked)
     if (this.isGamingMode) {
       this.companionWin.setOpacity(effective ? GAMING_OPACITY : 1)
     }
     if (effective) {
-      this.companionWin.setIgnoreMouseEvents(true, { forward: true })
+      this.companionWin.setIgnoreMouseEvents(true, { forward: !blocked })
     } else {
       this.companionWin.setIgnoreMouseEvents(false)
     }
-    this.forwardMouseOnLinux(this.companionWin, effective)
+    this.forwardMouseOnLinux(this.companionWin, effective && !blocked)
   }
 
   public setSavedGamingPosition(pos: { x: number; y: number } | null): void {
@@ -408,6 +419,7 @@ export class WindowManager {
     enabled: boolean,
     corner: 'bottom-right' | 'top-right' | 'bottom-left' | 'top-left' = 'top-left'
   ): void {
+    if (enabled && !this.isGamingMode) this.gameForeground = true
     this.isGamingMode = enabled
 
     if (!this.companionWin || this.companionWin.isDestroyed()) return
@@ -473,7 +485,7 @@ export class WindowManager {
       }, 700)
 
       this.setCompanionClickThrough(true)
-      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true)
+      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true, this.gameForeground)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, true)
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, 'ojos')
       console.log(`[WindowManager] Gaming Mode ACTIVATED (corner: ${corner}, screen-saver priority)`)
@@ -497,7 +509,7 @@ export class WindowManager {
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.setCompanionClickThrough(false)
 
-      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, false)
+      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, false, false)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, false)
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, 'standing')
       console.log('[WindowManager] Gaming Mode DEACTIVATED')

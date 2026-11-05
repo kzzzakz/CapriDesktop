@@ -50,7 +50,7 @@ export interface IElectronAPI {
     setTabMode: (enabled: boolean, keepPosition?: boolean) => Promise<boolean>
     setEyeMode: (enabled: boolean) => Promise<boolean>
     setGamingMode: (enabled: boolean, corner?: string) => Promise<boolean>
-    getGamingMode: () => Promise<boolean>
+    getGamingMode: () => Promise<{ enabled: boolean; gameForeground: boolean }>
     setClickThrough: (ignore: boolean) => Promise<boolean>
     onScriptEvent: (
       callback: (
@@ -71,7 +71,7 @@ export interface IElectronAPI {
     onUserNameChanged: (callback: (name: string) => void) => () => void
     getLanguageSettings: () => Promise<{ textLang: string; speechLang: string; micLang: string }>
     setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string }) => Promise<{ textLang: string; speechLang: string; micLang: string }>
-    onGamingModeChanged: (callback: (enabled: boolean) => void) => () => void
+    onGamingModeChanged: (callback: (enabled: boolean, gameForeground: boolean) => void) => () => void
     moveBy: (dx: number, dy: number) => Promise<{ x: number; y: number } | null>
     getConsciousness: () => Promise<{
       shutdownCount: number

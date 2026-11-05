@@ -18,6 +18,7 @@ interface CapriRendererProps {
   overrideDirection?: 'left' | 'right'
   noShadow?: boolean
   isGamingMode?: boolean
+  isGameForeground?: boolean
 }
 
 // Avatar change audio effect
@@ -135,7 +136,8 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
   className = '',
   overrideDirection,
   noShadow = false,
-  isGamingMode = false
+  isGamingMode = false,
+  isGameForeground = false
 }) => {
   const { renderMode, direction: storeDirection, isCatchGameActive } = useCompanionStore()
   const direction = overrideDirection || storeDirection
@@ -524,7 +526,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
         height: '100%',
         WebkitAppRegion: 'no-drag'
       } as React.CSSProperties}
-      title={isCatchGameActive ? localizeLine('CLICK TO CATCH CAPRICORN!', getLineLanguage()) : 'Capricorn // Shift+Drag to move | Click for Dev Deck | Ctrl+Click to chat'}
+      title={isGameForeground ? undefined : isCatchGameActive ? localizeLine('CLICK TO CATCH CAPRICORN!', getLineLanguage()) : 'Capricorn // Shift+Drag to move | Click for Dev Deck | Ctrl+Click to chat'}
     >
       {/* Background Cyber Glow Rings only during Catch Game (never on hover) */}
       {!noShadow && isCatchGameActive && (

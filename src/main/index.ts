@@ -48,6 +48,7 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
+    if (windowManager.isGameForeground()) return
     const compWin = windowManager.getCompanionWindow()
     if (compWin && !compWin.isDestroyed()) {
       if (compWin.isMinimized()) compWin.restore()

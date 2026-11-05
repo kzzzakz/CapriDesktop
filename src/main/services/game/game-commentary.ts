@@ -36,6 +36,13 @@ export interface ForegroundApp {
   pid: number
 }
 
+export function isGameForeground(app: ForegroundApp): boolean {
+  const process = app.process.replace(/\.exe$/i, '')
+  return /^(?:valorant-win64-shipping|league of legends|cyberpunk2077)$/i.test(process) ||
+    (/^client-win64-shipping$/i.test(process) && /wuthering waves/i.test(app.path)) ||
+    detectGameName(app) !== null
+}
+
 export function detectGameName(app: ForegroundApp): string | null {
   const exe = app.path.split(/[\\/]/).pop() || ''
   if (NOT_A_GAME.test(exe) || NOT_A_GAME.test(app.process)) return null

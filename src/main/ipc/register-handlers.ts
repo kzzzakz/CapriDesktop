@@ -158,7 +158,7 @@ export function registerIpcHandlers(): void {
   )
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_GAMING_MODE, () => {
-    return windowManager.isGamingModeActive()
+    return { enabled: windowManager.isGamingModeActive(), gameForeground: windowManager.isGameForeground() }
   })
 
   // Windows scaling drifts the size by a pixel on every move, so keep the size from before the drift

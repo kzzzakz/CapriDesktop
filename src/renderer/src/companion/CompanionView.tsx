@@ -119,18 +119,23 @@ export const CompanionView: React.FC = () => {
   }, [])
   const [isWindowHovered, setIsWindowHovered] = useState(false)
   const [isGamingMode, setIsGamingMode] = useState<boolean>(false)
+  const [isGameForeground, setIsGameForeground] = useState(false)
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState<boolean>(false)
   const [isContextMenuOpen, setIsContextMenuOpen] = useState<boolean>(false)
   const isGamingControlHeldRef = useRef(false)
 
-  // Gaming Mode: Capri is click-through so she never steals clicks from the game.
-  // Hold Ctrl over her to interact / drag her (mouse moves are forwarded even while click-through).
   useEffect(() => {
     if (!isGamingMode) {
       isGamingControlHeldRef.current = false
       return
     }
     if (!window.api?.companion?.setClickThrough) return
+    if (isGameForeground) {
+      isGamingControlHeldRef.current = false
+      setIsWindowHovered(false)
+      window.api.companion.setClickThrough(true).catch(() => {})
+      return
+    }
     let ignoring = !(isGamingControlHeldRef.current || isContextMenuOpen || isVoiceSettingsOpen)
     window.api.companion.setClickThrough(ignoring).catch(() => {})
     const update = (ctrl: boolean) => {
@@ -153,7 +158,7 @@ export const CompanionView: React.FC = () => {
       window.removeEventListener('keyup', onKey)
       document.removeEventListener('mouseleave', onLeave)
     }
-  }, [isGamingMode, isContextMenuOpen, isVoiceSettingsOpen])
+  }, [isGamingMode, isGameForeground, isContextMenuOpen, isVoiceSettingsOpen])
   const tr = useT()
 
   // Language state synchronized with consciousnessService (default 'en')
@@ -170,14 +175,16 @@ export const CompanionView: React.FC = () => {
       }).catch(() => {})
     }
     if (window.api?.companion?.getGamingMode) {
-      window.api.companion.getGamingMode().then((g: boolean) => {
-        setIsGamingMode(!!g)
+      window.api.companion.getGamingMode().then((g) => {
+        setIsGamingMode(g.enabled)
+        setIsGameForeground(g.gameForeground)
       }).catch(() => {})
     }
     let unsubGaming: (() => void) | undefined
     if (window.api?.companion?.onGamingModeChanged) {
-      unsubGaming = window.api.companion.onGamingModeChanged((g: boolean) => {
+      unsubGaming = window.api.companion.onGamingModeChanged((g: boolean, foreground: boolean) => {
         setIsGamingMode(!!g)
+        setIsGameForeground(foreground)
       })
     }
     if (window.api?.companion?.onLanguageChanged) {
@@ -1909,7 +1916,7 @@ export const CompanionView: React.FC = () => {
   if (isGamingMode) {
     return (
       <div
-        onMouseEnter={() => setIsWindowHovered(true)}
+        onMouseEnter={() => setIsWindowHovered(!isGameForeground)}
         onMouseLeave={() => setIsWindowHovered(false)}
         onClick={() => {
           if (isContextMenuOpen) setIsContextMenuOpen(false)
@@ -1934,6 +1941,7 @@ export const CompanionView: React.FC = () => {
               state={desktopCompanionState}
               noShadow={false}
               isGamingMode={isGamingMode}
+              isGameForeground={isGameForeground}
               onClick={handleCapriClick}
             />
           </div>
@@ -2263,7 +2271,7 @@ export const CompanionView: React.FC = () => {
         )}
 
         {/* Floating Status & Voice Controls on Hover when Bubble is Hidden */}
-        {!isBubbleVisible && !isTabMode && !isGamingMode && (isWindowHovered || isRecordingVoice) && (
+        {!isBubbleVisible && !isTabMode && !isGamingMode && !isGameForeground && (isWindowHovered || isRecordingVoice) && (
           <div
             className="mb-2 z-40 animate-fade-in flex items-center gap-1.5"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
