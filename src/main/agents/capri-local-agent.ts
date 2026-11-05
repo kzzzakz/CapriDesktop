@@ -1895,7 +1895,7 @@ LANGUAGE RULE: ${langDirective}`
         } as AgentEventPayload)
         return
       } catch (err) {
-        if (turnAbort.signal.aborted) return
+        if (turnAbort.signal.aborted) return this.finishCancelledTurn(turnAbort)
         // A failing cloud provider must say so instead of quietly answering with the offline fallback
         if (isRemoteMode()) {
           console.warn('[Capri Agent] Cloud turn failed:', cloudErrorDetail(err))
@@ -2924,7 +2924,10 @@ DIRECTIVES FOR FORMATTING AND REASONING:
 - NO EMOJIS anywhere.
 `
 
-    if (turnAbort.signal.aborted) return true
+    if (turnAbort.signal.aborted) {
+      this.finishCancelledTurn(turnAbort)
+      return true
+    }
     let solutionText = ''
     try {
       const resp = await llmFetch('http://127.0.0.1:11434/api/chat', {
@@ -2951,7 +2954,10 @@ DIRECTIVES FOR FORMATTING AND REASONING:
       }
     } catch {}
 
-    if (turnAbort.signal.aborted) return true
+    if (turnAbort.signal.aborted) {
+      this.finishCancelledTurn(turnAbort)
+      return true
+    }
     if (!solutionText) {
       solutionText = solutionLang === 'Spanish'
         ? `1. Consignas de ${fileNameOnly}\nAnálisis: Ejercicio analizado e investigado en la red con éxito.\nRespuesta: Soluciones estructuradas y verificadas correctamente.\n`
@@ -4432,6 +4438,10 @@ DIRECTIVES FOR FORMATTING AND REASONING:
       success: true,
       timestamp: Date.now()
     } as AgentEventPayload)
+  }
+
+  private finishCancelledTurn(turnAbort: AbortController): void {
+    if (this.turnAbort === turnAbort) this.finishSession()
   }
 
   private async resolveAvailableModel(endpoint: string, requestedModel: string): Promise<string | null> {
