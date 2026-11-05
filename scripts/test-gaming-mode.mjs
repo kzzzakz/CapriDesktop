@@ -190,4 +190,5 @@ test('main rejects unlocks over a game and restores Ctrl interaction after alt-t
   manager.setCompanionClickThrough(false)
   assert.equal(ignoring, false)
   assert.equal(focusable, true)
+  for (const timer of manager.mouseForwardTimers.values()) clearInterval(timer)
 })

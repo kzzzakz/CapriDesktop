@@ -410,7 +410,7 @@ export class WindowManager {
     } else {
       this.companionWin.setIgnoreMouseEvents(false)
     }
-    this.forwardMouse(this.companionWin, effective && !blocked)
+    this.forwardMouse(this.companionWin, !blocked && (effective || !isLinux))
   }
 
   public setSavedGamingPosition(pos: { x: number; y: number } | null): void {
