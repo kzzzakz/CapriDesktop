@@ -133,7 +133,8 @@ export class ReactionEngine {
       effectiveGlobalCooldown = 3500
     }
 
-    if (now - this.globalLastSpokenTimestamp < effectiveGlobalCooldown) {
+    const valorantResult = event.gameId === 'valorant' && event.type === 'match_ended' && typeof event.payload?.isWin === 'boolean'
+    if (!valorantResult && now - this.globalLastSpokenTimestamp < effectiveGlobalCooldown) {
       return false
     }
 

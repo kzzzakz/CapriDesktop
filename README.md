@@ -360,7 +360,7 @@ Capri polls Riot's official local API (`https://127.0.0.1:2999/liveclientdata/al
 
 - Detects `VALORANT-Win64-Shipping.exe`. Reads `%LOCALAPPDATA%\Riot Games\Riot Client\Config\lockfile` for local HTTPS authentication and `VALORANT\Saved\Logs\ShooterGame.log` for region/shard routing.
 - Own presence (`/chat/v4/presences`) supplies session, queue, map and team scores. Riot GLZ pregame/coregame endpoints supply the locked agent and allied agents. Completed match details from Riot PD supply the verified final score and result; leaving a match never implies defeat.
-- Capri comments on agent picks, match start, observed round wins/losses and team streaks, match point, overtime and confirmed results. API gaps do not invent rounds. Kills/deaths are unavailable and are never inferred. Bundled agent/map labels come from the public Valorant API dataset; there is no runtime call to it.
+- Capri comments on agent picks, rounds, streaks, match point, overtime and score-confirmed results; foreground-only CPU screen analysis detects spectator HUD death transitions once per round (some deaths are missed; no kill detection). Bundled agent/map labels need no runtime lookup.
 
 ### D. Wuthering Waves (window capture and optional logs)
 
@@ -378,7 +378,7 @@ Capri polls Riot's official local API (`https://127.0.0.1:2999/liveclientdata/al
 | **Paint drawing** | Standard user | Win32 `SetCursorPos`, `mouse_event`, `EnumWindows`, `GetWindowRect`, `GetAsyncKeyState` | `powershell.exe`, `mspaint.exe` | Loopback (Ollama) | **`Escape` panic key**; only draws while Paint is focused. |
 | **LoL champion select** | Standard user | Reads `LeagueClientUx.exe` command line for the local token and port | `LeagueClientUx.exe` | Local HTTPS to the LCU port | Standard champion-select actions only. |
 | **LoL in-game** | Standard user | Riot's official Live Client Data API | `League of Legends.exe` | Local HTTPS `127.0.0.1:2999` | Read-only official API, no memory access. |
-| **Valorant reactions** | Standard user | Process detection, Riot lockfile and ShooterGame log; own presence, GLZ pregame/coregame and PD completed match details | `powershell.exe`, Electron | Local authenticated HTTPS; HTTPS to Riot `*.a.pvp.net` | GET requests only; tokens stay in the main process; no Vanguard interaction. |
+| **Valorant reactions** | Standard user | Process detection, Riot lockfile and ShooterGame log; own presence, GLZ pregame/coregame and foreground game-window pixels | `powershell.exe`, Electron | Local authenticated HTTPS; HTTPS to Riot `*.a.pvp.net` | GET requests and window capture only; tokens stay in the main process; no Vanguard interaction. |
 | **Wuthering Waves reactions** | Standard user | Process name/path and foreground window handle; read-only Client log; game-window `desktopCapturer` thumbnails | `powershell.exe`, Electron, installed Ollama | Loopback `127.0.0.1:11434` for vision; configured LLM for text commentary | Foreground-only captures, at least 60 seconds apart; no saved images or ACE interaction; no input or game-file writes. |
 | **Cyberpunk telemetry** | Standard user | Local TCP listener | Capri + CET Lua mod | `127.0.0.1:2077` | Listens on localhost only. |
 | **Spotify control** | Standard user | Win32 `PostMessage` with `WM_APPCOMMAND` | `Spotify.exe`, `powershell.exe` | None | No code injection; standard media commands. |

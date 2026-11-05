@@ -76,6 +76,10 @@ export class GamePresenceService {
   private watchedForeground: ForegroundApp | null = null
   private nextWatcherAttemptAt = 0
 
+  public getForegroundApp(): ForegroundApp | null {
+    return this.watchedForeground
+  }
+
   public start(): void {
     if (this.timer || (!isWindows && !isLinux)) return
     this.gamingModeUnsub = windowManager.onGamingModeChanged((enabled) => {
