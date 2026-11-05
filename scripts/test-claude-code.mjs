@@ -133,7 +133,7 @@ try {
   const initialization = runBody.slice(runBody.indexOf('    this.isCancelled = false'), runBody.indexOf('    this.currentPrompt ='))
   const cancel = method('cancel').getText(agentSource)
   const homeworkBody = method('handleHomeworkIntent').body.getText(agentSource)
-  const homework = homeworkBody.slice(homeworkBody.indexOf('    if (turnAbort.signal.aborted) return true'), -1)
+  const homework = homeworkBody.slice(homeworkBody.indexOf('    if (turnAbort.signal.aborted) {'), -1)
   const harness = { exports: {}, AbortController, AbortSignal, systemPrompt: 'Solve', fileNameOnly: 'task.txt', solutionLang: 'English', console: { log() {}, warn() {} },
     endpoint: 'http://localhost/v1', config: {}, model: 'haiku', toolsUnsupported: false,
     withLanguageNote: x => x, langDirective: '', llmBody: JSON.stringify,
@@ -148,7 +148,9 @@ try {
     async homework(turnAbort) { ${homework} }
     emit() { throw new Error('Cancelled turn emitted an event') }
     emitAssistant() { throw new Error('Cancelled turn spoke') }
-    finishSession() { throw new Error('Cancelled turn finished normally') }
+    finished = 0;
+    finishSession() { this.finished++ }
+    ${method('finishCancelledTurn').getText(agentSource)}
   }`), harness)
   const Agent = harness.exports.Agent
   holdChild = true
@@ -167,6 +169,7 @@ try {
   agent.cancel()
   await pending
   assert.equal(killed, 1, 'cancel must kill the running Claude child')
+  assert.equal(agent.finished, 1, 'a cancelled turn must clear the thinking state')
   ready = launched()
   const homeworkAgent = new Agent()
   homeworkAgent.turnAbort = new AbortController()
@@ -175,6 +178,7 @@ try {
   homeworkAgent.cancel()
   assert.equal(await homeworkPending, true)
   assert.equal(killed, 2, 'homework cancellation must kill Claude before writing the solution')
+  assert.equal(homeworkAgent.finished, 1, 'a cancelled homework turn must clear the thinking state')
 
   for (const stage of ['fetch', 'json']) {
     ready = launched()
@@ -197,6 +201,7 @@ try {
     deliver()
     await pending
     assert.equal(inspected, 0, 'cancelled result must not be processed')
+    assert.equal(late.finished, 0, 'a stale cancel must not finish the newer turn')
   }
   console.log('PASS: cancel aborts the turn, kills the Claude child, and discards late responses before speech or tools (including after a new turn).')
 
