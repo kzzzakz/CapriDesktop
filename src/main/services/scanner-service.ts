@@ -212,9 +212,9 @@ export class ScannerService {
     }
   }
 
-  public async captureGameWindow(windowId: string): Promise<string | null> {
+  public async captureGameWindow(windowId: string, thumbnailSize = { width: 768, height: 432 }): Promise<string | null> {
     if (!/^\d+$/.test(windowId)) return null
-    const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 768, height: 432 } })
+    const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize })
     const source = sources.find(source => source.id.split(':')[1] === windowId)
     if (!source || source.thumbnail.isEmpty()) return null
     return source.thumbnail.toJPEG(75).toString('base64')

@@ -1,9 +1,13 @@
 import * as https from 'https'
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import { ReadOnlyGameAdapter, findGameProcess } from '../read-only-game'
+import { nativeImage } from 'electron'
+import { ReadOnlyGameAdapter, findGameProcess, GameProcess } from '../read-only-game'
+import { gamePresenceService } from '../../../game-presence-service'
+import { scannerService } from '../../../scanner-service'
 import { clientVersionFromLog, decodePresence, deriveValorantEvents, routingFromLog, ValorantState } from './state'
 import { valorantNames } from './names'
+import { DeathTracker, hasSpectatorHud, observeValorantLife, spectatorHudRegion } from './death-vision'
 
 const localAgent = new https.Agent({ rejectUnauthorized: false })
 
@@ -46,23 +50,27 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
   private previous: ValorantState | null = null
   private routing: { region: string; shard: string } | null = null
   private clientVersion: string | null = null
-  private pendingResults = new Map<string, { at: number; facts: Record<string, unknown> }>()
+  private process: GameProcess | null = null
+  private life: DeathTracker | null = null
+  private nextCaptureAt = 0
   private metadataAt = 0
 
   async detect(): Promise<boolean> {
-    return !!(await findGameProcess('VALORANT-Win64-Shipping.exe'))
+    this.process = await findGameProcess('VALORANT-Win64-Shipping.exe')
+    return !!this.process
   }
   protected open(): void {
     this.previous = null
     this.routing = null
     this.clientVersion = null
     this.metadataAt = 0
-    this.pendingResults.clear()
+    this.life = null
+    this.nextCaptureAt = 0
     this.emitGame('game_opened', { quiet: true })
   }
   protected close(): void {
     this.previous = null
-    this.pendingResults.clear()
+    this.life = null
     this.emitGame('game_closed')
   }
 
@@ -74,13 +82,14 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
       .split(':')
     const port = Number(lock[2])
     if (lock.length !== 5 || !Number.isInteger(port) || port < 1 || port > 65535 || lock[4] !== 'https') return
-    const headers = { Authorization: `Basic ${Buffer.from(`riot:${lock[3]}`).toString('base64')}` }
-    const token = await getJson<{ subject: string; accessToken: string; token: string }>(
-      '127.0.0.1',
-      '/entitlements/v1/token',
-      headers,
-      port
-    )
+    const headers = {
+      Authorization: `Basic ${Buffer.from(`riot:${lock[3]}`).toString('base64')}`
+    }
+    const token = await getJson<{
+      subject: string
+      accessToken: string
+      token: string
+    }>('127.0.0.1', '/entitlements/v1/token', headers, port)
     if (!token.subject || !token.accessToken || !token.token || !this.active(generation)) return
     if (!this.routing || !this.clientVersion) {
       const log = await fs.open(path.join(local, 'VALORANT/Saved/Logs/ShooterGame.log'), 'r')
@@ -97,12 +106,9 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
         await log.close()
       }
     }
-    const presences = await getJson<{ presences: { puuid: string; product: string; private: string }[] }>(
-      '127.0.0.1',
-      '/chat/v4/presences',
-      headers,
-      port
-    )
+    const presences = await getJson<{
+      presences: { puuid: string; product: string; private: string }[]
+    }>('127.0.0.1', '/chat/v4/presences', headers, port)
     const own = presences.presences?.find((p) => p.puuid === token.subject && p.product === 'valorant')
     const state = decodePresence(own?.private)
     if (!state || !this.active(generation)) return
@@ -132,10 +138,9 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
         if (session?.version) remoteHeaders['X-Riot-ClientVersion'] = session.version
       } catch {}
     const routing = this.routing
-    const remote = <T>(service: 'glz' | 'pd', endpoint: string) => {
+    const remote = <T>(endpoint: string) => {
       if (!routing) return Promise.reject(new Error('Routing unavailable'))
-      const host =
-        service === 'glz' ? `glz-${routing.region}-1.${routing.shard}.a.pvp.net` : `pd.${routing.shard}.a.pvp.net`
+      const host = `glz-${routing.region}-1.${routing.shard}.a.pvp.net`
       return getJson<T>(host, endpoint, remoteHeaders)
     }
     if (!state.matchId && state.loop === this.previous?.loop) state.matchId = this.previous.matchId
@@ -145,18 +150,20 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
     ) {
       try {
         const phase = state.loop === 'PREGAME' ? 'pregame' : 'core-game'
-        const player = await remote<{ MatchID: string }>(
-          'glz',
-          `/${phase}/v1/players/${encodeURIComponent(token.subject)}`
-        )
+        const player = await remote<{ MatchID: string }>(`/${phase}/v1/players/${encodeURIComponent(token.subject)}`)
         state.matchId = player.MatchID
         const match = await remote<{
           MapID?: string
           Players?: Player[]
           AllyTeam?: { Players: Player[] }
           Teams?: { Players: Player[] }[]
-        }>('glz', `/${phase}/v1/matches/${encodeURIComponent(player.MatchID)}`)
-        type Player = { Subject: string; CharacterID: string; TeamID?: string; CharacterSelectionState?: string }
+        }>(`/${phase}/v1/matches/${encodeURIComponent(player.MatchID)}`)
+        type Player = {
+          Subject: string
+          CharacterID: string
+          TeamID?: string
+          CharacterSelectionState?: string
+        }
         const players = match.Players || match.AllyTeam?.Players || match.Teams?.flatMap((t) => t.Players) || []
         const me = players.find((p) => p.Subject === token.subject)
         if (me && (state.loop === 'INGAME' || me.CharacterSelectionState === 'locked'))
@@ -174,41 +181,53 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
     state.map = valorantNames[(state.map || '').toLowerCase()] || state.map?.split('/').pop()
     const changes = deriveValorantEvents(this.previous, state)
     for (const change of changes) {
-      if (change.type === 'match_ended') {
-        const id = String(change.payload.matchId || '')
-        if (id) this.pendingResults.set(id, { at: Date.now(), facts: change.payload })
-      } else this.emitGame(change.type, change.payload)
+      if (change.type === 'match_started') this.life = null
+      this.emitGame(change.type, change.payload)
     }
     this.previous = state
-    for (const [id, pending] of this.pendingResults) {
-      if (Date.now() - pending.at > 120000) {
-        this.pendingResults.delete(id)
-        continue
-      }
-      try {
-        const result = await remote<{
-          matchInfo: { isCompleted: boolean }
-          players: { subject: string; teamId: string }[]
-          teams: { teamId: string; won: boolean; roundsWon: number }[]
-        }>('pd', `/match-details/v1/matches/${encodeURIComponent(id)}`)
-        if (!this.active(generation)) return
-        if (!result.matchInfo?.isCompleted) continue
-        const me = result.players.find((p) => p.subject === token.subject)
-        const ally = result.teams.find((t) => t.teamId === me?.teamId)
-        const enemy = result.teams.find((t) => t.teamId !== me?.teamId)
-        if (!ally || !enemy) continue
-        this.pendingResults.delete(id)
-        this.emitGame('match_ended', {
-          ...pending.facts,
-          quiet: false,
-          result: ally.won ? 'win' : enemy.won ? 'loss' : 'draw',
-          matchId: id,
-          isWin: ally.won || enemy.won ? ally.won : undefined,
-          allyScore: ally.roundsWon,
-          enemyScore: enemy.roundsWon
-        })
-      } catch {}
+    await this.observeDeath(state, generation).catch(() => {
+      if (this.life) this.life.alive = false
+    })
+  }
+
+  private async observeDeath(state: ValorantState, generation: number): Promise<void> {
+    if (state.loop !== 'INGAME' || state.ended) {
+      this.life = null
+      return
     }
+    if (Date.now() < this.nextCaptureAt || state.allyScore === undefined || state.enemyScore === undefined) return
+    const foreground = gamePresenceService.getForegroundApp()
+    if (!this.active(generation)) return
+    if (!this.process || foreground?.pid !== this.process.pid || !foreground.windowId) {
+      if (this.life) this.life.alive = false
+      return
+    }
+    this.nextCaptureAt = Date.now() + 2000
+    const frame = await scannerService.captureGameWindow(foreground.windowId, {
+      width: 1600,
+      height: 900
+    })
+    const current = gamePresenceService.getForegroundApp()
+    if (!this.active(generation)) return
+    if (!frame || current?.pid !== foreground.pid || current.windowId !== foreground.windowId) {
+      if (this.life) this.life.alive = false
+      return
+    }
+    const image = nativeImage.createFromBuffer(Buffer.from(frame, 'base64'))
+    const size = image.getSize()
+    if (!size.width || !size.height || Math.abs(size.width / size.height - 16 / 9) > 0.03) return
+    const hud = image.crop(spectatorHudRegion(size.width, size.height)).resize({ width: 220, height: 70 })
+    const dead = hasSpectatorHud(hud.toBitmap(), 220, 70)
+    const observation = observeValorantLife(this.life, `${state.allyScore}:${state.enemyScore}`, dead)
+    this.life = observation.tracker
+    if (observation.died)
+      this.emitGame('player_died', {
+        agent: state.agent,
+        map: state.map,
+        allyScore: state.allyScore,
+        enemyScore: state.enemyScore,
+        source: 'spectator HUD pixels'
+      })
   }
 }
 
