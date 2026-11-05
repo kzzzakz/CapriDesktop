@@ -4,6 +4,8 @@ import { consciousnessService } from './consciousness-service'
 import { scannerService } from './scanner-service'
 import { windowManager } from '../windows/window-manager'
 import { cyberpunkAdapter, lolLiveAdapter } from './game'
+import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
+import { wutheringWavesAdapter } from './game/adapters/wuthering-waves/wuthering-waves-adapter'
 import { gamePresenceService } from './game-presence-service'
 
 interface ProactiveTopic {
@@ -175,7 +177,8 @@ export class ProactiveDialogueService {
     if (windowManager.isGamingModeActive()) {
       const isCyberpunk = cyberpunkAdapter?.isCyberpunkActive?.() ?? false
       const isLol = lolLiveAdapter?.isRunning?.() ?? false
-      if (!isCyberpunk && !isLol && !gamePresenceService.isGameSessionActive()) {
+      const isNativeGame = valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()
+      if (!isCyberpunk && !isLol && !isNativeGame && !gamePresenceService.isGameSessionActive()) {
         try {
           windowManager.setGamingMode(false)
         } catch {}

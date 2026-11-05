@@ -127,12 +127,7 @@ public class WindowedAppHelper {
                              lower.Contains("chrome") ||
                              lower.Contains("edge") ||
                              lower.Contains("brave") ||
-                             lower.Contains("firefox") ||
-                             procName.Contains("opera") ||
-                             procName.Contains("chrome") ||
-                             procName.Contains("msedge") ||
-                             procName.Contains("brave") ||
-                             procName.Contains("firefox");
+                             lower.Contains("firefox");
 
             list.Add(new WindowEntry {
                 Hwnd = (long)hWnd,

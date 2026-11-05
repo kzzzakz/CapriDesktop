@@ -376,7 +376,7 @@ export function pickWindowedApps(windows: LinuxWindow[], names: Map<number, stri
       top: w.top,
       width: w.width,
       height: w.height,
-      isBrowser: BROWSER.test(lower) || BROWSER.test(names.get(w.pid) || '')
+      isBrowser: BROWSER.test(lower)
     })
   }
   return apps.sort((a, b) => Number(b.isBrowser) - Number(a.isBrowser))
