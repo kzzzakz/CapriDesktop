@@ -78,6 +78,8 @@ export class RoamingManager {
   private isPaused = false
   private direction: 'left' | 'right' = 'right'
   private speed = 2.2 // pixels per tick
+  // Windows scaling grows the window a pixel on every setPosition, so walking keeps the size she started with
+  private walkSize: { width: number; height: number } | null = null
   private loopTimer: NodeJS.Timeout | null = null
   private autonomousTimer: NodeJS.Timeout | null = null
   private userDragPauseTimer: NodeJS.Timeout | null = null
@@ -661,6 +663,7 @@ export class RoamingManager {
   // --- Main Walking Loop (Smooth Movement along Desktop) ---
   private startLoop(): void {
     if (this.loopTimer) clearInterval(this.loopTimer)
+    this.walkSize = null
 
     this.loopTimer = setInterval(() => {
       if (this.isEyeMode || !this.isRoaming || this.isPaused || this.currentBehavior !== 'walking' || this.isTabMode) {
@@ -676,12 +679,13 @@ export class RoamingManager {
 
       try {
         const bounds = companionWin.getBounds()
+        this.walkSize ??= { width: bounds.width, height: bounds.height }
         // The screen she's on, not always the main one
         const primaryDisplay = screen.getDisplayMatching(bounds)
         const { workArea } = primaryDisplay
 
         const minX = workArea.x + 10
-        const maxX = workArea.x + workArea.width - bounds.width - 10
+        const maxX = workArea.x + workArea.width - this.walkSize.width - 10
 
         let newX = bounds.x + (this.direction === 'right' ? this.speed : -this.speed)
 
@@ -699,7 +703,7 @@ export class RoamingManager {
         // Smooth horizontal roaming, preserving current Y height (walks in the air or floor as placed by user)
         const currentY = bounds.y
         this.isSelfMoving = true
-        companionWin.setPosition(Math.round(newX), currentY)
+        companionWin.setBounds({ x: Math.round(newX), y: currentY, ...this.walkSize })
         setImmediate(() => {
           this.isSelfMoving = false
         })
