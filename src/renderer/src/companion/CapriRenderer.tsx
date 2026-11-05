@@ -19,6 +19,7 @@ interface CapriRendererProps {
   noShadow?: boolean
   isGamingMode?: boolean
   isGameForeground?: boolean
+  pixelHitTest?: boolean
 }
 
 // Avatar change audio effect
@@ -137,9 +138,11 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
   overrideDirection,
   noShadow = false,
   isGamingMode = false,
-  isGameForeground = false
+  isGameForeground = false,
+  pixelHitTest = false
 }) => {
-  const { renderMode, direction: storeDirection, isCatchGameActive } = useCompanionStore()
+  const { renderMode: preferredRenderMode, direction: storeDirection, isCatchGameActive } = useCompanionStore()
+  const renderMode = pixelHitTest ? 'frames' : preferredRenderMode
   const direction = overrideDirection || storeDirection
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -551,6 +554,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           }}
         >
           <video
+            data-capri-sprite
             ref={videoRef}
             key="capri2-trim-video"
             src={capri2TrimVideo}
@@ -568,6 +572,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
 
           {/* Cyberpunk HUD Frame overlay (Horizontal in Gaming Mode, Portrait on Desktop) */}
           <img
+            data-capri-sprite
             src={isGamingMode ? capriFrameHorizontalImg : capriFrameImg}
             alt="cyber-frame"
             draggable={false}
@@ -587,6 +592,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           }}
         >
           <video
+            data-capri-sprite
             ref={asustadaVideoRef}
             key="capri-asustada-video"
             src={capriAsustadaVideo}
@@ -611,6 +617,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           }}
         >
           <video
+            data-capri-sprite
             ref={ojosVideoRef}
             key="capri-ojos2-video"
             src={ojos2Video}
@@ -629,6 +636,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
 
           {/* Cyberpunk HUD Horizontal Frame overlay matching exact size of eyes clip (16:9) */}
           <img
+            data-capri-sprite
             src={capriFrameHorizontalImg}
             alt="cyber-frame"
             draggable={false}
@@ -651,6 +659,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           {/* Red Silhouette Razor Ghost: Projecting left with sharp slices */}
           {isGlitching && (
             <img
+              data-capri-sprite
               key={`glitch-red-${glitchKey}`}
               src={currentSrc}
               alt="glitch-red"
@@ -667,6 +676,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           {/* Green Silhouette Razor Ghost: Projecting right with sharp slices */}
           {isGlitching && (
             <img
+              data-capri-sprite
               key={`glitch-green-${glitchKey}`}
               src={currentSrc}
               alt="glitch-green"
@@ -683,6 +693,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           {/* Counter-slice B: PNG deformed and severed with knife cuts shifting right */}
           {isGlitching && (
             <img
+              data-capri-sprite
               key={`glitch-slice-b-${glitchKey}`}
               src={currentSrc}
               alt="glitch-slice-b"
@@ -700,6 +711,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
 
           {/* Base Character Image: Clean full-body sprite in pet mode */}
           <img
+            data-capri-sprite
             key={`${state}-${renderMode}-${glitchKey}`}
             src={currentSrc}
             alt={`Capri (${state})`}

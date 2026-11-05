@@ -262,7 +262,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   if (!isOpen) return null
 
   return (
-    <div className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none text-[14px]">
+    <div data-capri-hit className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none text-[14px]">
       {/* Outer Cyber Frame */}
       <div className="cp-frame w-full max-w-2xl max-h-full flex flex-col overflow-hidden animate-fade-in" style={{ ['--c' as string]: '14px' }}>
         {/* Header */}

@@ -2,6 +2,8 @@ import { personalize } from '../utils/userName'
 import { AlwaysListener } from '../utils/alwaysListening'
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { CapriRenderer, playMultiGlitchSound, playPetChirpSound } from './CapriRenderer'
+import { isCapriHit, isCapriSpriteHit } from './companion-hit-test'
+import { useCompanionHitTest } from './useCompanionHitTest'
 import { SpeechBubble } from './SpeechBubble'
 import { useT } from '../utils/useUiLang'
 import { localizeLine } from '../../../shared/lines'
@@ -122,43 +124,12 @@ export const CompanionView: React.FC = () => {
   const [isGameForeground, setIsGameForeground] = useState(false)
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState<boolean>(false)
   const [isContextMenuOpen, setIsContextMenuOpen] = useState<boolean>(false)
-  const isGamingControlHeldRef = useRef(false)
-
-  useEffect(() => {
-    if (!isGamingMode) {
-      isGamingControlHeldRef.current = false
-      return
-    }
-    if (!window.api?.companion?.setClickThrough) return
-    if (isGameForeground) {
-      isGamingControlHeldRef.current = false
-      setIsWindowHovered(false)
-      window.api.companion.setClickThrough(true).catch(() => {})
-      return
-    }
-    let ignoring = !(isGamingControlHeldRef.current || isContextMenuOpen || isVoiceSettingsOpen)
-    window.api.companion.setClickThrough(ignoring).catch(() => {})
-    const update = (ctrl: boolean) => {
-      isGamingControlHeldRef.current = ctrl
-      const want = !(ctrl || isContextMenuOpen || isVoiceSettingsOpen)
-      if (want === ignoring) return
-      ignoring = want
-      window.api.companion.setClickThrough(want).catch(() => {})
-    }
-    const onMove = (e: MouseEvent) => update(e.ctrlKey)
-    const onKey = (e: KeyboardEvent) => update(e.ctrlKey)
-    const onLeave = () => update(false)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('keyup', onKey)
-    document.addEventListener('mouseleave', onLeave)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('keyup', onKey)
-      document.removeEventListener('mouseleave', onLeave)
-    }
-  }, [isGamingMode, isGameForeground, isContextMenuOpen, isVoiceSettingsOpen])
+  useCompanionHitTest({
+    isGamingMode,
+    isGameForeground,
+    keepCapturing: isContextMenuOpen || isVoiceSettingsOpen || isDesktopChatOpen,
+    onHover: setIsWindowHovered
+  })
   const tr = useT()
 
   // Language state synchronized with consciousnessService (default 'en')
@@ -1435,6 +1406,7 @@ export const CompanionView: React.FC = () => {
 
   // Drag & Click handlers: Left Click = friendly drag / click; Ctrl + Click = Interactive Chat; Shift + Right Click = Petting / Headpat; Right Click = Grab
   const handleCapriMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((isGamingMode && (isGameForeground || !e.ctrlKey)) || !isCapriSpriteHit(e.clientX, e.clientY)) return
     // Shift + Right Click: Headpat / Petting Interaction
     if (e.shiftKey && e.button === 2) {
       e.preventDefault()
@@ -1641,6 +1613,7 @@ export const CompanionView: React.FC = () => {
   }
 
   const handleCapriContextMenu = (e: React.MouseEvent) => {
+    if ((isGamingMode && (isGameForeground || !e.ctrlKey)) || !isCapriHit(e.clientX, e.clientY)) return
     e.preventDefault()
     e.stopPropagation()
     if (dragStartRef.current?.moved || isScaredActiveRef.current) return
@@ -1666,6 +1639,7 @@ export const CompanionView: React.FC = () => {
 
   // Click on Capri: Normal click toggles Dev Deck; Ctrl + Click toggles Interactive HUD Input; Shift + Click moves window
   const handleCapriClick = async (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((isGamingMode && (isGameForeground || !e.ctrlKey)) || !isCapriSpriteHit(e.clientX, e.clientY)) return
     if (isContextMenuOpen) {
       setIsContextMenuOpen(false)
       return
@@ -1832,6 +1806,7 @@ export const CompanionView: React.FC = () => {
       {/* Cyberpunk Quick Actions Menu on Right Click */}
       {isContextMenuOpen && !isDeckOpen && (
         <div
+          data-capri-hit
           className="cp-vars cp-frame absolute z-50 p-1.5 flex flex-col gap-1 min-w-[230px] animate-fade-in"
           style={{
             position: isGamingMode ? 'absolute' : undefined,
@@ -1846,6 +1821,7 @@ export const CompanionView: React.FC = () => {
               <Sliders size={11} /> {tr('cp_menu')}
             </span>
             <button
+              data-capri-hit
               onClick={() => setIsContextMenuOpen(false)}
               className="text-stone-500 hover:text-white cursor-pointer"
             >
@@ -1854,6 +1830,7 @@ export const CompanionView: React.FC = () => {
           </div>
 
           <button
+            data-capri-hit
             onClick={() => {
               setIsContextMenuOpen(false)
               setIsVoiceSettingsOpen(true)
@@ -1868,6 +1845,7 @@ export const CompanionView: React.FC = () => {
           </button>
 
           <button
+            data-capri-hit
             onClick={async () => {
               setIsContextMenuOpen(false)
               if (window.api?.deck) await window.api.deck.show()
@@ -1882,6 +1860,7 @@ export const CompanionView: React.FC = () => {
           </button>
 
           <button
+            data-capri-hit
             onClick={() => {
               setIsContextMenuOpen(false)
               toggleVoiceMute()
@@ -1925,7 +1904,7 @@ export const CompanionView: React.FC = () => {
           isDeckOpen ? 'invisible opacity-0 pointer-events-none' : ''
         }`}
         style={{
-          WebkitAppRegion: 'drag',
+          WebkitAppRegion: 'no-drag',
           background: 'transparent'
         } as React.CSSProperties}
       >
@@ -1938,6 +1917,7 @@ export const CompanionView: React.FC = () => {
         >
           <div className="w-full h-full flex items-center justify-center overflow-visible">
             <CapriRenderer
+              pixelHitTest
               state={desktopCompanionState}
               noShadow={false}
               isGamingMode={isGamingMode}
@@ -1980,6 +1960,7 @@ export const CompanionView: React.FC = () => {
                 {/* Minimal Input Bar: Only opens on Ctrl + Click */}
                 {isDesktopChatOpen && (
                   <form
+                    data-capri-hit
                     onSubmit={(e) => {
                       e.preventDefault()
                       handleSendMessage()
@@ -1989,6 +1970,7 @@ export const CompanionView: React.FC = () => {
                     <span className="text-xs font-bold text-[#fcee0a] select-none font-terminal">&gt;</span>
 
                     <input
+                      data-capri-hit
                       ref={promptInputRef}
                       type="text"
                       value={inputText}
@@ -2010,6 +1992,7 @@ export const CompanionView: React.FC = () => {
                     />
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsVoiceSettingsOpen(true)}
                       className="p-1.5 rounded text-xs font-bold transition-all cursor-pointer bg-black/80 hover:bg-cyan-950/60 text-cyan-400 border border-cyan-500/40 hover:border-cyan-400"
@@ -2019,6 +2002,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       disabled={isExecuting || isProcessingVoice}
                       onClick={toggleVoiceRecordingSafe}
@@ -2039,6 +2023,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsDesktopChatOpen(false)}
                       className="p-1 rounded text-zinc-500 hover:text-white transition-colors cursor-pointer"
@@ -2068,7 +2053,7 @@ export const CompanionView: React.FC = () => {
         isDeckOpen ? 'invisible opacity-0 pointer-events-none' : ''
       }`}
       style={{
-        WebkitAppRegion: 'drag',
+        WebkitAppRegion: 'no-drag',
         background: 'transparent'
       } as React.CSSProperties}
     >
@@ -2109,6 +2094,7 @@ export const CompanionView: React.FC = () => {
                 {/* Minimal Input Bar: Only opens on Ctrl + Click */}
                 {isDesktopChatOpen && (
                   <form
+                    data-capri-hit
                     onSubmit={(e) => {
                       e.preventDefault()
                       handleSendMessage()
@@ -2118,6 +2104,7 @@ export const CompanionView: React.FC = () => {
                     <span className="text-xs font-bold text-[#fcee0a] select-none font-terminal">&gt;</span>
 
                     <input
+                      data-capri-hit
                       ref={promptInputRef}
                       type="text"
                       value={inputText}
@@ -2139,6 +2126,7 @@ export const CompanionView: React.FC = () => {
                     />
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsVoiceSettingsOpen(true)}
                       className="p-1.5 rounded text-xs font-bold transition-all cursor-pointer bg-black/80 hover:bg-cyan-950/60 text-cyan-400 border border-cyan-500/40 hover:border-cyan-400"
@@ -2148,6 +2136,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       disabled={isExecuting || isProcessingVoice}
                       onClick={toggleVoiceRecordingSafe}
@@ -2170,6 +2159,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsDesktopChatOpen(false)}
                       className="p-1 rounded text-zinc-500 hover:text-white transition-colors cursor-pointer"
@@ -2188,6 +2178,7 @@ export const CompanionView: React.FC = () => {
                   style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 >
                   <button
+                    data-capri-hit
                     type="button"
                     onClick={() => {
                       const next = !isDesktopChatOpen
@@ -2222,6 +2213,7 @@ export const CompanionView: React.FC = () => {
                   </button>
 
                   <button
+                    data-capri-hit
                     type="button"
                     onClick={toggleVoiceMute}
                     className={`cp-cut cp-font uppercase tracking-wider px-2 py-0.5 rounded-none text-[10px] font-bold flex items-center gap-1 border transition-all cursor-pointer ${
@@ -2246,6 +2238,7 @@ export const CompanionView: React.FC = () => {
 
                   {/* Voice Type Selector: blip / TTS */}
                   <button
+                    data-capri-hit
                     type="button"
                     onClick={() => {
                       setVoiceType((prev) => {
@@ -2277,6 +2270,7 @@ export const CompanionView: React.FC = () => {
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             <button
+              data-capri-hit
               type="button"
               onClick={() => {
                 const next = !isDesktopChatOpen
@@ -2311,6 +2305,7 @@ export const CompanionView: React.FC = () => {
             </button>
 
             <button
+              data-capri-hit
               type="button"
               onClick={toggleVoiceMute}
               className={`cp-cut cp-font uppercase tracking-wider px-2 py-0.5 rounded-none text-[10px] font-bold flex items-center gap-1 border transition-all cursor-pointer ${
@@ -2334,6 +2329,7 @@ export const CompanionView: React.FC = () => {
             </button>
 
             <button
+              data-capri-hit
               type="button"
               onClick={() => {
                 setVoiceType((prev) => {
@@ -2365,6 +2361,7 @@ export const CompanionView: React.FC = () => {
           {/* Always-listening indicator: visible the whole time she's listening (Right arrow toggles) */}
           {isAlwaysListening && (
             <button
+              data-capri-hit
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -2412,6 +2409,7 @@ export const CompanionView: React.FC = () => {
             style={{ transformOrigin: 'bottom center' }}
           >
             <CapriRenderer
+              pixelHitTest
               state={desktopCompanionState}
               noShadow={false}
               onClick={handleCapriClick}

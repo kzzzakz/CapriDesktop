@@ -183,6 +183,10 @@ test('main rejects unlocks over a game and restores Ctrl interaction after alt-t
   assert.deepEqual(events.at(-1), ['gaming', true, true])
 
   manager.isGamingMode = false
+  manager.setCompanionClickThrough(true)
+  assert.equal(ignoring, true)
+  assert.equal(forwarding, true)
+  assert.equal(focusable, true)
   manager.setCompanionClickThrough(false)
   assert.equal(ignoring, false)
   assert.equal(focusable, true)

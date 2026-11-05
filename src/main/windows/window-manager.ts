@@ -77,6 +77,7 @@ export class WindowManager {
 
   public init(): void {
     this.companionWin = createCompanionWindow()
+    this.setCompanionClickThrough(true)
     this.deckWin = createDeckWindow()
 
     // First launch after installing: ask the user's name, language and set up dependencies
@@ -394,7 +395,7 @@ export class WindowManager {
   public setCompanionClickThrough(ignore: boolean): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
     const blocked = this.isGameForeground()
-    const effective = this.isGamingMode && (ignore || blocked)
+    const effective = ignore || blocked
     this.companionWin.setFocusable(!blocked)
     if (this.isGamingMode) {
       this.companionWin.setOpacity(effective ? GAMING_OPACITY : 1)
@@ -507,7 +508,7 @@ export class WindowManager {
       this.companionWin.setBounds({ x, y, width, height }, false)
       this.companionWin.setOpacity(1)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
-      this.setCompanionClickThrough(false)
+      this.setCompanionClickThrough(true)
 
       this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, false, false)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, false)
