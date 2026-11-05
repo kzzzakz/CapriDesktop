@@ -99,7 +99,7 @@ const api = {
     setGamingMode: (enabled: boolean, corner?: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, enabled, corner),
 
-    getGamingMode: (): Promise<boolean> =>
+    getGamingMode: (): Promise<{ enabled: boolean; gameForeground: boolean }> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_GET_GAMING_MODE),
 
     onScriptEvent: (callback: (event: any) => void): (() => void) => {
@@ -142,8 +142,8 @@ const api = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.COMPANION_TOGGLE_CHAT, sub)
     },
 
-    onGamingModeChanged: (callback: (enabled: boolean) => void): (() => void) => {
-      const subscription = (_event: IpcRendererEvent, enabled: boolean): void => callback(enabled)
+    onGamingModeChanged: (callback: (enabled: boolean, gameForeground: boolean) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, enabled: boolean, gameForeground: boolean): void => callback(enabled, gameForeground)
       ipcRenderer.on(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, subscription)
       return (): void => {
         ipcRenderer.removeListener(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, subscription)

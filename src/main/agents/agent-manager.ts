@@ -154,6 +154,7 @@ export class AgentManager extends EventEmitter {
       // Any finished result (e.g. the new landing page) is still unopened at this point,
       // so the phrase names what the user was really doing.
       const activeApp = await activeWindowService.getActiveOrTopWindow()
+      if (windowManager.isGamingModeActive()) return
       const hasResult = hasPendingResult()
       const wakeupPhrase = activeWindowService.generateWakeupPhrase(activeApp, hasResult)
 
