@@ -71,7 +71,7 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
       } as React.CSSProperties}
     >
       {/* Outer Cyan Neon Border with Chamfered Corners (Cut Top-Left and Cut Bottom-Right) */}
-      <div className="hud-chamfer-box p-[2px] bg-[#00f0ff] shadow-[0_0_14px_rgba(0,240,255,0.4)]">
+      <div data-capri-hit className="hud-chamfer-box p-[2px] bg-[#00f0ff] shadow-[0_0_14px_rgba(0,240,255,0.4)]">
         {/* Inner Dark Surface */}
         <div className={`hud-chamfer-box-inner bg-[#080a12]/95 backdrop-blur-xl ${compact ? 'px-2.5 py-1.5' : 'px-3.5 py-2'} relative`}>
           {/* Header Controls (Dismiss) */}

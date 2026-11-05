@@ -30,16 +30,17 @@ export class WindowManager {
    * stops receiving mouse moves and could never tell that the cursor came back to one of its buttons,
    * so on Linux the moves are read from the screen and handed to the page (see the preload). They
    * don't go through sendInputEvent because it drops them while the window has no focus, which in a
-   * game is always.
+   * game is always. Windows and macOS forward moves but never tell the page the mouse left, so
+   * there only the leaving is sent.
    */
-  private forwardMouseOnLinux(win: BrowserWindow, active: boolean): void {
-    if (!isLinux) return
+  private forwardMouse(win: BrowserWindow, active: boolean): void {
     const running = this.mouseForwardTimers.get(win)
     if (running) clearInterval(running)
     this.mouseForwardTimers.delete(win)
     if (!active) return
 
-    // Only real changes are told: starting outside isn't the mouse leaving
+    // Linux tells only real changes. Elsewhere native moves can enter and leave between two polls,
+    // so every poll outside is told.
     let last = 'outside'
     let asking = false
     const timer = setInterval(async () => {
@@ -51,7 +52,7 @@ export class WindowManager {
       }
       // screen.getCursorScreenPoint() stays frozen on X11 while the app gets no mouse events
       asking = true
-      const raw = await linuxCursorPosition()
+      const raw = isLinux ? await linuxCursorPosition() : null
       asking = false
       if (this.mouseForwardTimers.get(win) !== timer || win.isDestroyed()) return
       const bounds = win.getBounds()
@@ -61,6 +62,10 @@ export class WindowManager {
       const y = Math.round(cursor.y - bounds.y)
       const inside = x >= 0 && y >= 0 && x < bounds.width && y < bounds.height
       const position = inside ? `${x},${y}` : 'outside'
+      if (!isLinux) {
+        if (!inside) win.webContents.send(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, { x, y, inside })
+        return
+      }
       if (position === last) return
       last = position
       win.webContents.send(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, { x, y, inside })
@@ -77,6 +82,7 @@ export class WindowManager {
 
   public init(): void {
     this.companionWin = createCompanionWindow()
+    this.setCompanionClickThrough(true)
     this.deckWin = createDeckWindow()
 
     // First launch after installing: ask the user's name, language and set up dependencies
@@ -394,7 +400,7 @@ export class WindowManager {
   public setCompanionClickThrough(ignore: boolean): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
     const blocked = this.isGameForeground()
-    const effective = this.isGamingMode && (ignore || blocked)
+    const effective = ignore || blocked
     this.companionWin.setFocusable(!blocked)
     if (this.isGamingMode) {
       this.companionWin.setOpacity(effective ? GAMING_OPACITY : 1)
@@ -404,7 +410,7 @@ export class WindowManager {
     } else {
       this.companionWin.setIgnoreMouseEvents(false)
     }
-    this.forwardMouseOnLinux(this.companionWin, effective && !blocked)
+    this.forwardMouse(this.companionWin, !blocked && (effective || !isLinux))
   }
 
   public setSavedGamingPosition(pos: { x: number; y: number } | null): void {
@@ -507,7 +513,7 @@ export class WindowManager {
       this.companionWin.setBounds({ x, y, width, height }, false)
       this.companionWin.setOpacity(1)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
-      this.setCompanionClickThrough(false)
+      this.setCompanionClickThrough(true)
 
       this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, false, false)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, false)
@@ -608,7 +614,7 @@ export class WindowManager {
   public setScannerIgnoreMouse(ignore: boolean): void {
     if (this.scannerWin && !this.scannerWin.isDestroyed()) {
       this.scannerWin.setIgnoreMouseEvents(ignore, { forward: true })
-      this.forwardMouseOnLinux(this.scannerWin, ignore)
+      this.forwardMouse(this.scannerWin, ignore)
       // Crucial on Windows: toggling ignoreMouseEvents can alter DWM z-order flags; reassert topmost level
       this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.scannerWin.moveTop()

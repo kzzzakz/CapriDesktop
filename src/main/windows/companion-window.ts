@@ -35,6 +35,8 @@ export function createCompanionWindow(): BrowserWindow {
     }
   })
 
+  companionWindow.setIgnoreMouseEvents(true, { forward: true })
+
   // Ensure window stays above DirectX games and handles fullscreen blur without dropping z-order
   companionWindow.setAlwaysOnTop(true, 'screen-saver', 1)
   companionWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
