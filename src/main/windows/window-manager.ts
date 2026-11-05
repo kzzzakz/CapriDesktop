@@ -385,6 +385,9 @@ export class WindowManager {
   public setCompanionClickThrough(ignore: boolean): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
     const effective = ignore && this.isGamingMode
+    if (this.isGamingMode) {
+      this.companionWin.setOpacity(effective ? GAMING_OPACITY : 1)
+    }
     if (effective) {
       this.companionWin.setIgnoreMouseEvents(true, { forward: true })
     } else {
