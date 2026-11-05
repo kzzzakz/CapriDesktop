@@ -224,6 +224,8 @@ const api = {
     listLlmModels: (baseUrl: string, apiKey?: string): Promise<{ ok: boolean; models: string[]; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.LLM_LIST_MODELS, baseUrl, apiKey),
 
+    testClaude: (model: 'haiku' | 'sonnet' | 'opus'): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST_CLAUDE, model),
     testLlm: (baseUrl: string, model: string, apiKey?: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST, baseUrl, model, apiKey),
 

@@ -11,6 +11,8 @@ import { consciousnessService } from '../services/consciousness-service'
 import { scannerService } from '../services/scanner-service'
 import { isLinux, linuxCursorPosition } from '../services/platform'
 
+const GAMING_OPACITY = 0.15
+
 export class WindowManager {
   private companionWin: BrowserWindow | null = null
   private onboardingWin: BrowserWindow | null = null
@@ -449,6 +451,7 @@ export class WindowManager {
       }
 
       this.companionWin.setBounds({ x, y, width, height }, false)
+      this.companionWin.setOpacity(GAMING_OPACITY)
       this.companionWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.companionWin.moveTop()
@@ -487,6 +490,7 @@ export class WindowManager {
       const y = workArea.y + workArea.height - height - 20
 
       this.companionWin.setBounds({ x, y, width, height }, false)
+      this.companionWin.setOpacity(1)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.setCompanionClickThrough(false)
 
