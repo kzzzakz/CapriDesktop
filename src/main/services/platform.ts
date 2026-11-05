@@ -5,7 +5,7 @@
  * answer "nothing" and the features that need them stay quiet instead of failing.
  */
 
-import { exec, execFile, spawn } from 'child_process'
+import { exec, execFile, spawn } from './hidden-process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'

@@ -14,7 +14,7 @@ import { llmBody } from '../services/user-profile'
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from 'child_process'
+import { exec } from '../services/hidden-process'
 import { queueResult } from '../services/pending-result'
 
 export type CodingLang = 'es' | 'en'

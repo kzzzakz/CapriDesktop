@@ -1,3 +1,4 @@
+import { getStorageRoot } from '../services/storage-location'
 import { scriptPlayer } from '../services/script/script-player'
 import { testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
 import { setupService, SetupStep } from '../services/setup-service'
@@ -206,8 +207,9 @@ export function registerIpcHandlers(): void {
 
   // Preferred Language management
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE, () => {
-    return consciousnessService.getPreferredLanguage()
+    return consciousnessService.getUiLanguage()
   })
+  consciousnessService.onSpokenLanguageChanged((lang) => windowManager.broadcast(IPC_CHANNELS.COMPANION_LINE_LANGUAGE, lang))
 
   // Spoken language already configured from a previous session: warm the translator in the background
   if (consciousnessService.getLanguageSettings().speechLang !== 'auto') {
@@ -225,6 +227,26 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETUP_RUN, async (_event, step: SetupStep) => {
     const ok = await setupService.run(step, (s, line) => windowManager.broadcast(IPC_CHANNELS.SETUP_LOG, { step: s, line }))
     return { ok, status: await setupService.getStatus() }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DISPLAYS_LIST, () => windowManager.listDisplays())
+  ipcMain.handle(IPC_CHANNELS.DISPLAYS_MOVE, (_event, id: number) => windowManager.moveCompanionToDisplay(id))
+  ipcMain.handle(IPC_CHANNELS.BOREDOM_GET_ENABLED, () => consciousnessService.isBoredomEnabled())
+  ipcMain.handle(IPC_CHANNELS.BOREDOM_SET_ENABLED, (_event, enabled: boolean) => {
+    consciousnessService.setBoredomEnabled(!!enabled)
+    return !!enabled
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETUP_GET_STORAGE, () => getStorageRoot())
+  ipcMain.handle(IPC_CHANNELS.SETUP_CHOOSE_STORAGE, async (_event, reset?: boolean) => {
+    if (reset) {
+      await setupService.changeStorage(null)
+      return null
+    }
+    const picked = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    if (picked.canceled || !picked.filePaths[0]) return getStorageRoot()
+    await setupService.changeStorage(path.join(picked.filePaths[0], 'CapriData'))
+    return getStorageRoot()
   })
 
   ipcMain.handle(IPC_CHANNELS.ONBOARDING_OPEN, () => {
@@ -267,7 +289,7 @@ export function registerIpcHandlers(): void {
     const saved = consciousnessService.setLanguageSettings(next || {})
     // Spoken language differs from the text: load the translation model now, not on the first line
     if (saved.speechLang && saved.speechLang !== 'auto') voiceService.warmTranslator()
-    windowManager.broadcast(IPC_CHANNELS.COMPANION_LANGUAGE_CHANGED, consciousnessService.getPreferredLanguage())
+    windowManager.broadcast(IPC_CHANNELS.COMPANION_LANGUAGE_CHANGED, consciousnessService.getUiLanguage())
     return saved
   })
 
@@ -464,7 +486,14 @@ export function registerIpcHandlers(): void {
   })
 
   // Voice Core (Speech-to-Text and Text-to-Speech)
-  ipcMain.handle(IPC_CHANNELS.VOICE_TRANSCRIBE, async (_event, audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean }) => {
+  ipcMain.handle(IPC_CHANNELS.VOICE_STT_STATE, () => voiceService.getSttState())
+  ipcMain.handle(IPC_CHANNELS.ARROW_KEYS_GET, () => consciousnessService.getArrowKeysEnabled())
+  ipcMain.handle(IPC_CHANNELS.ARROW_KEYS_SET, (_event, enabled: boolean) => {
+    windowManager.setArrowKeysEnabled(!!enabled)
+    return !!enabled
+  })
+
+  ipcMain.handle(IPC_CHANNELS.VOICE_TRANSCRIBE, async (_event, audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean } | boolean) => {
     try {
       const buffer = Buffer.isBuffer(audioData)
         ? audioData

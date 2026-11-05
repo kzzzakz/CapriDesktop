@@ -3,6 +3,7 @@
  * (with 0.5 s of pre-roll) is encoded as 16 kHz mono WAV and passed to onUtterance.
  */
 
+import { openMicrophone } from './microphone'
 export interface AlwaysListenerOptions {
   onUtterance: (wav: ArrayBuffer) => void
   /** While true (Capri speaking, push-to-talk, agent busy) audio is ignored */
@@ -39,9 +40,7 @@ export class AlwaysListener {
 
   public async start(): Promise<void> {
     if (this.stream) return
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
-    })
+    this.stream = await openMicrophone({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 })
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
     this.ctx = new AudioCtx()
     this.source = this.ctx.createMediaStreamSource(this.stream)

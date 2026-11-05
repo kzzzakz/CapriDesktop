@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, ChildProcess } from '../services/hidden-process'
 import { windowManager } from '../windows/window-manager'
 import { IPC_CHANNELS } from '../ipc/channels'
 

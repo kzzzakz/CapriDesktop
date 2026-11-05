@@ -81,6 +81,7 @@ if (!gotTheLock) {
         .catch((err) => console.warn('[Setup] Voice repair failed:', err))
         // After the patch notes, so a dialog doesn't step on her first words
         .then(() => new Promise((r) => setTimeout(r, 25000)))
+        .then(() => setupService.refreshPersona())
         .then(() => setupService.warnIfIncomplete())
         .catch((err) => console.warn('[Setup] Setup check failed:', err))
     }

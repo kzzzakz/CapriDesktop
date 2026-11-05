@@ -3,6 +3,7 @@
  * when installed, scripts/assets are read-only resources and writable data goes to userData.
  */
 
+import { storageDir } from './storage-location'
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
@@ -23,7 +24,7 @@ export function assetPath(...parts: string[]): string {
 
 /** Python virtual environment created by the first-run setup (installed app) or the repo .venv (dev) */
 export function pythonEnvDir(): string {
-  return app.isPackaged ? path.join(app.getPath('userData'), 'python-env') : path.join(app.getAppPath(), '.venv')
+  return app.isPackaged ? storageDir('python-env') || path.join(app.getPath('userData'), 'python-env') : path.join(app.getAppPath(), '.venv')
 }
 
 /** Where a virtual environment keeps its Python */
@@ -60,7 +61,7 @@ export function learnedDrawingsDir(): string {
 
 /** Tools the first-run setup downloads itself when winget is unavailable (e.g. a portable FFmpeg) */
 export function toolsDir(): string {
-  return path.join(app.getPath('userData'), 'tools')
+  return storageDir('tools') || path.join(app.getPath('userData'), 'tools')
 }
 
 /** FFmpeg extracted by the setup into toolsDir()/ffmpeg/<build>, if present */

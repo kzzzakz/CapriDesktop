@@ -1,0 +1,3 @@
+[excited] ¡Recién me actualicé, {name}! Esta vez arreglé un montón de cosas.
+[happy] Mi oído ya no se traba y me acuerdo del idioma en que me hablás. [playful] Podés elegir mi monitor, ajustar mis volúmenes y decirme que no me aburra si te molestan mis pestañas.
+[warmly] Y si me instalás en otro disco, todo lo que necesito va ahí también.

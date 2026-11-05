@@ -1,0 +1,2 @@
+[excited] Ich habe mich gerade aktualisiert, {name}!
+[happy] Unter Windows habe ich mich früher verabschiedet und geschlossen, ohne etwas zu installieren. [giggles] Jetzt aktualisiere ich mich, komme von selbst zurück und erzähle es dir.

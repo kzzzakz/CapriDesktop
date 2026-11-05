@@ -1,0 +1,2 @@
+[excited] ¡Recién me actualicé, {name}!
+[happy] En Windows antes me despedía y me cerraba sin instalar nada. [giggles] Ahora me actualizo, vuelvo sola y te lo cuento.

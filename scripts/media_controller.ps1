@@ -283,25 +283,10 @@ public class NativeMediaControl {
         IntPtr render = FindRenderWidget(mainHwnd);
         if (render == IntPtr.Zero) return false;
 
-        // Focus search bar & clear existing text
-        Click(render, 550, 32);
-        Thread.Sleep(120);
-
-        for (int i = 0; i < 80; i++) {
-            SendKey(render, 0x08); // VK_BACK
-            Thread.Sleep(6);
-        }
-        Thread.Sleep(100);
-
-        // Type query
-        foreach (char c in query) {
-            SendChar(render, c);
-        }
-        Thread.Sleep(200);
-
-        // Submit search with Enter
-        SendKey(render, 0x0D);
-        Thread.Sleep(850);
+        // Its own link goes to the results whatever the size of the window and wherever the focus is.
+        // Clicking the search bar by coordinates broke whenever the layout changed.
+        System.Diagnostics.Process.Start("spotify:search:" + Uri.EscapeDataString(query));
+        Thread.Sleep(1800);
 
         // Try clicking green play button / top card up to 4 attempts
         var sb = new StringBuilder(256);

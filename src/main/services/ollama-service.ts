@@ -1,7 +1,8 @@
+import { ollamaModelsDir, storageDir } from './storage-location'
 import { isRemoteMode, llmFetch } from './llm-gateway'
 import { toolsDir } from './app-paths'
 import { findOnPath, isLinux, killProcesses } from './platform'
-import { spawn } from 'child_process'
+import { spawn } from './hidden-process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -103,6 +104,7 @@ export class OllamaService {
     }
 
     const candidates = [
+      storageDir('Ollama') ? path.join(storageDir('Ollama') as string, 'ollama.exe') : '',
       process.env.LOCALAPPDATA
         ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
         : '',
@@ -154,7 +156,7 @@ export class OllamaService {
         return { running: false, models: [] }
       }
 
-      const modelsDir = process.env.OLLAMA_MODELS || undefined
+      const modelsDir = ollamaModelsDir() || process.env.OLLAMA_MODELS || undefined
 
       console.log(`[OllamaService] Starting Ollama daemon from: ${binary}`)
       if (modelsDir) {

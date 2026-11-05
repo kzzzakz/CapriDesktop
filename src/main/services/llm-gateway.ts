@@ -275,6 +275,11 @@ function normalizeMessages(messages: Body[], keepTools = true): Body[] {
       out.push({ role: 'user', content: `[Result of ${String(msg.name || 'tool')}] ${String(msg.content ?? '')}` })
       continue
     }
+    // Some providers reject a system message in the middle: it joins the first one
+    if (msg.role === 'system' && out.length > 0 && out[0].role === 'system') {
+      out[0] = { ...out[0], content: `${String(out[0].content ?? '')}\n${String(msg.content ?? '')}` }
+      continue
+    }
     out.push(msg)
   }
   return out

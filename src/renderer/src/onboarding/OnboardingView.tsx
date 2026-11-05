@@ -59,6 +59,10 @@ export const OnboardingView: React.FC = () => {
   const [langChoice, setLangChoice] = useState<string>(initialLang)
   const [page, setPage] = useState(0)
   const [name, setName] = useState('')
+  const [storage, setStorage] = useState<string | null>(null)
+  useEffect(() => {
+    window.api.setup.getStorage().then(setStorage).catch(() => {})
+  }, [])
   useEffect(() => {
     window.api.companion.getUserProfile().then((p) => {
       if (p.hasName) setName((typed) => typed || p.name)
@@ -219,6 +223,20 @@ export const OnboardingView: React.FC = () => {
 
         {page === 3 && (
           <div className="space-y-5">
+            <div className="cp-frame px-3.5 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-bold">{t('ob_storageTitle')}</div>
+                <div className="text-[13px] text-[var(--cp-muted)] truncate">{storage || t('ob_storageDefault')}</div>
+              </div>
+              {storage && (
+                <button type="button" disabled={!!running} onClick={() => window.api.setup.chooseStorage(true).then(setStorage)} className="cp-frame cp-btn-ghost px-3 py-1.5 text-[13px]">
+                  {t('ob_storageReset')}
+                </button>
+              )}
+              <button type="button" disabled={!!running} onClick={() => window.api.setup.chooseStorage().then(setStorage).then(() => window.api.setup.getStatus().then(setStatus))} className="cp-frame cp-btn-ghost px-3 py-1.5 text-[13px]">
+                {t('ob_storageChange')}
+              </button>
+            </div>
             <PageHead index={3} tag={t(PAGE_TAGS[3])} title={t('ob_setupTitle')} sub={provider !== 'local' ? t('ob_setupSubCloud') : t('ob_setupSub')} />
 
             <div className="flex items-center gap-3">

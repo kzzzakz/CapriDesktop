@@ -1,0 +1,3 @@
+[excited] I just updated, {name}! I took care of a lot of things this time.
+[happy] My hearing doesn't get stuck anymore, and I remember the language you speak to me. [playful] You can pick my monitor, set my volumes, and tell me not to get bored if my tabs bother you.
+[warmly] And if you install me on another disk, everything I need goes there too.
