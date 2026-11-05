@@ -4,6 +4,8 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$Query = "",
     [Parameter(Mandatory=$false)]
+    [switch]$SystemMedia,
+    [Parameter(Mandatory=$false)]
     [switch]$Force
 )
 
@@ -326,6 +328,14 @@ public class NativeMediaControl {
         return true;
     }
 
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    public static void SystemMediaKey(byte key) {
+        keybd_event(key, 0, 0, UIntPtr.Zero);
+        keybd_event(key, 0, 2, UIntPtr.Zero);
+    }
+
     public static void NextTrack(IntPtr hWnd) {
         if (hWnd != IntPtr.Zero) {
             SendMessage(hWnd, WM_APPCOMMAND, hWnd, (IntPtr)(APPCOMMAND_MEDIA_NEXTTRACK << 16));
@@ -347,6 +357,16 @@ public class NativeMediaControl {
 "@
 
 Add-Type -TypeDefinition $code -ReferencedAssemblies System.Drawing -ErrorAction SilentlyContinue
+
+if ($SystemMedia) {
+    $key = switch ($Action.ToLower()) {
+        "next" { 0xB0 }
+        "prev" { 0xB1 }
+        default { 0xB3 }
+    }
+    [NativeMediaControl]::SystemMediaKey([byte]$key)
+    return
+}
 
 $hwnd = [NativeMediaControl]::FindSpotifyWindow()
 $title = ""
