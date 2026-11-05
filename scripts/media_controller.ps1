@@ -373,8 +373,31 @@ public class NativeMediaControl {
 
 Add-Type -TypeDefinition $code -ReferencedAssemblies System.Drawing -ErrorAction SilentlyContinue
 
+function Get-SystemPlaybackStatus {
+    try {
+        Add-Type -AssemblyName System.Runtime.WindowsRuntime
+        $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+            $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+        } | Select-Object -First 1
+        $managerType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+        $task = $asTask.MakeGenericMethod($managerType).Invoke($null, @($managerType::RequestAsync()))
+        if (-not $task.Wait(2000)) { return $null }
+        $session = $task.Result.GetCurrentSession()
+        if ($null -eq $session) { return $null }
+        return [string]$session.GetPlaybackInfo().PlaybackStatus
+    } catch {
+        return $null
+    }
+}
+
 if ($SystemMedia) {
-    $key = switch ($Action.ToLower()) {
+    $action = $Action.ToLower()
+    if ($action -eq "play" -or $action -eq "pause") {
+        $status = Get-SystemPlaybackStatus
+        if ($action -eq "play" -and $status -eq "Playing") { return }
+        if ($action -eq "pause" -and $null -ne $status -and $status -ne "Playing") { return }
+    }
+    $key = switch ($action) {
         "next" { 0xB0 }
         "prev" { 0xB1 }
         default { 0xB3 }
