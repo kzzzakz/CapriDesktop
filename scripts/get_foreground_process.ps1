@@ -20,7 +20,7 @@ try {
     $proc = Get-Process -Id $id -ErrorAction Stop
     $exe = $proc.Path
     if (-not $exe) { $exe = (Get-CimInstance Win32_Process -Filter "ProcessId=$id").ExecutablePath }
-    $result = @{ Title = $text.ToString(); Process = $proc.ProcessName; Path = "$exe"; Pid = [int]$id }
+    $result = @{ Title = $text.ToString(); Process = $proc.ProcessName; Path = "$exe"; Pid = [int]$id; WindowId = $hwnd.ToInt64().ToString() }
 } catch {}
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

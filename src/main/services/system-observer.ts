@@ -4,6 +4,8 @@ import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
 import { windowManager } from '../windows/window-manager'
 import { cyberpunkAdapter, lolLiveAdapter } from './game'
+import { wutheringWavesAdapter } from './game/adapters/wuthering-waves/wuthering-waves-adapter'
+import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
 
 interface TriggerConfig {
   lastTriggered: number
@@ -336,7 +338,7 @@ export class SystemObserver {
         if (!isAnyGameNow && wasAnyGameBefore) {
           let hasActiveTelemetry = false
           try {
-            if (cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning()) {
+            if (cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()) {
               hasActiveTelemetry = true
             }
           } catch {}
