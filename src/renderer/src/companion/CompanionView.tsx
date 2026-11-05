@@ -1216,7 +1216,7 @@ export const CompanionView: React.FC = () => {
           setIsExecuting(false)
           isExecutingRef.current = false
           // In Editor Mode, Capri never speaks. Only in Pet Mode
-          if (event.source !== 'editor' && !isDeckOpenRef.current) {
+          if (!event.cancelled && event.source !== 'editor' && !isDeckOpenRef.current) {
             const rawText = lastAssistantContentRef.current.trim()
             const textToSpeak = rawText
               .replace(/[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '')

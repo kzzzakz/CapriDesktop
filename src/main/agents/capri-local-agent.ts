@@ -4441,7 +4441,8 @@ DIRECTIVES FOR FORMATTING AND REASONING:
   }
 
   private finishCancelledTurn(turnAbort: AbortController): void {
-    if (this.turnAbort === turnAbort) this.finishSession()
+    if (this.turnAbort !== turnAbort) return
+    this.emit('event', { type: 'session.finished', success: false, cancelled: true, timestamp: Date.now() } as AgentEventPayload)
   }
 
   private async resolveAvailableModel(endpoint: string, requestedModel: string): Promise<string | null> {

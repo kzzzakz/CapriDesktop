@@ -179,6 +179,7 @@ export interface AgentEventPayload {
   text?: string
   /** The script player is already saying this text, part by part */
   spokenByScript?: boolean
+  cancelled?: boolean
   toolName?: string
   toolInput?: Record<string, unknown>
   toolOutput?: string

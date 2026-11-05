@@ -100,7 +100,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ transparent = false }) => 
           commitAssistantMessage()
           setPendingPermission(null)
           setEmotion('capri2')
-          if (!document.hasFocus()) {
+          if (event.cancelled || !document.hasFocus()) {
             // User is looking at another window, desktop companion handles the wake-up
             break
           }

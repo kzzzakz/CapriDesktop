@@ -146,10 +146,10 @@ try {
     ${cancel}
     async run() { ${initialization} ${loop} }
     async homework(turnAbort) { ${homework} }
-    emit() { throw new Error('Cancelled turn emitted an event') }
+    emit(_name, event) { if (event?.type === 'session.finished' && event.cancelled && !event.success) this.finished++; else throw new Error('Cancelled turn emitted an event') }
     emitAssistant() { throw new Error('Cancelled turn spoke') }
     finished = 0;
-    finishSession() { this.finished++ }
+    finishSession() { throw new Error('Cancelled turn finished normally') }
     ${method('finishCancelledTurn').getText(agentSource)}
   }`), harness)
   const Agent = harness.exports.Agent
