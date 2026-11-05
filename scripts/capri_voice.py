@@ -8,6 +8,7 @@ import subprocess
 import hashlib
 import time
 import shutil
+import inspect
 
 # Ensure Windows finds PyTorch CUDA DLLs (cublas64_12.dll, etc.) for local GPU acceleration
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +25,13 @@ for tlib in torch_lib_candidates:
                 pass
         os.environ["PATH"] = tlib + os.pathsep + os.environ.get("PATH", "")
         break
+
+nvidia_wheels_dir = os.path.join(sys.prefix, "Lib", "site-packages", "nvidia")
+for nvidia_bin in (os.path.join(nvidia_wheels_dir, pkg, "bin") for pkg in ("cublas", "cudnn")):
+    if os.path.isdir(nvidia_bin):
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(nvidia_bin)
+        os.environ["PATH"] = nvidia_bin + os.pathsep + os.environ.get("PATH", "")
 
 def find_ffmpeg() -> str:
     """CAPRI_FFMPEG env var, then PATH, then a winget install of Gyan.FFmpeg."""
@@ -651,38 +659,34 @@ async def synthesize_speech(text: str, out_path: str, lang_override: str = None)
     print(json.dumps({"success": True, "path": out_path, "voice": voice, "provider": "edge-tts", "fallback": is_fallback}))
 
 _whisper_model = None
+_whisper_device = None
+_whisper_model_name = None
 
 def get_whisper_model():
-    global _whisper_model
+    global _whisper_model, _whisper_device, _whisper_model_name
     if _whisper_model is None:
         try:
             from faster_whisper import WhisperModel
             import ctranslate2  # ships with faster-whisper; avoids pulling in PyTorch just to detect the GPU
             device = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
             compute_type = "float16" if device == "cuda" else "int8"
-            # "small" understands accented English and mixed ES/EN far better than "base".
-            # Override with CAPRI_WHISPER_MODEL (e.g. "medium", "large-v3-turbo") if VRAM allows.
-            model_name = os.environ.get("CAPRI_WHISPER_MODEL", "").strip() or "small"
+            model_name = os.environ.get("CAPRI_WHISPER_MODEL", "").strip() or ("large-v3-turbo" if device == "cuda" else "small")
             _whisper_model = WhisperModel(model_name, device=device, compute_type=compute_type)
-        except Exception:
+            _whisper_device, _whisper_model_name = device, model_name
+        except Exception as error:
+            print(f"[STT] Model loading failed; falling back to CPU: {error}", file=sys.stderr, flush=True)
             _whisper_model = cpu_whisper_model()
     return _whisper_model
 
 def cpu_whisper_model():
-    """Same model on the CPU: used when CUDA/cuBLAS is not available on this machine."""
+    global _whisper_device, _whisper_model_name
     from faster_whisper import WhisperModel
     model_name = os.environ.get("CAPRI_WHISPER_MODEL", "").strip() or "small"
-    return WhisperModel(model_name, device="cpu", compute_type="int8")
+    model = WhisperModel(model_name, device="cpu", compute_type="int8")
+    _whisper_device, _whisper_model_name = "cpu", model_name
+    return model
 
-CYBERPUNK_INITIAL_PROMPT = (
-    "Cyberpunk 2077, Night City, ripperdoc, nearest ripperdoc, ripperdocs, "
-    "cyberware, implant, matasanos, choom, choomba, netrunner, edgerunner, "
-    "Vik Vector, Arasaka, Militech, NCPD, fixer, drop point, game mode, gamemode, "
-    "clip that, clip this, clipea eso, clipealo, guardá el clip, ShadowPlay, Nvidia, F8, clip, "
-    "Capri. What should we do next? Recommend a gig, next mission, mark Lizzie's Bar, "
-    "Afterlife, quickhack, MaxTac, cyberpsycho, tarot card. League of Legends, gank, jungle, "
-    "can we beat that Garen?"
-)
+CYBERPUNK_INITIAL_PROMPT = "Capri, ripperdoc, choom, Night City."
 
 def clean_cyberpunk_transcription(text: str) -> str:
     if not text:
@@ -698,39 +702,49 @@ def clean_cyberpunk_transcription(text: str) -> str:
     text = re.sub(r'\b(?:clipe[aá]|clipeate)\s+(?:eso|esto)\b', 'clipea eso', text, flags=re.IGNORECASE)
     return text.strip()
 
-def transcribe_audio_internal(input_file: str, language: str = None) -> dict:
+def transcribe_audio_internal(input_file: str, language: str = None, partial: bool = False) -> dict:
     temp_wav = input_file + ".16k.wav"
+    converted = False
     try:
-        # Convert whatever browser MediaRecorder produced (webm/ogg/wav) to 16kHz mono WAV
-        cmd = [FFMPEG, "-y", "-i", input_file, "-ar", "16000", "-ac", "1", temp_wav]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-
+        from av.error import FFmpegError
         model = get_whisper_model()
         lang_arg = None
         if language and language != "auto":
             lang_arg = "es" if language in ("es", "es-ES", "es-AR", "es-MX", "spanish") else ("en" if language in ("en", "en-US", "english") else language)
 
-        # Auto mode: only choose between Spanish and English. Free detection over 99 languages
-        # sometimes picks Spanish for accented English (and then outputs a Spanish translation).
-        if not lang_arg:
-            try:
-                from faster_whisper.audio import decode_audio
-                _lang, _prob, all_probs = model.detect_language(decode_audio(temp_wav, sampling_rate=16000))
-                probs = dict(all_probs)
-                lang_arg = "es" if probs.get("es", 0.0) > probs.get("en", 0.0) else "en"
-            except Exception:
-                lang_arg = None
-
         def run(m):
-            segs, inf = m.transcribe(
-                temp_wav,
+            nonlocal converted
+            options = dict(
                 language=lang_arg,
-                initial_prompt=CYBERPUNK_INITIAL_PROMPT,
-                beam_size=5,
+                condition_on_previous_text=False,
+                beam_size=1 if partial else 5,
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=250)
+                vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=300)
             )
-            return " ".join([segment.text.strip() for segment in segs]).strip(), inf
+            if "hotwords" in inspect.signature(m.transcribe).parameters:
+                options["hotwords"] = "Capri, ripperdoc, choom, Night City"
+            else:
+                options["initial_prompt"] = CYBERPUNK_INITIAL_PROMPT
+
+            def decode():
+                segs, inf = m.transcribe(temp_wav if converted else input_file, **options)
+                return list(segs), inf
+
+            try:
+                segments, info = decode()
+            except (FFmpegError, EOFError):
+                if converted:
+                    raise
+                converted = True
+                cmd = [FFMPEG, "-y", "-i", input_file, "-ar", "16000", "-ac", "1", temp_wav]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                segments, info = decode()
+
+            if not partial and not lang_arg and info.language not in ("es", "en"):
+                probs = dict(info.all_language_probs or [])
+                options["language"] = "es" if probs.get("es", 0.0) > probs.get("en", 0.0) else "en"
+                segments, info = decode()
+            return " ".join(segment.text.strip() for segment in segments).strip(), info
 
         try:
             raw_text, info = run(model)
@@ -738,6 +752,7 @@ def transcribe_audio_internal(input_file: str, language: str = None) -> dict:
             # GPU detected but its CUDA libraries are missing: switch to the CPU for good
             if not re.search(r"cuda|cublas|cudnn", str(cuda_err), re.IGNORECASE):
                 raise
+            print(f"[STT] CUDA inference failed; falling back to CPU: {cuda_err}", file=sys.stderr, flush=True)
             global _whisper_model
             _whisper_model = cpu_whisper_model()
             raw_text, info = run(_whisper_model)
@@ -750,7 +765,7 @@ def transcribe_audio_internal(input_file: str, language: str = None) -> dict:
     except Exception as e:
         return {"success": False, "error": str(e)}
     finally:
-        if os.path.exists(temp_wav):
+        if converted and os.path.exists(temp_wav):
             try:
                 os.remove(temp_wav)
             except Exception:
@@ -764,7 +779,7 @@ def run_stt_worker():
     # Warm up Whisper model on launch
     try:
         get_whisper_model()
-        print(json.dumps({"ready": True, "engine": "faster-whisper-local"}), flush=True)
+        print(json.dumps({"ready": True, "engine": "faster-whisper-local", "device": _whisper_device, "model": _whisper_model_name}), flush=True)
     except Exception as e:
         print(json.dumps({"ready": False, "error": str(e)}), flush=True)
 
@@ -783,7 +798,7 @@ def run_stt_worker():
                     out["id"] = req_id
                 print(json.dumps(out), flush=True)
                 continue
-            res = transcribe_audio_internal(file_path, lang)
+            res = transcribe_audio_internal(file_path, lang, partial=req.get("partial") is True)
             if req_id is not None:
                 res["id"] = req_id
             print(json.dumps(res), flush=True)
