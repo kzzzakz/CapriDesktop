@@ -1,6 +1,6 @@
 import { getStorageRoot } from '../services/storage-location'
 import { scriptPlayer } from '../services/script/script-player'
-import { testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
+import { confirmClaudeBypassPermissions, testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
 import { setupService, SetupStep } from '../services/setup-service'
 import * as os from 'os'
 import { getUserName } from '../services/user-profile'
@@ -317,6 +317,14 @@ export function registerIpcHandlers(): void {
     return agentManager.setConfig(config)
   })
 
+  ipcMain.handle(IPC_CHANNELS.LLM_CONFIRM_CLAUDE_BYPASS, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const settingsWindow = win && [windowManager.getDeckWindow(), windowManager.getOnboardingWindow()].includes(win)
+    if (!settingsWindow || !win.isFocused() || event.senderFrame !== event.sender.mainFrame) {
+      throw new Error('Claude bypass confirmation requires the focused settings window.')
+    }
+    return confirmClaudeBypassPermissions(win, consciousnessService.getPreferredLanguage())
+  })
   ipcMain.handle(IPC_CHANNELS.LLM_GET_SETTINGS, () => getLlmSettings())
   ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))

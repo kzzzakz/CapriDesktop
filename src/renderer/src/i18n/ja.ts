@@ -1,6 +1,12 @@
 import type { Messages } from './en'
 
 export const ja: Messages = {
+  llm_bypassLabel: "Claude Code の権限確認を省略",
+  llm_bypassHelp: "初期設定はオフです。変更はすぐに保存されます。有効にするには手動での確認が必要です。",
+  llm_bypassTitle: "Claude Code に無制限のコマンド実行を許可しますか？",
+  llm_bypassWarning: "Claude は音声による要求も含め、この PC 上であらゆるコマンドを権限確認なしに実行できるようになります。",
+  llm_bypassDetail: "ファイルの変更や削除、ソフトウェアのインストール、個人データへのアクセスが可能になります。危険性を理解し同意する場合のみ有効にしてください。キャンセルすると権限確認は有効のままです。",
+  llm_bypassConfirm: "権限確認の省略を有効にする",
   music_platformTitle: '音楽プラットフォーム',
   music_platformHelp: 'Capriに音楽の再生を頼むときに使用します。プラットフォーム名を指定することもできます。',
   close: '閉じる',

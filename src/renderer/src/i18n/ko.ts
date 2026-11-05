@@ -1,6 +1,12 @@
 import type { Messages } from './en'
 
 export const ko: Messages = {
+  llm_bypassLabel: "Claude Code 권한 확인 건너뛰기",
+  llm_bypassHelp: "기본값은 꺼짐입니다. 변경 사항은 즉시 저장됩니다. 켜려면 사용자가 직접 확인해야 합니다.",
+  llm_bypassTitle: "Claude Code의 무제한 명령 실행을 허용할까요?",
+  llm_bypassWarning: "Claude가 음성 요청을 포함하여 이 PC에서 모든 명령을 권한 확인 없이 실행할 수 있게 됩니다.",
+  llm_bypassDetail: "파일 변경이나 삭제, 소프트웨어 설치 및 개인 데이터 접근이 가능해집니다. 이러한 위험에 동의하는 경우에만 켜세요. 취소하면 권한 확인이 유지됩니다.",
+  llm_bypassConfirm: "권한 확인 건너뛰기 켜기",
   music_platformTitle: '음악 플랫폼',
   music_platformHelp: 'Capri에게 음악 재생을 요청할 때 사용합니다. 플랫폼 이름을 직접 지정할 수도 있습니다.',
   close: '닫기',

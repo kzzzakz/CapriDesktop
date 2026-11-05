@@ -1,6 +1,12 @@
 import type { Messages } from './en'
 
 export const zh: Messages = {
+  llm_bypassLabel: "跳过 Claude Code 权限检查",
+  llm_bypassHelp: "默认关闭。此处的更改会立即保存。启用时需要用户手动确认。",
+  llm_bypassTitle: "允许 Claude Code 不受限制地执行命令吗？",
+  llm_bypassWarning: "Claude 将能够在此电脑上执行任何命令而不进行权限检查，包括通过语音提出的请求。",
+  llm_bypassDetail: "这可能修改或删除文件、安装软件并访问私人数据。仅在接受这些风险时启用。取消将保留权限检查。",
+  llm_bypassConfirm: "启用权限跳过模式",
   music_platformTitle: '音乐平台',
   music_platformHelp: '请 Capri 播放音乐时使用。也可以直接指定平台名称。',
   close: '关闭',

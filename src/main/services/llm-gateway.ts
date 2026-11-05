@@ -8,7 +8,8 @@
  */
 
 import { ClaudeCodeError, runClaudeCode, type ClaudeModel } from './claude-code-runner'
-import { app, safeStorage } from 'electron'
+import { app, dialog, safeStorage, type BrowserWindow } from 'electron'
+import { toUiLang, translator } from '../../renderer/src/i18n'
 import * as fs from 'fs'
 import * as path from 'path'
 import { scriptPath } from './app-paths'
@@ -23,6 +24,7 @@ export interface LlmPublicSettings {
   baseUrl: string
   model: string
   claudeModel: ClaudeModel
+  claudeBypassPermissions: boolean
   hasKey: boolean
 }
 
@@ -32,6 +34,7 @@ export interface LlmSettingsUpdate {
   baseUrl?: string
   model?: string
   claudeModel?: ClaudeModel
+  claudeBypassPermissions?: false
   /** undefined keeps the saved key, '' removes it */
   apiKey?: string
 }
@@ -42,10 +45,11 @@ interface StoredSettings {
   baseUrl: string
   model: string
   claudeModel: ClaudeModel
+  claudeBypassPermissions: boolean
   encryptedKey?: string
 }
 
-const DEFAULTS: StoredSettings = { provider: 'local', preset: 'openai', baseUrl: '', model: '', claudeModel: 'haiku' }
+const DEFAULTS: StoredSettings = { provider: 'local', preset: 'openai', baseUrl: '', model: '', claudeModel: 'haiku', claudeBypassPermissions: false }
 
 /** The callers ask for these local models by name; in cloud mode all of them mean the chosen model */
 const LOCAL_MODEL_ALIASES = ['capri:latest', 'qwen2.5-coder:7b', 'qwen2.5-vl:latest', 'llava:latest']
@@ -107,15 +111,19 @@ export function isRemoteMode(): boolean {
 }
 
 export function getLlmSettings(): LlmPublicSettings {
-  const { provider, preset, baseUrl, model, claudeModel, encryptedKey } = load()
-  return { provider, preset, baseUrl, model, claudeModel, hasKey: !!encryptedKey }
+  const { provider, preset, baseUrl, model, claudeModel, claudeBypassPermissions, encryptedKey } = load()
+  return { provider, preset, baseUrl, model, claudeModel, claudeBypassPermissions: claudeBypassPermissions === true, hasKey: !!encryptedKey }
 }
 
 export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; error?: string; settings: LlmPublicSettings } {
+  if (update.claudeBypassPermissions !== undefined && update.claudeBypassPermissions !== false) {
+    return { success: false, error: 'bypass-confirmation-required', settings: getLlmSettings() }
+  }
   const current = load()
   const next: StoredSettings = { ...current }
   if (update.provider === 'local' || update.provider === 'cloud' || update.provider === 'claude-code') next.provider = update.provider
   if (update.claudeModel && ['haiku', 'sonnet', 'opus'].includes(update.claudeModel)) next.claudeModel = update.claudeModel
+  if (update.claudeBypassPermissions === false) next.claudeBypassPermissions = false
   if (typeof update.preset === 'string') next.preset = update.preset
   if (typeof update.model === 'string') next.model = update.model.trim()
   if (typeof update.baseUrl === 'string') next.baseUrl = normalizeBase(update.baseUrl)
@@ -142,6 +150,33 @@ export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; e
 
   persist(next)
   return { success: true, settings: getLlmSettings() }
+}
+
+let bypassConfirmationPending = false
+
+export async function confirmClaudeBypassPermissions(win: BrowserWindow, language: string): Promise<boolean> {
+  if (bypassConfirmationPending || win.isDestroyed() || !win.isFocused()) return getLlmSettings().claudeBypassPermissions
+  bypassConfirmationPending = true
+  const url = win.webContents.getURL()
+  try {
+    const t = translator(toUiLang(language))
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: t('llm_bypassTitle'),
+      message: t('llm_bypassWarning'),
+      detail: t('llm_bypassDetail'),
+      buttons: [t('cancel'), t('llm_bypassConfirm')],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    })
+    if (response === 1 && !win.isDestroyed() && win.webContents.getURL() === url) {
+      persist({ ...load(), claudeBypassPermissions: true })
+    }
+    return getLlmSettings().claudeBypassPermissions
+  } finally {
+    bypassConfirmationPending = false
+  }
 }
 
 /** The typed key if there is one, otherwise the saved key only if it belongs to that same server */
@@ -363,7 +398,7 @@ async function ollamaAnswer(res: Response, stream: boolean, kind: 'chat' | 'gene
 export async function llmFetch(input: string, init?: RequestInit): Promise<Response> {
   if (!isRemoteMode()) return fetch(input, init)
 
-  const { baseUrl, provider, claudeModel } = load()
+  const { baseUrl, provider, claudeModel, claudeBypassPermissions } = load()
   const model = provider === 'claude-code' ? claudeModel : load().model
   const route = new URL(input).pathname
   const key = keyFor(baseUrl)
@@ -371,7 +406,7 @@ export async function llmFetch(input: string, init?: RequestInit): Promise<Respo
   const post = async (body: Body): Promise<Response> => {
     if (provider !== 'claude-code') return postChat(baseUrl, key, body, init?.signal)
     try {
-      return jsonResponse(await runClaudeCode(body, claudeModel, init?.signal))
+      return jsonResponse(await runClaudeCode(body, claudeModel, init?.signal, claudeBypassPermissions === true))
     } catch (error) {
       if (init?.signal?.aborted) throw error
       const code = cloudErrorCode(error)
@@ -442,7 +477,7 @@ export function cloudErrorDetail(err: unknown): string {
 
 export async function testClaudeConnection(model: ClaudeModel): Promise<{ ok: boolean; error?: LlmErrorCode }> {
   try {
-    await runClaudeCode({ messages: [{ role: 'user', content: 'Reply with: ok' }] }, model)
+    await runClaudeCode({ messages: [{ role: 'user', content: 'Reply with: ok' }] }, model, undefined, load().claudeBypassPermissions === true)
     return { ok: true }
   } catch (error) {
     return { ok: false, error: cloudErrorCode(error) }
