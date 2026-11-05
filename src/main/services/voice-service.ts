@@ -53,10 +53,12 @@ export class VoiceService {
   private sttWorker: ChildProcess | null = null
   private pendingRequests: Map<string, {
     resolve: (res: TranscribeResult) => void
-    reject: (err: any) => void
     tempIn: string
-    timer: NodeJS.Timeout
+    timer?: NodeJS.Timeout
+    partial: boolean
+    lang: string
   }> = new Map()
+  private activeRequestId: string | null = null
   private requestCounter = 0
   private workerLineBuffer = ''
   private audioCache: Map<string, string> = new Map()
@@ -104,13 +106,16 @@ export class VoiceService {
     const pythonPath = this.findPythonPath()
 
     try {
-      this.sttWorker = spawn(pythonPath, [scriptPath, 'stt-worker'], {
+      const worker = spawn(pythonPath, [scriptPath, 'stt-worker'], {
         windowsHide: true,
         env: this.pythonEnv(),
         stdio: ['pipe', 'pipe', 'pipe']
       })
+      this.sttWorker = worker
+      this.workerLineBuffer = ''
 
-      this.sttWorker.stdout?.on('data', (chunk) => {
+      worker.stdout?.on('data', (chunk) => {
+        if (this.sttWorker !== worker) return
         this.workerLineBuffer += chunk.toString()
         const lines = this.workerLineBuffer.split('\n')
         this.workerLineBuffer = lines.pop() || ''
@@ -125,25 +130,10 @@ export class VoiceService {
               continue
             }
 
-            if (parsed.id && this.pendingRequests.has(parsed.id)) {
-              const req = this.pendingRequests.get(parsed.id)!
-              this.pendingRequests.delete(parsed.id)
-              clearTimeout(req.timer)
-              try {
-                if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
-              } catch {}
-              req.resolve(parsed)
-            } else if (this.pendingRequests.size === 1) {
-              const entry = this.pendingRequests.entries().next().value
-              if (entry) {
-                const [singleId, req] = entry
-                this.pendingRequests.delete(singleId)
-                clearTimeout(req.timer)
-                try {
-                  if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
-                } catch {}
-                req.resolve(parsed)
-              }
+            if (parsed.id === this.activeRequestId) {
+              this.finishRequest(parsed.id, parsed)
+              this.activeRequestId = null
+              this.dispatchNextRequest()
             }
           } catch (e) {
             console.warn('[VoiceService Worker] Unparseable line from python STT:', trimmed)
@@ -151,7 +141,7 @@ export class VoiceService {
         }
       })
 
-      this.sttWorker.stderr?.on('data', (data) => {
+      worker.stderr?.on('data', (data) => {
         const str = data.toString()
         // Only log non-empty non-progress messages
         if (str.trim() && !str.includes('Processing') && !str.includes('%')) {
@@ -159,13 +149,15 @@ export class VoiceService {
         }
       })
 
-      this.sttWorker.on('error', (err) => {
+      worker.on('error', (err) => {
         console.error('[VoiceService Worker Error]', err)
+        if (this.sttWorker !== worker) return
         this.drainQueueWithError(err.message)
       })
 
-      this.sttWorker.on('close', (code) => {
+      worker.on('close', (code) => {
         console.warn(`[VoiceService Worker] Process closed with code ${code}`)
+        if (this.sttWorker !== worker) return
         this.drainQueueWithError(`Worker closed with code ${code}`)
         this.sttWorker = null
       })
@@ -176,20 +168,62 @@ export class VoiceService {
   }
 
   private drainQueueWithError(errorMsg: string): void {
-    for (const [id, req] of this.pendingRequests.entries()) {
-      clearTimeout(req.timer)
-      try {
-        if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
-      } catch {}
-      req.resolve({ success: false, error: errorMsg })
+    for (const id of this.pendingRequests.keys()) {
+      this.finishRequest(id, { success: false, error: errorMsg })
     }
-    this.pendingRequests.clear()
+    this.activeRequestId = null
+  }
+
+  private restartHungWorker(): void {
+    const hung = this.sttWorker
+    this.sttWorker = null
+    this.activeRequestId = null
+    hung?.kill()
+    this.ensureWorker()
+    if (this.sttWorker) this.dispatchNextRequest()
+    else this.drainQueueWithError('STT worker could not restart')
+  }
+
+  private finishRequest(id: string, result: TranscribeResult): void {
+    const req = this.pendingRequests.get(id)
+    if (!req) return
+    this.pendingRequests.delete(id)
+    clearTimeout(req.timer)
+    try {
+      if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
+    } catch {}
+    req.resolve(result)
+  }
+
+  private dispatchNextRequest(): void {
+    if (this.activeRequestId || !this.sttWorker?.stdin || this.sttWorker.killed) return
+    const entries = [...this.pendingRequests.entries()]
+    const next = entries.find(([, req]) => !req.partial) || entries[0]
+    if (!next) return
+    const [id, req] = next
+    this.activeRequestId = id
+    req.timer = setTimeout(() => {
+      this.finishRequest(id, { success: false, error: 'STT Worker timeout (18000ms)' })
+      this.restartHungWorker()
+    }, 18000)
+    const payload = JSON.stringify({ id, file: req.tempIn, lang: req.lang, partial: req.partial }) + '\n'
+    this.sttWorker.stdin.write(payload, (error) => {
+      if (error) this.drainQueueWithError(error.message)
+    })
   }
 
   /**
    * Transcribes an audio Buffer into text using local faster-whisper on GPU
    */
-  public async transcribe(audioBuffer: Buffer): Promise<TranscribeResult> {
+  public async transcribe(audioBuffer: Buffer, options: { partial?: boolean } = {}): Promise<TranscribeResult> {
+    const partial = options.partial === true
+    if (!partial) {
+      for (const [queuedId, req] of this.pendingRequests) {
+        if (req.partial && queuedId !== this.activeRequestId) {
+          this.finishRequest(queuedId, { success: false })
+        }
+      }
+    }
     const id = `req_${++this.requestCounter}_${Date.now()}`
     const tempIn = path.join(os.tmpdir(), `capri_stt_${id}.webm`)
     fs.writeFileSync(tempIn, audioBuffer)
@@ -197,23 +231,18 @@ export class VoiceService {
     try {
       this.ensureWorker()
       if (!this.sttWorker || this.sttWorker.killed || !this.sttWorker.stdin) {
+        if (partial) {
+          fs.unlinkSync(tempIn)
+          return { success: false }
+        }
         return await this.transcribeFallback(tempIn)
       }
 
       const prefLang = consciousnessService.getLanguageSettings().micLang || 'auto'
 
-      return await new Promise<TranscribeResult>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          this.pendingRequests.delete(id)
-          try {
-            if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn)
-          } catch {}
-          resolve({ success: false, error: 'STT Worker timeout (18000ms)' })
-        }, 18000)
-
-        this.pendingRequests.set(id, { resolve, reject, tempIn, timer })
-        const payload = JSON.stringify({ id, file: tempIn, lang: prefLang }) + '\n'
-        this.sttWorker!.stdin!.write(payload)
+      return await new Promise<TranscribeResult>((resolve) => {
+        this.pendingRequests.set(id, { resolve, tempIn, partial, lang: prefLang })
+        this.dispatchNextRequest()
       })
     } catch (err: any) {
       try {

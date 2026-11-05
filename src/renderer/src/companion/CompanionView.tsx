@@ -759,26 +759,27 @@ export const CompanionView: React.FC = () => {
         console.warn('[VoiceRecord] AudioContext visualizer init note:', e)
       }
 
-      // MediaRecorder with 700ms chunk slices for real-time word streaming
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm'
 
       const recorder = new MediaRecorder(stream, { mimeType })
+      let lastPartialAt = Date.now()
       mediaRecorderRef.current = recorder
 
       recorder.ondataavailable = async (e) => {
         if (e.data.size > 0) {
           audioChunksRef.current.push(e.data)
 
-          // Incremental transcription so words stream in real-time as the user speaks
-          if (audioChunksRef.current.length >= 2 && !isTranscribingChunkRef.current) {
+          if (recorder.state === 'recording' && Date.now() - lastPartialAt >= 1500 && !isTranscribingChunkRef.current) {
+            lastPartialAt = Date.now()
             isTranscribingChunkRef.current = true
             const currentBlob = new Blob(audioChunksRef.current, { type: mimeType })
             try {
               const arrayBuffer = await currentBlob.arrayBuffer()
-              const partial = await window.api.voice.transcribe(arrayBuffer)
-              if (partial.success && partial.text && partial.text.trim()) {
+              if (recorder.state !== 'recording') return
+              const partial = await window.api.voice.transcribe(arrayBuffer, { partial: true })
+              if (recorder.state === 'recording' && partial.success && partial.text && partial.text.trim()) {
                 setLiveRecognizedText(partial.text.trim())
               }
             } catch {

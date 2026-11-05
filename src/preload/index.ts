@@ -297,8 +297,8 @@ const api = {
 
   // Voice Core (Speech-to-Text & Text-to-Speech)
   voice: {
-    transcribe: (audioData: ArrayBuffer | Uint8Array): Promise<{ success: boolean; text?: string; error?: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.VOICE_TRANSCRIBE, audioData),
+    transcribe: (audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean }): Promise<{ success: boolean; text?: string; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.VOICE_TRANSCRIBE, audioData, options),
 
     synthesize: (text: string, langOverride?: string): Promise<{ success: boolean; audioDataUrl?: string; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.VOICE_SYNTHESIZE, text, langOverride),

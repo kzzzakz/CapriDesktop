@@ -128,7 +128,7 @@ export interface IElectronAPI {
     writeFile: (rootDir: string, relPath: string, content: string) => Promise<boolean>
   }
   voice: {
-    transcribe: (audioData: ArrayBuffer | Uint8Array) => Promise<{ success: boolean; text?: string; error?: string }>
+    transcribe: (audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean }) => Promise<{ success: boolean; text?: string; error?: string }>
     synthesize: (text: string, langOverride?: string) => Promise<{ success: boolean; audioDataUrl?: string; error?: string }>
     getConfig: () => Promise<any>
     setConfig: (config: any) => Promise<{ success: boolean; config?: any; error?: string }>

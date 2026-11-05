@@ -461,14 +461,14 @@ export function registerIpcHandlers(): void {
   })
 
   // Voice Core (Speech-to-Text and Text-to-Speech)
-  ipcMain.handle(IPC_CHANNELS.VOICE_TRANSCRIBE, async (_event, audioData: ArrayBuffer | Uint8Array) => {
+  ipcMain.handle(IPC_CHANNELS.VOICE_TRANSCRIBE, async (_event, audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean }) => {
     try {
       const buffer = Buffer.isBuffer(audioData)
         ? audioData
         : audioData instanceof ArrayBuffer
         ? Buffer.from(audioData)
         : Buffer.from(audioData.buffer, audioData.byteOffset, audioData.byteLength)
-      return await voiceService.transcribe(buffer)
+      return await voiceService.transcribe(buffer, options)
     } catch (err: any) {
       return { success: false, error: err?.message || String(err) }
     }
