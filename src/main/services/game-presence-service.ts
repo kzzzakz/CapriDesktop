@@ -43,7 +43,7 @@ function isAlive(pid: number): boolean {
   }
 }
 
-function foregroundApp(): Promise<ForegroundApp | null> {
+export function foregroundApp(): Promise<ForegroundApp | null> {
   if (isLinux) return linuxForegroundWindow()
   return new Promise((resolve) => {
     exec(
@@ -53,7 +53,7 @@ function foregroundApp(): Promise<ForegroundApp | null> {
         if (err) return resolve(null)
         try {
           const parsed = JSON.parse(stdout.trim())
-          resolve({ title: parsed.Title || '', process: parsed.Process || '', path: parsed.Path || '', pid: Number(parsed.Pid) || 0 })
+          resolve({ title: parsed.Title || '', process: parsed.Process || '', path: parsed.Path || '', pid: Number(parsed.Pid) || 0, windowId: String(parsed.WindowId || '') })
         } catch {
           resolve(null)
         }

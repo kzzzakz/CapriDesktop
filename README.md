@@ -320,7 +320,7 @@ The LLM describes the drawing on a normalized grid from `0` to `100` (`(0,0)` to
 
 ---
 
-## 9. Live game integrations (LoL & Cyberpunk 2077)
+## 9. Live game integrations
 
 ### A. League of Legends (LCU & Live Client Data API)
 
@@ -356,6 +356,20 @@ Capri polls Riot's official local API (`https://127.0.0.1:2999/liveclientdata/al
 
 ---
 
+### C. Valorant (read-only Riot APIs)
+
+- Detects `VALORANT-Win64-Shipping.exe`. Reads `%LOCALAPPDATA%\Riot Games\Riot Client\Config\lockfile` for local HTTPS authentication and `VALORANT\Saved\Logs\ShooterGame.log` for region/shard routing.
+- Own presence (`/chat/v4/presences`) supplies session, queue, map and team scores. Riot GLZ pregame/coregame endpoints supply the locked agent and allied agents. Completed match details from Riot PD supply the verified final score and result; leaving a match never implies defeat.
+- Capri comments on agent picks, match start, observed round wins/losses and team streaks, match point, overtime and confirmed results. API gaps do not invent rounds. Kills/deaths are unavailable and are never inferred. Bundled agent/map labels come from the public Valorant API dataset; there is no runtime call to it.
+
+### D. Wuthering Waves (window capture and optional logs)
+
+- Detects `Client-Win64-Shipping.exe` only when its executable path contains `Wuthering Waves`. Resolves `Client\Saved\Logs\Client.log` from that path and tails new data with bounded reads. Plain-text UE `LogLoad: LoadMap:` / `LogWorld: Bringing World` markers can produce area changes; opaque logs are ignored. The installed log inspected on this Windows machine is opaque, so area changes are currently unavailable here.
+- Announces opening/closing. While foreground, samples only the game's window for an occasional local Ollama vision pass, at least 60 seconds apart (one small frame per pass). Uses the scanner's selected installed vision model; never downloads a model or sends game captures to a cloud provider. Alt-tab, game exit and silence mode cancel or suppress the work. Captures stay in memory.
+- High-confidence visual observations may produce low-health (only legible numeric HP or percentage), death (explicit defeat/revive text), combat/boss context and scene comments. These are model observations, not telemetry; they can be missed or mistaken. No uncalibrated HP-bar/death pixel heuristic is enabled. Without a local vision model, opening/closing and readable log markers still work.
+- Both integrations use the existing reaction cooldowns, silence mode, language selection, in-character LLM commentary and English/Spanish fallback lines, and activate corner-docked, click-through Game Mode. No game memory access, injection, hooks, input automation or game-file changes.
+- Offline derivation checks: `npm run test:game-reactions` (no games or Ollama required).
+
 ## 10. Permissions and system access
 
 | Feature | Privileges | APIs / resources | Binaries | Network | Safety |
@@ -364,6 +378,8 @@ Capri polls Riot's official local API (`https://127.0.0.1:2999/liveclientdata/al
 | **Paint drawing** | Standard user | Win32 `SetCursorPos`, `mouse_event`, `EnumWindows`, `GetWindowRect`, `GetAsyncKeyState` | `powershell.exe`, `mspaint.exe` | Loopback (Ollama) | **`Escape` panic key**; only draws while Paint is focused. |
 | **LoL champion select** | Standard user | Reads `LeagueClientUx.exe` command line for the local token and port | `LeagueClientUx.exe` | Local HTTPS to the LCU port | Standard champion-select actions only. |
 | **LoL in-game** | Standard user | Riot's official Live Client Data API | `League of Legends.exe` | Local HTTPS `127.0.0.1:2999` | Read-only official API, no memory access. |
+| **Valorant reactions** | Standard user | Process detection, Riot lockfile and ShooterGame log; own presence, GLZ pregame/coregame and PD completed match details | `powershell.exe`, Electron | Local authenticated HTTPS; HTTPS to Riot `*.a.pvp.net` | GET requests only; tokens stay in the main process; no Vanguard interaction. |
+| **Wuthering Waves reactions** | Standard user | Process name/path and foreground window handle; read-only Client log; game-window `desktopCapturer` thumbnails | `powershell.exe`, Electron, installed Ollama | Loopback `127.0.0.1:11434` for vision; configured LLM for text commentary | Foreground-only captures, at least 60 seconds apart; no saved images or ACE interaction; no input or game-file writes. |
 | **Cyberpunk telemetry** | Standard user | Local TCP listener | Capri + CET Lua mod | `127.0.0.1:2077` | Listens on localhost only. |
 | **Spotify control** | Standard user | Win32 `PostMessage` with `WM_APPCOMMAND` | `Spotify.exe`, `powershell.exe` | None | No code injection; standard media commands. |
 | **Speech recognition** | Microphone permission | WebAudio / `MediaRecorder` | `python.exe` (`faster-whisper`) | None (100% local) | Revocable in Windows privacy settings. |

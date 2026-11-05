@@ -212,15 +212,22 @@ export class ScannerService {
     }
   }
 
-  /**
-   * Detects available vision model in Ollama (qwen2.5-vl, llava, minicpm-v, etc.)
-   */
-  public async detectVisionModel(): Promise<string | null> {
+  public async captureGameWindow(windowId: string): Promise<string | null> {
+    if (!/^\d+$/.test(windowId)) return null
+    const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 768, height: 432 } })
+    const source = sources.find(source => source.id.split(':')[1] === windowId)
+    if (!source || source.thumbnail.isEmpty()) return null
+    return source.thumbnail.toJPEG(75).toString('base64')
+  }
+
+  public async detectVisionModel(localOnly = false): Promise<string | null> {
     try {
-      const resp = await llmFetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) })
+      const resp = await (localOnly ? fetch : llmFetch)('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) })
       if (!resp.ok) return null
       const data = (await resp.json()) as any
-      const models: string[] = (data.models || []).map((m: any) => String(m.name))
+      const models: string[] = (data.models || [])
+        .filter((m: any) => !localOnly || (!m.remote_host && !/cloud/i.test(String(m.name))))
+        .map((m: any) => String(m.name))
 
       const configured = consciousnessService.getScannerVisionModel()
       if (configured && configured !== 'auto') {

@@ -573,7 +573,7 @@ const SCRIPTS: Record<string, RegExp> = {
 }
 
 /** Cheap check so a Spanish line never slips into English commentary (and vice versa) */
-function matchesLanguage(line: string, lang: string): boolean {
+export function matchesLanguage(line: string, lang: string): boolean {
   const text = stripTags(line)
   if (SCRIPTS[lang]) return SCRIPTS[lang].test(text)
   const es = (text.match(new RegExp(SPANISH_MARKERS.source, 'gi')) || []).length
