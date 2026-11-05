@@ -1,6 +1,6 @@
 export const en = {
   llm_bypassLabel: "Bypass Claude Code permissions",
-  llm_bypassHelp: "Off by default. Changes here are saved immediately. Enabling requires manual confirmation.",
+  llm_bypassHelp: "Off by default. Stays on until Capri closes; confirm again after restarting.",
   llm_bypassTitle: "Allow unrestricted Claude Code commands?",
   llm_bypassWarning: "Claude can run any command on this PC without permission checks, including commands requested by voice.",
   llm_bypassDetail: "This can change or delete files, install software and access private data. Only enable this if you accept these risks. Cancel keeps permission checks on.",

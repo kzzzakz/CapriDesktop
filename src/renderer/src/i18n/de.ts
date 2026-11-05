@@ -2,7 +2,7 @@ import type { Messages } from './en'
 
 export const de: Messages = {
   llm_bypassLabel: "Berechtigungen von Claude Code umgehen",
-  llm_bypassHelp: "Standardmäßig aus. Änderungen werden sofort gespeichert. Zum Einschalten ist eine manuelle Bestätigung erforderlich.",
+  llm_bypassHelp: "Standardmäßig aus. Bleibt bis zum Schließen von Capri aktiv; nach Neustart erneut bestätigen.",
   llm_bypassTitle: "Uneingeschränkte Claude-Code-Befehle erlauben?",
   llm_bypassWarning: "Claude kann jeden Befehl auf diesem PC ohne Berechtigungsprüfung ausführen, auch per Sprachbefehl.",
   llm_bypassDetail: "Dabei können Dateien geändert oder gelöscht, Programme installiert und private Daten gelesen werden. Nur aktivieren, wenn du diese Risiken akzeptierst. Abbrechen behält die Berechtigungsprüfungen bei.",

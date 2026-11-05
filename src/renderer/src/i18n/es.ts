@@ -2,7 +2,7 @@ import type { Messages } from './en'
 
 export const es: Messages = {
   llm_bypassLabel: "Omitir permisos de Claude Code",
-  llm_bypassHelp: "Desactivado por defecto. Los cambios aquí se guardan al instante. Activarlo requiere confirmación manual.",
+  llm_bypassHelp: "Desactivado por defecto. Dura hasta cerrar Capri; confirma de nuevo al reiniciar.",
   llm_bypassTitle: "¿Permitir comandos de Claude Code sin restricciones?",
   llm_bypassWarning: "Claude podrá ejecutar cualquier comando en esta PC sin comprobar permisos, incluso mediante solicitudes por voz.",
   llm_bypassDetail: "Esto puede modificar o borrar archivos, instalar programas y acceder a datos privados. Actívalo solo si aceptas estos riesgos. Cancelar mantiene la comprobación de permisos.",
