@@ -1826,7 +1826,8 @@ export const CompanionView: React.FC = () => {
         <div
           className="cp-vars cp-frame absolute z-50 p-1.5 flex flex-col gap-1 min-w-[230px] animate-fade-in"
           style={{
-            top: isGamingMode ? '210px' : undefined,
+            position: isGamingMode ? 'absolute' : undefined,
+            top: isGamingMode ? '214px' : undefined,
             bottom: isGamingMode ? undefined : isTabMode ? '140px' : '200px',
             WebkitAppRegion: 'no-drag'
           } as React.CSSProperties}
