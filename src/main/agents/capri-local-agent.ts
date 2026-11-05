@@ -178,6 +178,7 @@ export class CapriLocalAgent extends EventEmitter {
 
   private lastRecommendation: { key: string; at: number; reply: Promise<string> } | null = null
   private isCancelled = false
+  private turnAbort: AbortController | null = null
   private agyProc: ChildProcess | null = null
   private ownLines: { text: string; why?: string; at: number }[] = []
   private currentPrompt = ''
@@ -185,6 +186,7 @@ export class CapriLocalAgent extends EventEmitter {
 
   public cancel(): void {
     this.isCancelled = true
+    this.turnAbort?.abort()
     if (this.agyProc) {
       try {
         this.agyProc.kill()
@@ -335,6 +337,8 @@ export class CapriLocalAgent extends EventEmitter {
     config: AgentConfig = { provider: 'offline-smart' }
   ): Promise<void> {
     this.isCancelled = false
+    const turnAbort = new AbortController()
+    this.turnAbort = turnAbort
     this.currentPrompt = prompt.trim().slice(0, 200)
     ollamaService.touchActivity()
     proactiveDialogueService.touchInteraction()
@@ -1359,7 +1363,7 @@ export class CapriLocalAgent extends EventEmitter {
 
     // Direct Homework / Task Solver Interceptor
     // e.g. "hace mi tarea del archivo tarea.txt", "resolvé mi tarea de historia.txt", "hace mi tarea del archivo x", "do my homework in file x"
-    const homeworkHandled = await this.handleHomeworkIntent(trimmed, projectPath, isSpanish)
+    const homeworkHandled = await this.handleHomeworkIntent(trimmed, projectPath, isSpanish, turnAbort)
     if (homeworkHandled) {
       return
     }
@@ -1378,7 +1382,7 @@ export class CapriLocalAgent extends EventEmitter {
     const availableModel = await this.resolveAvailableModel(endpoint, targetModel)
 
     if (availableModel) {
-      await this.runWithLlm(prompt, projectPath, endpoint, { ...config, model: availableModel })
+      await this.runWithLlm(prompt, projectPath, endpoint, { ...config, model: availableModel }, turnAbort)
       return
     }
 
@@ -1399,7 +1403,8 @@ export class CapriLocalAgent extends EventEmitter {
     prompt: string,
     projectPath: string,
     endpoint: string,
-    config: AgentConfig
+    config: AgentConfig,
+    turnAbort: AbortController
   ): Promise<void> {
     const detectedLang = CapriLocalAgent.detectLanguage(prompt)
     // She answers in the language she's spoken to. The language settings are for her fixed lines
@@ -1597,7 +1602,7 @@ LANGUAGE RULE: ${langDirective}`
     let iterations = 0
     const maxIterations = 8
 
-    while (iterations < maxIterations && !this.isCancelled) {
+    while (iterations < maxIterations && !this.isCancelled && !turnAbort.signal.aborted) {
       iterations++
 
       try {
@@ -1633,15 +1638,18 @@ LANGUAGE RULE: ${langDirective}`
         const response = await llmFetch(url, {
           method: 'POST',
           headers,
-          body
+          body,
+          signal: turnAbort.signal
         })
 
+        turnAbort.signal.throwIfAborted()
         if (!response.ok) {
           const errText = await response.text()
           throw new Error(`HTTP ${response.status}: ${errText}`)
         }
 
         const data = (await response.json()) as any
+        turnAbort.signal.throwIfAborted()
         const choice = data.choices?.[0]
         const message = choice?.message
 
@@ -1720,7 +1728,7 @@ LANGUAGE RULE: ${langDirective}`
         // Process and execute tool calls
         if (activeToolCalls.length > 0) {
           for (const tc of activeToolCalls) {
-            if (this.isCancelled) break
+            if (this.isCancelled || turnAbort.signal.aborted) break
 
             const fnName = tc.name
             const fnArgs = tc.args
@@ -1743,6 +1751,7 @@ LANGUAGE RULE: ${langDirective}`
                     output: `Blocked: the user did not ask to delete "${String(fnArgs.path || '')}". Do not delete files unless the user explicitly names them.`
                   }
                 : await ToolExecutor.execute(fnName, fnArgs, projectPath)
+            turnAbort.signal.throwIfAborted()
 
             // Emit tool finished
             this.emit('event', {
@@ -1887,6 +1896,7 @@ LANGUAGE RULE: ${langDirective}`
         } as AgentEventPayload)
         return
       } catch (err) {
+        if (turnAbort.signal.aborted) return
         // A failing cloud provider must say so instead of quietly answering with the offline fallback
         if (isRemoteMode()) {
           console.warn('[Capri Agent] Cloud turn failed:', cloudErrorDetail(err))
@@ -2763,7 +2773,8 @@ LANGUAGE RULE: ${langDirective}`
   private async handleHomeworkIntent(
     trimmed: string,
     projectPath: string,
-    isSpanish: boolean
+    isSpanish: boolean,
+    turnAbort: AbortController
   ): Promise<boolean> {
     const isHomework =
       /(?:hace|hacé|haz|resuelve|resolv[eé]|solucion[aá]|do|solve|completa|complet[aá])\s+(?:mi\s+|la\s+|my\s+)?(?:tarea|homework|tp|trabajo|ejercicios|actividad)/i.test(trimmed) ||
@@ -2905,6 +2916,7 @@ DIRECTIVES FOR FORMATTING AND REASONING:
 - NO EMOJIS anywhere.
 `
 
+    if (turnAbort.signal.aborted) return true
     let solutionText = ''
     try {
       const resp = await llmFetch('http://127.0.0.1:11434/api/chat', {
@@ -2922,7 +2934,7 @@ DIRECTIVES FOR FORMATTING AND REASONING:
             num_predict: 1200
           }
         }),
-        signal: AbortSignal.timeout(45000)
+        signal: AbortSignal.any([turnAbort.signal, AbortSignal.timeout(45000)])
       })
 
       if (resp.ok) {
@@ -2931,6 +2943,7 @@ DIRECTIVES FOR FORMATTING AND REASONING:
       }
     } catch {}
 
+    if (turnAbort.signal.aborted) return true
     if (!solutionText) {
       solutionText = solutionLang === 'Spanish'
         ? `1. Consignas de ${fileNameOnly}\nAnálisis: Ejercicio analizado e investigado en la red con éxito.\nRespuesta: Soluciones estructuradas y verificadas correctamente.\n`
