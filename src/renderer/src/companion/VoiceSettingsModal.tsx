@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { MicPicker } from './MicPicker'
+import { SoundSettings } from './SoundSettings'
+import { BehaviorSettings } from './BehaviorSettings'
+import { voiceVolume } from '../utils/soundSettings'
 import { useT } from '../utils/useUiLang'
 import {
   X,
@@ -223,6 +227,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
       if (res.success && res.audioDataUrl) {
         setStatusMessage(t('vs_stPlaying'))
         const audio = new Audio(res.audioDataUrl)
+        audio.volume = voiceVolume()
         activeAudioRef.current = audio
         setIsPlayingAudio(true)
 
@@ -282,6 +287,10 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
 
         {/* Modal Content */}
         <div className="min-h-0 p-5 space-y-5 overflow-y-auto">
+          <MicPicker />
+          <SoundSettings />
+          <BehaviorSettings />
+
           <label className="block space-y-2">
             <span className="text-stone-300 font-bold tracking-wide">{t('music_platformTitle')}</span>
             <select

@@ -5,7 +5,8 @@
  */
 
 import { app } from 'electron'
-import { ChildProcess, exec, spawn } from 'child_process'
+import { ChildProcess, spawn } from 'child_process'
+import { exec } from './hidden-process'
 import { createInterface } from 'readline'
 import * as fs from 'fs'
 import * as path from 'path'

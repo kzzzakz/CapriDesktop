@@ -55,8 +55,8 @@ test('gaming foreground watcher streams changes, blocks on failure, throttles re
     setGameForeground: (value) => { foreground = value }
   }
   const { GamePresenceService } = load('services/game-presence-service.ts', {
+    './hidden-process': { exec: (_command, _options, callback) => { polls++; callback(null, '{}') } },
     child_process: {
-      exec: (_command, _options, callback) => { polls++; callback(null, '{}') },
       spawn: (command, args, options) => {
         assert.equal(command, 'powershell.exe')
         assert.ok(args.includes('watch_foreground.ps1'))

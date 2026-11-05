@@ -19,6 +19,12 @@ export const IPC_CHANNELS = {
   COMPANION_GET_GAMING_MODE: 'companion:getGamingMode',
   COMPANION_GAMING_MODE_CHANGED: 'companion:gamingModeChanged',
   COMPANION_SET_CLICK_THROUGH: 'companion:setClickThrough',
+  DISPLAYS_LIST: 'displays:list',
+  DISPLAYS_MOVE: 'displays:move',
+  BOREDOM_GET_ENABLED: 'boredom:getEnabled',
+  BOREDOM_SET_ENABLED: 'boredom:setEnabled',
+  SETUP_GET_STORAGE: 'setup:getStorage',
+  SETUP_CHOOSE_STORAGE: 'setup:chooseStorage',
   COMPANION_SCRIPT_EVENT: 'companion:scriptEvent',
   COMPANION_SCRIPT_LINE_DONE: 'companion:scriptLineDone',
   COMPANION_SCRIPT_CANCEL: 'companion:scriptCancel',
@@ -29,6 +35,7 @@ export const IPC_CHANNELS = {
   COMPANION_MOVE_BY: 'companion:moveBy',
   COMPANION_GET_CONSCIOUSNESS: 'companion:getConsciousness',
   COMPANION_GET_LANGUAGE: 'companion:getLanguage',
+  COMPANION_LINE_LANGUAGE: 'companion:lineLanguage',
   COMPANION_SET_LANGUAGE: 'companion:setLanguage',
   COMPANION_LANGUAGE_CHANGED: 'companion:languageChanged',
   COMPANION_GET_MUSIC_PLATFORM: 'companion:getMusicPlatform',
@@ -70,6 +77,7 @@ export const IPC_CHANNELS = {
   AGENT_SET_CONFIG: 'agent:setConfig',
   AGENT_DETECT_OLLAMA: 'agent:detectOllama',
   AGENT_CLEAR_HISTORY: 'agent:clearHistory',
+  LLM_CONFIRM_CLAUDE_BYPASS: 'llm:confirmClaudeBypass',
   LLM_GET_SETTINGS: 'llm:getSettings',
   LLM_SET_SETTINGS: 'llm:setSettings',
   LLM_LIST_MODELS: 'llm:listModels',
@@ -90,6 +98,9 @@ export const IPC_CHANNELS = {
 
   // Voice Core (Speech-to-Text and Text-to-Speech)
   VOICE_TRANSCRIBE: 'voice:transcribe',
+  VOICE_STT_STATE: 'voice:sttState',
+  ARROW_KEYS_GET: 'shortcuts:getArrowKeys',
+  ARROW_KEYS_SET: 'shortcuts:setArrowKeys',
   VOICE_SYNTHESIZE: 'voice:synthesize',
   VOICE_TOGGLE_RECORDING: 'voice:toggle-recording',
   /** Renderer -> main: push-to-talk recording started/stopped (enables the global Esc to cancel) */
@@ -168,6 +179,7 @@ export interface AgentEventPayload {
   text?: string
   /** The script player is already saying this text, part by part */
   spokenByScript?: boolean
+  cancelled?: boolean
   toolName?: string
   toolInput?: Record<string, unknown>
   toolOutput?: string

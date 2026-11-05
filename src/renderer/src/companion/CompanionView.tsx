@@ -8,6 +8,8 @@ import { SpeechBubble } from './SpeechBubble'
 import { useT } from '../utils/useUiLang'
 import { localizeLine } from '../../../shared/lines'
 import { getLineLanguage, setLineLanguage } from '../utils/lineLanguage'
+import { micErrorKind, micErrorLine, openMicrophone } from '../utils/microphone'
+import { voiceVolume } from '../utils/soundSettings'
 import { useCompanionStore, CompanionEmotionState } from '../stores/useCompanionStore'
 import { useAgentStore } from '../stores/useAgentStore'
 import dialogueBlipAudio from '../assets/dialogue_blip.wav'
@@ -38,6 +40,8 @@ export interface DesktopChatMessage {
 }
 
 const STORAGE_KEY = 'capri_desktop_chat_history'
+/** Loudest level in a recording below which the microphone isn't really sending anything */
+const MIN_MIC_LEVEL = 3
 
 // The view can mount twice (React's StrictMode, a reload of the window); she only says hello once
 let greeted = false
@@ -158,8 +162,9 @@ export const CompanionView: React.FC = () => {
         setIsGameForeground(foreground)
       })
     }
-    if (window.api?.companion?.onLanguageChanged) {
-      const unsub = window.api.companion.onLanguageChanged((lang: string) => {
+    if (window.api?.companion?.onLineLanguage) {
+      // Her lines follow the language she's spoken to. Changing the settings also comes through here.
+      const unsub = window.api.companion.onLineLanguage((lang: string) => {
         const effective = lang || 'en'
         setCurrentLang(effective)
         currentLangRef.current = effective
@@ -384,14 +389,13 @@ export const CompanionView: React.FC = () => {
   // In-app window keydown listener for ArrowDown (Flecha abajo)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown') {
-        const target = e.target as HTMLElement | null
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-          return
-        }
-        e.preventDefault()
-        toggleVoiceRecordingSafe()
-      }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      e.preventDefault()
+      if (e.key === 'ArrowDown') toggleVoiceRecordingSafe()
+      else if (e.key === 'ArrowLeft') toggleDesktopChatRef.current()
+      else toggleAlwaysListeningRef.current()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -495,6 +499,7 @@ export const CompanionView: React.FC = () => {
       return
     }
     const audio = new Audio(line.audioDataUrl)
+    audio.volume = voiceVolume()
     audio.playbackRate = 1.05
     activeAudioRef.current = audio
     audio.onended = finish
@@ -555,7 +560,7 @@ export const CompanionView: React.FC = () => {
       // New Dialogue Blip Voice Mode (@dialogue_blip.wav)
       if (voiceTypeRef.current === 'blip') {
         const audio = new Audio(dialogueBlipAudio)
-        audio.volume = 0.65
+        audio.volume = 0.65 * voiceVolume()
         activeAudioRef.current = audio
 
         currentSpokenTextRef.current = clean
@@ -613,6 +618,7 @@ export const CompanionView: React.FC = () => {
 
       if (res.success && res.audioDataUrl) {
         const audio = new Audio(res.audioDataUrl)
+        audio.volume = voiceVolume()
         audio.playbackRate = 1.05
         activeAudioRef.current = audio
 
@@ -687,14 +693,28 @@ export const CompanionView: React.FC = () => {
 
   // Voice recording & Real-time Speech-to-Text streaming with local Whisper on GPU
 
+  const micOpeningRef = useRef(false)
+  const micPeakRef = useRef(-1)
+
   const startVoiceRecording = async () => {
-    if (isRecordingVoice || isExecuting || isProcessingVoice) return
+    if (isRecordingVoice || isProcessingVoice || micOpeningRef.current) return
+    if (isExecuting) {
+      setSpeech("Hold on, I'm still thinking, choomba.", 2500)
+      return
+    }
     // The user started talking: Capri stops so the mic doesn't pick her up
     if (isScriptPlayingRef.current) window.api.companion.cancelScript()
     interruptSpeech()
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micOpeningRef.current = true
+      let stream: MediaStream
+      try {
+        stream = await openMicrophone()
+      } finally {
+        micOpeningRef.current = false
+      }
+      micPeakRef.current = -1
       audioChunksRef.current = []
       setLiveRecognizedText(null)
       setAudioLevel(0)
@@ -705,6 +725,8 @@ export const CompanionView: React.FC = () => {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
         const ctx = new AudioCtx()
         audioContextRef.current = ctx
+        void ctx.resume().catch(() => {})
+        micPeakRef.current = 0
         const source = ctx.createMediaStreamSource(stream)
         const analyser = ctx.createAnalyser()
         analyser.fftSize = 128
@@ -721,6 +743,7 @@ export const CompanionView: React.FC = () => {
           const avg = sum / pcmData.length
           const level = Math.min(100, Math.round((avg / 120) * 100))
           setAudioLevel(level)
+          micPeakRef.current = Math.max(micPeakRef.current, level)
 
           if (level > 15) {
             lastAudioActivityRef.current = Date.now()
@@ -807,13 +830,25 @@ export const CompanionView: React.FC = () => {
         setIsProcessingVoice(true)
         try {
           const arrayBuffer = await blob.arrayBuffer()
+          // The first time Whisper is still downloading, and silence would look like a broken mic
+          if ((await window.api.voice.sttState()) === 'loading') {
+            setSpeech("I'm still loading my hearing, choomba. The first time can take a few minutes, hold on.", 0)
+          }
           const res = await window.api.voice.transcribe(arrayBuffer)
+          setSpeech(null)
           const isEs = currentLangRef.current === 'es'
           const finalText = res.success && res.text ? res.text.trim() : liveRecognizedText
           if (finalText) {
             setInputText('')
             setActiveUserPrompt(finalText)
             handleSendMessage(finalText)
+          } else if ((await window.api.voice.sttState()) === 'failed') {
+            setSpeech("My hearing isn't installed properly, choomba. Run the setup again from the model settings.", 6000)
+          } else if (micPeakRef.current >= 0 && micPeakRef.current < MIN_MIC_LEVEL) {
+            setSpeech("Your microphone isn't sending any sound, choomba. Check the one selected in my voice settings.", 6000)
+          } else if (res.error && !/no speech/i.test(res.error)) {
+            console.warn('[VoiceRecord] Transcription failed:', res.error)
+            setSpeech(`Something failed in my hearing, choomba: ${res.error.slice(0, 140)}`, 8000)
           } else {
             setSpeech(
               isEs
@@ -834,13 +869,23 @@ export const CompanionView: React.FC = () => {
         }
       }
 
+      // Unplugged or taken by another app in the middle: finish instead of staying stuck recording
+      recorder.onerror = (e) => {
+        console.warn('[VoiceRecord] Recorder error:', e)
+        if (recorder.state !== 'inactive') recorder.stop()
+      }
+      stream.getAudioTracks().forEach((track) => {
+        track.onended = () => {
+          if (recorder.state !== 'inactive') recorder.stop()
+        }
+      })
+
       recorder.start(700)
       setIsRecordingVoice(true)
       isRecordingVoiceRef.current = true
     } catch (err: any) {
       console.error('[VoiceRecord] getUserMedia error:', err)
-      const isEs = currentLangRef.current === 'es'
-      setSpeech(isEs ? "¡No pude acceder al micrófono, choomba! Revisá los permisos." : "Could not access mic, choomba! Check permissions.", 3500)
+      setSpeech(micErrorLine(micErrorKind(err)), 6000)
     }
   }
 
@@ -901,7 +946,7 @@ export const CompanionView: React.FC = () => {
       )
     } catch (err) {
       console.error('[AlwaysListening] Could not open the microphone:', err)
-      setSpeech(isEs ? '¡No pude abrir el micrófono, choomba! Revisá los permisos.' : "Couldn't open the mic, choomba! Check permissions.", 3500)
+      setSpeech(micErrorLine(micErrorKind(err)), 6000)
     }
   }
   toggleAlwaysListeningRef.current = toggleAlwaysListening
@@ -1171,7 +1216,7 @@ export const CompanionView: React.FC = () => {
           setIsExecuting(false)
           isExecutingRef.current = false
           // In Editor Mode, Capri never speaks. Only in Pet Mode
-          if (event.source !== 'editor' && !isDeckOpenRef.current) {
+          if (!event.cancelled && event.source !== 'editor' && !isDeckOpenRef.current) {
             const rawText = lastAssistantContentRef.current.trim()
             const textToSpeak = rawText
               .replace(/[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '')

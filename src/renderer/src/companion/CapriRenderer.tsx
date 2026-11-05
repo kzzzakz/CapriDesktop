@@ -1,3 +1,4 @@
+import { effectsVolume, glitchSoundOn } from '../utils/soundSettings'
 import { localizeLine } from '../../../shared/lines'
 import { getLineLanguage } from '../utils/lineLanguage'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
@@ -33,8 +34,9 @@ const playAvatarChangeSound = () => {
         activeAvatarAudio.currentTime = 0
       } catch {}
     }
+    if (!glitchSoundOn()) return
     const audio = new Audio(avatarChangeSound)
-    audio.volume = 0.55
+    audio.volume = 0.55 * effectsVolume()
     activeAvatarAudio = audio
     audio.play().catch(() => {
       playGlitchSound()
@@ -46,6 +48,7 @@ const playAvatarChangeSound = () => {
 
 // Cyber glitch audio click (50ms) using Web Audio API
 const playGlitchSound = () => {
+  if (!glitchSoundOn()) return
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioCtx) return
@@ -84,11 +87,12 @@ const playGlitchSound = () => {
 
 // Multi-burst glitch audio effect for cyber shock / scared state
 export const playMultiGlitchSound = (count = 5, intervalMs = 180) => {
+  if (!glitchSoundOn()) return
   for (let i = 0; i < count; i++) {
     setTimeout(() => {
       try {
         const audio = new Audio(avatarChangeSound)
-        audio.volume = 0.65
+        audio.volume = 0.65 * effectsVolume()
         audio.playbackRate = 0.90 + Math.random() * 0.25 // authentic cybernetic stutter
         audio.play().catch(() => {
           playGlitchSound()
@@ -523,6 +527,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
   return (
     <div
       onClick={onClick}
+      data-capri-art
       className={`relative inline-flex items-center justify-center cursor-pointer select-none ${className}`}
       style={{
         width: '100%',

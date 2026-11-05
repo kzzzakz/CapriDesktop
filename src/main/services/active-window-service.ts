@@ -1,5 +1,5 @@
 import { scriptPath } from './app-paths'
-import { exec } from 'child_process'
+import { exec } from './hidden-process'
 import path from 'path'
 import fs from 'fs'
 import { consciousnessService } from './consciousness-service'

@@ -14,6 +14,8 @@ export interface ConsciousnessData {
   lastBootTimestamp: number
   totalConversations: number
   preferredLanguage?: string
+  /** The language she was last spoken to in, kept between sessions */
+  spokenLanguage?: string
   languageManuallyConfigured?: boolean
   /** How Capri calls the user (asked on first launch) */
   userName?: string
@@ -21,8 +23,18 @@ export interface ConsciousnessData {
   onboardingDone?: boolean
   /** The user asked not to be warned about an incomplete setup */
   setupNoticeDismissed?: boolean
+  /** She opens tabs and music by herself when nobody talks to her */
+  boredomEnabled?: boolean
+  /** The monitor she was put on */
+  companionDisplayId?: number
+  /** The arrow keys work as shortcuts while another app has the focus */
+  arrowKeysEnabled?: boolean
+  /** Hash of the Modelfile the installed persona was built from */
+  personaVersion?: string
   /** App version of the previous run, to read the patch scripts after an update */
   lastRunVersion?: string
+  /** Apps she couldn't find and the user showed her, by the name they were asked for */
+  appPaths?: Record<string, string>
   /** League champions the user asked Capri to pick, counted per role (top, jungle, middle, bottom, utility, any) */
   lolChampionRequests?: Record<string, Record<string, number>>
   /** UI language settings: 'auto' or an ISO code (es, en, pt, fr, de, it, ja, ko, zh, ru) */
@@ -71,6 +83,7 @@ export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettings = { textLang: 'auto', s
 
 class ConsciousnessService {
   private filePath: string = ''
+  private spokenListeners: ((lang: string) => void)[] = []
   private lastScannedContext: ScannedVisualContext | null = null
   private pendingScanLearning: { description: string; tags: string[]; timestamp: number } | null = null
   private languageListeners: Array<(lang: string) => void> = []
@@ -102,8 +115,10 @@ class ConsciousnessService {
         const parsed = JSON.parse(raw)
         this.data = { ...this.data, ...parsed }
       }
-      // Capri's canonical baseline language is strictly English unless spoken to in another language
-      this.data.preferredLanguage = 'en'
+      // Automatic language: her fixed lines start in the system's language. Not saved, so a language
+      // picked up in one session can't stick and change the whole app later on
+      const system = app.getLocale().slice(0, 2).toLowerCase()
+      this.data.preferredLanguage = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ru', 'ja', 'ko', 'zh'].includes(system) ? system : 'en'
     } catch {
       // fallback
     }
@@ -209,11 +224,37 @@ class ConsciousnessService {
     return { ...this.data }
   }
 
+  /** The language of her fixed lines: the one chosen in the settings, or the last one she was spoken to in */
   public getPreferredLanguage(): string {
-    // A fixed text language from the language settings always wins
+    const fixed = this.data.languageSettings?.textLang
+    if (fixed && fixed !== 'auto') return fixed
+    return this.data.spokenLanguage || this.data.preferredLanguage || 'en'
+  }
+
+  /** The app's own language: it never changes because of what someone said to her */
+  public getUiLanguage(): string {
     const fixed = this.data.languageSettings?.textLang
     if (fixed && fixed !== 'auto') return fixed
     return this.data.preferredLanguage || 'en'
+  }
+
+  public getSpokenLanguage(): string | null {
+    return this.data.spokenLanguage || null
+  }
+
+  public setSpokenLanguage(lang: string): void {
+    if (this.data.spokenLanguage === lang) return
+    this.data.spokenLanguage = lang
+    this.save()
+    this.spokenListeners.forEach((fn) => {
+      try {
+        fn(this.getPreferredLanguage())
+      } catch {}
+    })
+  }
+
+  public onSpokenLanguageChanged(cb: (lang: string) => void): void {
+    this.spokenListeners.push(cb)
   }
 
   public getUserName(): string | null {
@@ -223,6 +264,42 @@ class ConsciousnessService {
 
   public setUserName(name: string): void {
     this.data.userName = name.trim().slice(0, 40)
+    this.save()
+  }
+
+  public isBoredomEnabled(): boolean {
+    return this.data.boredomEnabled !== false
+  }
+
+  public setBoredomEnabled(enabled: boolean): void {
+    this.data.boredomEnabled = enabled
+    this.save()
+  }
+
+  public getCompanionDisplayId(): number | null {
+    return this.data.companionDisplayId ?? null
+  }
+
+  public setCompanionDisplayId(id: number): void {
+    this.data.companionDisplayId = id
+    this.save()
+  }
+
+  public getArrowKeysEnabled(): boolean {
+    return this.data.arrowKeysEnabled !== false
+  }
+
+  public setArrowKeysEnabled(enabled: boolean): void {
+    this.data.arrowKeysEnabled = enabled
+    this.save()
+  }
+
+  public getPersonaVersion(): string {
+    return this.data.personaVersion || ''
+  }
+
+  public setPersonaVersion(version: string): void {
+    this.data.personaVersion = version
     this.save()
   }
 
@@ -262,6 +339,21 @@ class ConsciousnessService {
       .sort((a, b) => b.count - a.count)
   }
 
+  public getAppPath(key: string): string | null {
+    return this.data.appPaths?.[key] || null
+  }
+
+  public setAppPath(key: string, file: string): void {
+    this.data.appPaths = { ...this.data.appPaths, [key]: file }
+    this.save()
+  }
+
+  public forgetAppPath(key: string): void {
+    if (!this.data.appPaths?.[key]) return
+    delete this.data.appPaths[key]
+    this.save()
+  }
+
   public getLastRunVersion(): string | null {
     return this.data.lastRunVersion || null
   }
@@ -291,10 +383,15 @@ class ConsciousnessService {
     const merged = { ...this.getLanguageSettings(), ...next }
     this.data.languageSettings = merged
     this.save()
-    const effective = this.getPreferredLanguage()
+    const ui = this.getUiLanguage()
     this.languageListeners.forEach((fn) => {
       try {
-        fn(effective)
+        fn(ui)
+      } catch {}
+    })
+    this.spokenListeners.forEach((fn) => {
+      try {
+        fn(this.getPreferredLanguage())
       } catch {}
     })
     return merged

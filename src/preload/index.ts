@@ -112,6 +112,8 @@ const api = {
     scriptLineDone: (id: number): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_SCRIPT_LINE_DONE, id),
     cancelScript: (): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_SCRIPT_CANCEL),
 
+    listDisplays: (): Promise<{ id: number; label: string; width: number; height: number; primary: boolean; current: boolean }[]> => ipcRenderer.invoke(IPC_CHANNELS.DISPLAYS_LIST),
+    moveToDisplay: (id: number): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.DISPLAYS_MOVE, id),
     setClickThrough: (ignore: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_CLICK_THROUGH, ignore),
 
@@ -164,6 +166,11 @@ const api = {
     }> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_GET_CONSCIOUSNESS),
 
     getLanguage: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_GET_LANGUAGE),
+    onLineLanguage: (callback: (lang: string) => void): (() => void) => {
+      const sub = (_e: IpcRendererEvent, lang: string): void => callback(lang)
+      ipcRenderer.on(IPC_CHANNELS.COMPANION_LINE_LANGUAGE, sub)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.COMPANION_LINE_LANGUAGE, sub)
+    },
 
     setLanguage: (lang: string): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_LANGUAGE, lang),
@@ -220,6 +227,7 @@ const api = {
     detectOllama: (): Promise<{ running: boolean; models: string[] }> =>
       ipcRenderer.invoke(IPC_CHANNELS.AGENT_DETECT_OLLAMA),
 
+    confirmClaudeBypass: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.LLM_CONFIRM_CLAUDE_BYPASS),
     getLlmSettings: (): Promise<LlmPublicSettings> => ipcRenderer.invoke(IPC_CHANNELS.LLM_GET_SETTINGS),
 
     setLlmSettings: (update: LlmSettingsUpdate): Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }> =>
@@ -277,7 +285,9 @@ const api = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.SETUP_LOG, sub)
     },
     finish: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_FINISH),
-    open: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_OPEN)
+    open: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_OPEN),
+    getStorage: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.SETUP_GET_STORAGE),
+    chooseStorage: (reset?: boolean): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.SETUP_CHOOSE_STORAGE, reset)
   },
 
   system: {
@@ -301,8 +311,11 @@ const api = {
 
   // Voice Core (Speech-to-Text & Text-to-Speech)
   voice: {
-    transcribe: (audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean }): Promise<{ success: boolean; text?: string; error?: string }> =>
+    transcribe: (audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean } | boolean): Promise<{ success: boolean; text?: string; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.VOICE_TRANSCRIBE, audioData, options),
+    sttState: (): Promise<'off' | 'loading' | 'ready' | 'failed'> => ipcRenderer.invoke(IPC_CHANNELS.VOICE_STT_STATE),
+    getArrowKeys: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ARROW_KEYS_GET),
+    setArrowKeys: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ARROW_KEYS_SET, enabled),
 
     synthesize: (text: string, langOverride?: string): Promise<{ success: boolean; audioDataUrl?: string; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.VOICE_SYNTHESIZE, text, langOverride),
@@ -352,6 +365,8 @@ const api = {
 
   // Autonomous Boredom
   boredom: {
+    getEnabled: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.BOREDOM_GET_ENABLED),
+    setEnabled: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.BOREDOM_SET_ENABLED, enabled),
     trigger: (category?: 'spotify' | 'youtube' | 'web_search'): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.BOREDOM_TRIGGER, category)
   },

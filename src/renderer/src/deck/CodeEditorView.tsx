@@ -315,7 +315,7 @@ export const CodeEditorView: React.FC = () => {
           if (last && last.role === 'assistant') return [...prev.slice(0, -1), { ...last, content: last.content + text }]
           return [...prev, { id: `ai-${Date.now()}`, role: 'assistant', content: text }]
         })
-      } else if (event.type === 'session.finished' && document.hasFocus()) {
+      } else if (event.type === 'session.finished' && !event.cancelled && document.hasFocus()) {
         setMessages((current) => {
           const last = current[current.length - 1]
           if (last && last.role === 'assistant' && last.content && useAgentStore.getState().isDevVoiceEnabled) speakDevVoice(last.content)

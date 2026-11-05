@@ -305,7 +305,7 @@ def select_voice(text: str, cfg: dict, lang_override: str = None) -> str:
     # Check if text is distinctly Spanish first before blind English override
     # Never allow a mistaken 'en' override to force an English voice on Spanish text.
     if is_spanish_text(text):
-        if not lang_override or lang_override.lower().strip() in ('es', 'spanish', 'en', 'english', 'auto'):
+        if not lang_override or lang_override.lower().strip() in ('es', 'spanish', 'auto'):
             return cfg.get("voice_es", "es-AR-ElenaNeural")
 
     # Check explicit lang_override if specified (for Latin scripts like ja-romaji, zh-pinyin, es, en, etc.)
@@ -331,6 +331,16 @@ def select_voice(text: str, cfg: dict, lang_override: str = None) -> str:
             return cfg.get("voice_de", "de-DE-KatjaNeural")
         if lo in ('it', 'italian'):
             return cfg.get("voice_it", "it-IT-ElsaNeural")
+        if lo in ('pl', 'polish'):
+            return cfg.get("voice_pl", "pl-PL-ZofiaNeural")
+        if lo in ('nl', 'dutch'):
+            return cfg.get("voice_nl", "nl-NL-ColetteNeural")
+        if lo in ('tr', 'turkish'):
+            return cfg.get("voice_tr", "tr-TR-EmelNeural")
+        if lo in ('sv', 'swedish'):
+            return cfg.get("voice_sv", "sv-SE-SofieNeural")
+        if lo in ('uk', 'ukrainian'):
+            return cfg.get("voice_uk", "uk-UA-PolinaNeural")
 
     # Text content heuristics for Latin scripts
     lower = text.lower()
@@ -671,7 +681,11 @@ def get_whisper_model():
             device = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
             compute_type = "float16" if device == "cuda" else "int8"
             model_name = os.environ.get("CAPRI_WHISPER_MODEL", "").strip() or ("large-v3-turbo" if device == "cuda" else "small")
-            _whisper_model = WhisperModel(model_name, device=device, compute_type=compute_type)
+            model = WhisperModel(model_name, device=device, compute_type=compute_type)
+            if device == "cuda":
+                import numpy
+                model.detect_language(numpy.zeros(16000, dtype=numpy.float32))
+            _whisper_model = model
             _whisper_device, _whisper_model_name = device, model_name
         except Exception as error:
             print(f"[STT] Model loading failed; falling back to CPU: {error}", file=sys.stderr, flush=True)
@@ -688,6 +702,18 @@ def cpu_whisper_model():
 
 CYBERPUNK_INITIAL_PROMPT = "Capri, ripperdoc, choom, Night City."
 
+def choose_language(probs: dict, hint: str = None) -> str:
+    """
+    The language of the audio. With a clear winner, that one. In a close call accented English
+    tends to come out as Spanish, so it's settled between the language she expects and English.
+    """
+    best = max(probs, key=probs.get)
+    if probs[best] >= 0.7:
+        return best
+    expected = [c for c in (hint, "en") if c and probs.get(c, 0.0) >= 0.1]
+    return max(expected, key=lambda c: probs[c]) if expected else best
+
+
 def clean_cyberpunk_transcription(text: str) -> str:
     if not text:
         return text
@@ -702,7 +728,7 @@ def clean_cyberpunk_transcription(text: str) -> str:
     text = re.sub(r'\b(?:clipe[aá]|clipeate)\s+(?:eso|esto)\b', 'clipea eso', text, flags=re.IGNORECASE)
     return text.strip()
 
-def transcribe_audio_internal(input_file: str, language: str = None, partial: bool = False) -> dict:
+def transcribe_audio_internal(input_file: str, language: str = None, partial: bool = False, hint: str = None) -> dict:
     temp_wav = input_file + ".16k.wav"
     converted = False
     try:
@@ -710,7 +736,8 @@ def transcribe_audio_internal(input_file: str, language: str = None, partial: bo
         model = get_whisper_model()
         lang_arg = None
         if language and language != "auto":
-            lang_arg = "es" if language in ("es", "es-ES", "es-AR", "es-MX", "spanish") else ("en" if language in ("en", "en-US", "english") else language)
+            lang_arg = language.split("-")[0].lower()
+            lang_arg = {"spanish": "es", "english": "en"}.get(lang_arg, lang_arg)
 
         def run(m):
             nonlocal converted
@@ -740,10 +767,12 @@ def transcribe_audio_internal(input_file: str, language: str = None, partial: bo
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 segments, info = decode()
 
-            if not partial and not lang_arg and info.language not in ("es", "en"):
-                probs = dict(info.all_language_probs or [])
-                options["language"] = "es" if probs.get("es", 0.0) > probs.get("en", 0.0) else "en"
-                segments, info = decode()
+            if not lang_arg:
+                probs = dict(info.all_language_probs or [(info.language, info.language_probability)])
+                detected_language = choose_language(probs, hint)
+                if detected_language != info.language:
+                    options["language"] = detected_language
+                    segments, info = decode()
             return " ".join(segment.text.strip() for segment in segments).strip(), info
 
         try:
@@ -798,7 +827,7 @@ def run_stt_worker():
                     out["id"] = req_id
                 print(json.dumps(out), flush=True)
                 continue
-            res = transcribe_audio_internal(file_path, lang, partial=req.get("partial") is True)
+            res = transcribe_audio_internal(file_path, lang, partial=req.get("partial") is True, hint=req.get("hint"))
             if req_id is not None:
                 res["id"] = req_id
             print(json.dumps(res), flush=True)

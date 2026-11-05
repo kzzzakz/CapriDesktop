@@ -1,0 +1,2 @@
+[excited] Neues Update, {name}!
+[happy] Jetzt öffne ich jede App, um die du mich bittest, und wenn ich sie nicht finde, zeigst du mir einmal, wo sie ist, und ich merke es mir. [giggles] Und unter Linux aktualisiere ich mich selbst: Ich lade das Paket herunter, frage nach deinem Passwort, falls nötig, und komme zurück.

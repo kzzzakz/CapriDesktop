@@ -2,7 +2,7 @@ import { scriptPath } from '../services/app-paths'
 import { screen } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
-import { exec, spawn, ChildProcess } from 'child_process'
+import { exec, spawn, ChildProcess } from '../services/hidden-process'
 import { windowManager } from '../windows/window-manager'
 import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from '../services/consciousness-service'
@@ -676,7 +676,8 @@ export class RoamingManager {
 
       try {
         const bounds = companionWin.getBounds()
-        const primaryDisplay = screen.getPrimaryDisplay()
+        // The screen she's on, not always the main one
+        const primaryDisplay = screen.getDisplayMatching(bounds)
         const { workArea } = primaryDisplay
 
         const minX = workArea.x + 10

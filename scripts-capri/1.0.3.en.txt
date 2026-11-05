@@ -1,0 +1,2 @@
+[excited] New update, {name}!
+[happy] Now I open any app you ask for, and if I can't find it you show me where it is once and I remember it. [giggles] And on Linux I update by myself: I download the package, ask for your password if it's needed and come back.
