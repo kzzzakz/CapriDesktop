@@ -39,7 +39,8 @@ export class WindowManager {
     this.mouseForwardTimers.delete(win)
     if (!active) return
 
-    // Only real changes are told: starting outside isn't the mouse leaving
+    // Linux tells only real changes. Elsewhere native moves can enter and leave between two polls,
+    // so every poll outside is told.
     let last = 'outside'
     let asking = false
     const timer = setInterval(async () => {
@@ -61,9 +62,12 @@ export class WindowManager {
       const y = Math.round(cursor.y - bounds.y)
       const inside = x >= 0 && y >= 0 && x < bounds.width && y < bounds.height
       const position = inside ? `${x},${y}` : 'outside'
+      if (!isLinux) {
+        if (!inside) win.webContents.send(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, { x, y, inside })
+        return
+      }
       if (position === last) return
       last = position
-      if (inside && !isLinux) return
       win.webContents.send(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, { x, y, inside })
     }, 100)
     this.mouseForwardTimers.set(win, timer)
