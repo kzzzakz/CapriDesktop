@@ -161,6 +161,8 @@ export function registerIpcHandlers(): void {
     return windowManager.isGamingModeActive()
   })
 
+  // Windows scaling drifts the size by a pixel on every move, so keep the size from before the drift
+  let movedSize = { width: 0, height: 0 }
   // Shift + Drag move Capri across screen
   ipcMain.handle(
     IPC_CHANNELS.COMPANION_MOVE_BY,
@@ -170,7 +172,9 @@ export function registerIpcHandlers(): void {
         const bounds = win.getBounds()
         const newX = bounds.x + payload.dx
         const newY = bounds.y + payload.dy
-        win.setPosition(newX, newY)
+        const drifted = Math.abs(bounds.width - movedSize.width) <= 2 && Math.abs(bounds.height - movedSize.height) <= 2
+        if (!drifted) movedSize = { width: bounds.width, height: bounds.height }
+        win.setBounds({ x: newX, y: newY, ...movedSize })
         if (windowManager.isGamingModeActive()) {
           windowManager.setSavedGamingPosition({ x: newX, y: newY })
         } else {
