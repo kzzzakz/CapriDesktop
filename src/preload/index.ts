@@ -216,6 +216,7 @@ const api = {
     detectOllama: (): Promise<{ running: boolean; models: string[] }> =>
       ipcRenderer.invoke(IPC_CHANNELS.AGENT_DETECT_OLLAMA),
 
+    confirmClaudeBypass: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.LLM_CONFIRM_CLAUDE_BYPASS),
     getLlmSettings: (): Promise<LlmPublicSettings> => ipcRenderer.invoke(IPC_CHANNELS.LLM_GET_SETTINGS),
 
     setLlmSettings: (update: LlmSettingsUpdate): Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }> =>

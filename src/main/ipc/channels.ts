@@ -68,6 +68,7 @@ export const IPC_CHANNELS = {
   AGENT_SET_CONFIG: 'agent:setConfig',
   AGENT_DETECT_OLLAMA: 'agent:detectOllama',
   AGENT_CLEAR_HISTORY: 'agent:clearHistory',
+  LLM_CONFIRM_CLAUDE_BYPASS: 'llm:confirmClaudeBypass',
   LLM_GET_SETTINGS: 'llm:getSettings',
   LLM_SET_SETTINGS: 'llm:setSettings',
   LLM_LIST_MODELS: 'llm:listModels',

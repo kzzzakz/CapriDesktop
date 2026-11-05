@@ -97,6 +97,7 @@ export interface IElectronAPI {
     getConfig: () => Promise<AgentConfigPayload>
     setConfig: (config: Partial<AgentConfigPayload>) => Promise<AgentConfigPayload>
     detectOllama: () => Promise<{ running: boolean; models: string[] }>
+    confirmClaudeBypass: () => Promise<boolean>
     getLlmSettings: () => Promise<LlmPublicSettings>
     setLlmSettings: (update: LlmSettingsUpdate) => Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }>
     listLlmModels: (baseUrl: string, apiKey?: string) => Promise<{ ok: boolean; models: string[]; error?: string }>

@@ -207,6 +207,10 @@ export class WindowManager {
     return this.companionWin
   }
 
+  public getOnboardingWindow(): BrowserWindow | null {
+    return this.onboardingWin
+  }
+
   public getDeckWindow(): BrowserWindow | null {
     return this.deckWin
   }

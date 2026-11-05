@@ -1,6 +1,12 @@
 import type { Messages } from './en'
 
 export const it: Messages = {
+  llm_bypassLabel: "Ignora i permessi di Claude Code",
+  llm_bypassHelp: "Disattivato per impostazione predefinita. Le modifiche vengono salvate subito. Per attivarlo serve una conferma manuale.",
+  llm_bypassTitle: "Consentire comandi di Claude Code senza restrizioni?",
+  llm_bypassWarning: "Claude potrà eseguire qualsiasi comando su questo PC senza controllare i permessi, anche tramite richieste vocali.",
+  llm_bypassDetail: "Questo può modificare o eliminare file, installare programmi e accedere a dati privati. Attiva questa modalità solo se accetti questi rischi. Annulla mantiene i controlli dei permessi.",
+  llm_bypassConfirm: "Attiva modalità senza permessi",
   close: 'Chiudi',
   done: 'Fatto',
   saved: 'Salvato',

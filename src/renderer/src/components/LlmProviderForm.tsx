@@ -44,6 +44,8 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
     const [baseUrl, setBaseUrl] = useState(PRESETS[0].baseUrl)
     const [model, setModel] = useState('')
     const [claudeModel, setClaudeModel] = useState<'haiku' | 'sonnet' | 'opus'>('haiku')
+    const [claudeBypassPermissions, setClaudeBypassPermissions] = useState(false)
+    const [confirmingBypass, setConfirmingBypass] = useState(false)
     const [apiKey, setApiKey] = useState('')
     const [hasKey, setHasKey] = useState(false)
     const [models, setModels] = useState<string[]>([])
@@ -60,6 +62,7 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
         if (s.baseUrl) setBaseUrl(s.baseUrl)
         setModel(s.model)
         setClaudeModel(s.claudeModel)
+        setClaudeBypassPermissions(s.claudeBypassPermissions)
         setHasKey(s.hasKey)
         onProviderChange?.(s.provider)
       })
@@ -101,6 +104,23 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
       setBusy(null)
       if (res.ok) setNotice({ ok: true, text: t('llm_testOk') })
       else fail(res.error)
+    }
+
+    const toggleClaudeBypass = async () => {
+      setConfirmingBypass(true)
+      try {
+        if (claudeBypassPermissions) {
+          const res = await window.api.agent.setLlmSettings({ claudeBypassPermissions: false })
+          if (!res.success) return fail(res.error)
+          setClaudeBypassPermissions(res.settings.claudeBypassPermissions)
+        } else {
+          setClaudeBypassPermissions(await window.api.agent.confirmClaudeBypass())
+        }
+      } catch {
+        fail()
+      } finally {
+        setConfirmingBypass(false)
+      }
     }
 
     const removeKey = async () => {
@@ -168,6 +188,13 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
                   <option value="opus">Opus</option>
                 </select>
               </div>
+            </label>
+            <label className="block cp-frame px-3 py-2.5 space-y-1.5">
+              <span className="flex items-center gap-2 text-[14px]">
+                <input type="checkbox" checked={claudeBypassPermissions} disabled={confirmingBypass} onChange={() => void toggleClaudeBypass()} />
+                {t('llm_bypassLabel')}
+              </span>
+              <span className="block text-[13px] text-[var(--cp-muted)]">{t('llm_bypassHelp')}</span>
             </label>
             <button type="button" onClick={test} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px]">
               {busy === 'test' && <Loader2 size={13} className="animate-spin" />} {busy === 'test' ? t('llm_testing') : t('llm_test')}

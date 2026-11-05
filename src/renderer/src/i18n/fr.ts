@@ -1,6 +1,12 @@
 import type { Messages } from './en'
 
 export const fr: Messages = {
+  llm_bypassLabel: "Contourner les permissions de Claude Code",
+  llm_bypassHelp: "Désactivé par défaut. Les modifications sont enregistrées immédiatement. Une confirmation manuelle est nécessaire pour activer ce mode.",
+  llm_bypassTitle: "Autoriser les commandes sans restriction de Claude Code ?",
+  llm_bypassWarning: "Claude pourra exécuter toute commande sur ce PC sans vérifier les permissions, y compris les commandes demandées à la voix.",
+  llm_bypassDetail: "Cela peut modifier ou supprimer des fichiers, installer des logiciels et accéder à des données privées. Activez ce mode uniquement si vous acceptez ces risques. Annuler conserve les vérifications de permissions.",
+  llm_bypassConfirm: "Activer le contournement",
   close: 'Fermer',
   done: 'Terminé',
   saved: 'Enregistré',
