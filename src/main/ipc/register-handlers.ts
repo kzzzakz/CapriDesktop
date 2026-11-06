@@ -1,6 +1,6 @@
 import { getStorageRoot } from '../services/storage-location'
 import { scriptPlayer } from '../services/script/script-player'
-import { confirmClaudeBypassPermissions, testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
+import { confirmClaudeBypassPermissions, testCodexConnection, testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
 import { setupService, SetupStep } from '../services/setup-service'
 import * as os from 'os'
 import { getUserName } from '../services/user-profile'
@@ -331,6 +331,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.LLM_GET_SETTINGS, () => getLlmSettings())
   ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))
+  ipcMain.handle(IPC_CHANNELS.LLM_TEST_CODEX, (_event, model: string) =>
+    testCodexConnection(typeof model === 'string' ? model : '')
+  )
   ipcMain.handle(IPC_CHANNELS.LLM_TEST_CLAUDE, (_event, model: 'haiku' | 'sonnet' | 'opus') =>
     testClaudeConnection(['haiku', 'sonnet', 'opus'].includes(model) ? model : 'haiku')
   )
