@@ -283,6 +283,13 @@ export class ChampionDatabase {
     return bestMatch
   }
 
+  /** Strict lookup, no typo tolerance: used to tell a champion name from an agent name */
+  public findExactChampion(query: string): ChampionEntry | null {
+    const norm = normalize(query)
+    if (!norm) return null
+    return this.champions.find((c) => c.key === norm || c.aliases.some((a) => normalize(a) === norm)) || null
+  }
+
   public getById(id: number): ChampionEntry | null {
     return this.champions.find((c) => c.id === id) || null
   }

@@ -5,7 +5,8 @@ import { nativeImage } from 'electron'
 import { ReadOnlyGameAdapter, findGameProcess, GameProcess } from '../read-only-game'
 import { gamePresenceService } from '../../../game-presence-service'
 import { scannerService } from '../../../scanner-service'
-import { clientVersionFromLog, decodePresence, deriveValorantEvents, routingFromLog, ValorantState } from './state'
+import { decodePresence, deriveValorantEvents, ValorantState } from './state'
+import { readShooterLogMetadata } from './log-metadata'
 import { valorantNames } from './names'
 import { DeathTracker, hasSpectatorHud, observeValorantLife, spectatorHudRegion } from './death-vision'
 
@@ -92,19 +93,9 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
     }>('127.0.0.1', '/entitlements/v1/token', headers, port)
     if (!token.subject || !token.accessToken || !token.token || !this.active(generation)) return
     if (!this.routing || !this.clientVersion) {
-      const log = await fs.open(path.join(local, 'VALORANT/Saved/Logs/ShooterGame.log'), 'r')
-      try {
-        const stat = await log.stat()
-        const buffer = Buffer.alloc(Math.min(stat.size, 1024 * 1024))
-        await log.read(buffer, 0, buffer.length, stat.size - buffer.length)
-        const text = buffer.toString('utf8')
-        this.routing = routingFromLog(text)
-        const head = Buffer.alloc(Math.min(stat.size, 65536))
-        await log.read(head, 0, head.length, 0)
-        this.clientVersion = clientVersionFromLog(head.toString('utf8'))
-      } finally {
-        await log.close()
-      }
+      const metadata = await readShooterLogMetadata(local)
+      this.routing = metadata.routing
+      this.clientVersion = metadata.clientVersion
     }
     const presences = await getJson<{
       presences: { puuid: string; product: string; private: string }[]
