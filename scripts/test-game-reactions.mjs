@@ -401,6 +401,9 @@ test('Valorant captures only during foreground matches and checks foreground aft
       './state': moduleUrl(
         'export const clientVersionFromLog = () => null, decodePresence = () => null, deriveValorantEvents = () => [], routingFromLog = () => null;'
       ),
+      './log-metadata': moduleUrl(
+        'export const readShooterLogMetadata = async () => ({ routing: null, clientVersion: null });'
+      ),
       './names': moduleUrl('export const valorantNames = {};'),
       './death-vision': moduleUrl(
         ts.transpileModule(

@@ -25,6 +25,8 @@ import { proactiveDialogueService } from '../services/proactive-dialogue-service
 import { paintDrawerService } from '../services/paint-drawer-service'
 import { llmDrawingPlanner, PlannedDrawingResult } from '../services/paint'
 import { lcuService, championDatabase, LolAutomationPlan } from '../services/lol'
+import { parseValorantCommand } from '../services/valorant/command-parser'
+import { valorantAgentSelect, valorantPickMessage } from '../services/valorant/agent-select-service'
 import { reactionEngine, mockGameAdapter, lolLiveAdapter, getChampionPickComment, cyberpunkAdapter } from '../services/game'
 import { CyberpunkGig } from '../services/game/adapters/cyberpunk/gigs'
 import { lolCommentator } from '../services/game/adapters/lol/lol-commentator'
@@ -859,6 +861,45 @@ export class CapriLocalAgent extends EventEmitter {
         )
       }
 
+      this.finishSession()
+      return
+    }
+
+    // Valorant agent select interceptor: select and lock in the agent the user asked for
+    const valorantCmd = parseValorantCommand(norm)
+    if (valorantCmd.isValorant) {
+      if (valorantCmd.wantsCancel) {
+        const hadRequest = valorantAgentSelect.cancelAgentRequest()
+        this.emitAssistant(
+          isSpanish
+            ? (hadRequest
+                ? "Listo, choomba: cancelé el pedido de agente en Valorant."
+                : "No tenía ningún pedido de agente en Valorant, choomba.")
+            : (hadRequest
+                ? "Valorant agent pick cancelled, {name}."
+                : "There was no Valorant agent pick waiting, {name}.")
+        )
+        this.finishSession()
+        return
+      }
+
+      const agent = valorantCmd.agent
+      if (!agent) {
+        const query = valorantCmd.agentQuery
+        this.emitAssistant(
+          isSpanish
+            ? `No encontré al agente "${query}" en Valorant, choomba. Revisá si me dijiste bien el nombre.`
+            : `Couldn't find an agent named "${query}" in Valorant, {name}. Double check the name!`
+        )
+        this.finishSession()
+        return
+      }
+
+      const result = await valorantAgentSelect.requestAgent(agent.uuid, agent.name)
+      console.log(`[Capri Agent] Valorant agent ${agent.name}: ${result.status}`)
+      if (result.status !== 'cancelled') {
+        this.emitAssistant(valorantPickMessage(result.status, agent.name, isSpanish))
+      }
       this.finishSession()
       return
     }
