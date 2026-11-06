@@ -269,7 +269,18 @@ export const zh: Messages = {
   vs_micError: '无法打开。请检查系统隐私设置或换一个麦克风。',
   vs_micUnderstood: '我听懂了:',
   vs_micNoWords: '有声音输入,但我没听清说了什么。',
-  vs_arrowKeys: '在其他应用中将方向键用作快捷键 (Ctrl+Alt+V 始终可用)',
+  vs_arrowKeys: '在其他应用中将这些键用作快捷键 (Ctrl+Alt+V 始终可用)',
+  vs_hotkeys: '按键',
+  vs_hotkeyTalk: '和她说话',
+  vs_hotkeyListen: '持续聆听',
+  vs_hotkeyChat: '打开她的聊天',
+  vs_hotkeyPress: '请按一个键...',
+  vs_hotkeyReset: '恢复方向键',
+  vs_hotkeyNeedsModifier: '单独的字母、数字或 Enter 会在其他地方失效:请与 Ctrl 或 Alt 组合。',
+  vs_hotkeyReserved: '该键已保留作其他用途。',
+  vs_hotkeyInUse: '另一个操作已在使用该键。',
+  vs_hotkeyTaken: '另一个应用已在使用该键。',
+  vs_gamingOpacity: '她在游戏模式下的不透明度',
   vs_sound: '声音',
   vs_voiceVolume: '语音音量',
   vs_effectsVolume: '音效音量',
@@ -278,6 +289,36 @@ export const zh: Messages = {
   ob_storageDefault: '系统盘上的默认文件夹',
   ob_storageChange: '更改',
   ob_storageReset: '使用默认',
+
+  ob_moveTitle: "要移动已安装的内容吗?",
+
+  ob_moveModels: "她的模型",
+
+  ob_moveWhisper: "她的听觉 (Whisper)",
+
+  ob_moveVoiceEnv: "她的语音环境",
+
+  ob_moveTools: "FFmpeg 和工具",
+
+  ob_moveOllamaProgram: "Ollama 程序(将重新下载)",
+
+  ob_moveTotal: "总计",
+
+  ob_moveFree: "目标可用空间",
+
+  ob_moveNote: "先复制,旧文件最后才删除。Python 保持原位。要移动 Capri 本身,请重新运行安装程序并选择其他文件夹。",
+
+  ob_moveNoSpace: "该磁盘的可用空间不足。",
+
+  ob_moveBadFolder: "该文件夹位于要移动的内容之中。请选择其他文件夹。",
+
+  ob_moveCancel: "取消",
+
+  ob_moveConfirm: "移动",
+
+  ob_moveDone: "完成。她已在使用新位置。",
+
+  ob_moveFailed: "无法移动。未完成的内容仍在原处。",
   vs_monitor: '显示器',
   vs_monitorMain: '主显示器',
   vs_boredom: '允许她感到无聊: 你不说话时她会自己打开标签页和音乐',

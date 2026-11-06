@@ -17,6 +17,7 @@ import { checkAddressed } from '../services/wake-word'
 import { consciousnessService } from '../services/consciousness-service'
 import { localizeLine } from '../../shared/lines'
 import { ToolExecutor } from '../agents/tools/tool-executor'
+import type { HotkeyAction } from '../../shared/hotkeys'
 import { scannerService } from '../services/scanner-service'
 import { boredomService } from '../services/boredom-service'
 import { cyberpunkAdapter } from '../services/game'
@@ -238,15 +239,17 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.SETUP_GET_STORAGE, () => getStorageRoot())
+  // What moving there would take. Null if no folder was picked; nothing changes until it's confirmed
   ipcMain.handle(IPC_CHANNELS.SETUP_CHOOSE_STORAGE, async (_event, reset?: boolean) => {
-    if (reset) {
-      await setupService.changeStorage(null)
-      return null
-    }
+    if (reset) return setupService.planStorageMove(null)
     const picked = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
-    if (picked.canceled || !picked.filePaths[0]) return getStorageRoot()
-    await setupService.changeStorage(path.join(picked.filePaths[0], 'CapriData'))
-    return getStorageRoot()
+    if (picked.canceled || !picked.filePaths[0]) return null
+    const folder = picked.filePaths[0]
+    return setupService.planStorageMove(path.basename(folder).toLowerCase() === 'capridata' ? folder : path.join(folder, 'CapriData'))
+  })
+  ipcMain.handle(IPC_CHANNELS.SETUP_MOVE_STORAGE, async (_event, root: string | null) => {
+    const ok = await setupService.moveStorage(root, (s, line) => windowManager.broadcast(IPC_CHANNELS.SETUP_LOG, { step: s, line }))
+    return { ok, root: getStorageRoot(), status: await setupService.getStatus() }
   })
 
   ipcMain.handle(IPC_CHANNELS.ONBOARDING_OPEN, () => {
@@ -499,6 +502,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.ARROW_KEYS_SET, (_event, enabled: boolean) => {
     windowManager.setArrowKeysEnabled(!!enabled)
     return !!enabled
+  })
+  ipcMain.handle(IPC_CHANNELS.HOTKEYS_GET, () => consciousnessService.getHotkeys())
+  ipcMain.handle(IPC_CHANNELS.HOTKEYS_SET, (_event, action: HotkeyAction, accelerator: string) => windowManager.setHotkey(action, String(accelerator)))
+  ipcMain.handle(IPC_CHANNELS.HOTKEYS_RESET, () => windowManager.resetHotkeys())
+  ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_GET, () => consciousnessService.getGamingOpacity())
+  ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_SET, (_event, value: number) => {
+    consciousnessService.setGamingOpacity(value)
+    const saved = consciousnessService.getGamingOpacity()
+    windowManager.broadcast(IPC_CHANNELS.GAMING_OPACITY_CHANGED, saved)
+    return saved
   })
 
   ipcMain.handle(IPC_CHANNELS.VOICE_TRANSCRIBE, async (_event, audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean } | boolean) => {

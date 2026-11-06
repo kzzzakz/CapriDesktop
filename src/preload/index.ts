@@ -1,5 +1,6 @@
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
   IPC_CHANNELS,
   CompanionEmotionState,
@@ -142,6 +143,18 @@ const api = {
       const sub = (): void => callback()
       ipcRenderer.on(IPC_CHANNELS.COMPANION_TOGGLE_CHAT, sub)
       return () => ipcRenderer.removeListener(IPC_CHANNELS.COMPANION_TOGGLE_CHAT, sub)
+    },
+
+    getGamingOpacity: (): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.GAMING_OPACITY_GET),
+
+    setGamingOpacity: (value: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.GAMING_OPACITY_SET, value),
+
+    onGamingOpacityChanged: (callback: (value: number) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, value: number): void => callback(value)
+      ipcRenderer.on(IPC_CHANNELS.GAMING_OPACITY_CHANGED, subscription)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.GAMING_OPACITY_CHANGED, subscription)
+      }
     },
 
     onGamingModeChanged: (callback: (enabled: boolean, gameForeground: boolean) => void): (() => void) => {
@@ -287,7 +300,8 @@ const api = {
     finish: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_FINISH),
     open: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_OPEN),
     getStorage: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.SETUP_GET_STORAGE),
-    chooseStorage: (reset?: boolean): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.SETUP_CHOOSE_STORAGE, reset)
+    chooseStorage: (reset?: boolean): Promise<any> => ipcRenderer.invoke(IPC_CHANNELS.SETUP_CHOOSE_STORAGE, reset),
+    moveStorage: (root: string | null): Promise<{ ok: boolean; root: string | null; status: any }> => ipcRenderer.invoke(IPC_CHANNELS.SETUP_MOVE_STORAGE, root)
   },
 
   system: {
@@ -316,6 +330,17 @@ const api = {
     sttState: (): Promise<'off' | 'loading' | 'ready' | 'failed'> => ipcRenderer.invoke(IPC_CHANNELS.VOICE_STT_STATE),
     getArrowKeys: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ARROW_KEYS_GET),
     setArrowKeys: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.ARROW_KEYS_SET, enabled),
+    getHotkeys: (): Promise<Hotkeys> => ipcRenderer.invoke(IPC_CHANNELS.HOTKEYS_GET),
+    setHotkey: (action: HotkeyAction, accelerator: string): Promise<{ hotkeys: Hotkeys; problem: HotkeyProblem | null }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.HOTKEYS_SET, action, accelerator),
+    resetHotkeys: (): Promise<Hotkeys> => ipcRenderer.invoke(IPC_CHANNELS.HOTKEYS_RESET),
+    onHotkeysChanged: (callback: (hotkeys: Hotkeys) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, hotkeys: Hotkeys): void => callback(hotkeys)
+      ipcRenderer.on(IPC_CHANNELS.HOTKEYS_CHANGED, subscription)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.HOTKEYS_CHANGED, subscription)
+      }
+    },
 
     synthesize: (text: string, langOverride?: string): Promise<{ success: boolean; audioDataUrl?: string; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.VOICE_SYNTHESIZE, text, langOverride),

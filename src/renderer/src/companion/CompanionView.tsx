@@ -15,6 +15,7 @@ import { useAgentStore } from '../stores/useAgentStore'
 import dialogueBlipAudio from '../assets/dialogue_blip.wav'
 import patPatGif from '../assets/capri/pat-pat-pet-pet.gif'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
+import { acceleratorFromEvent, DEFAULT_HOTKEYS, HOTKEY_ACTIONS } from '../../../shared/hotkeys'
 import {
   X,
   Mic,
@@ -126,6 +127,13 @@ export const CompanionView: React.FC = () => {
   const [isWindowHovered, setIsWindowHovered] = useState(false)
   const [isGamingMode, setIsGamingMode] = useState<boolean>(false)
   const [isGameForeground, setIsGameForeground] = useState(false)
+  const [gamingOpacity, setGamingOpacity] = useState(1)
+
+  useEffect(() => {
+    window.api?.companion?.getGamingOpacity?.().then(setGamingOpacity).catch(() => {})
+    return window.api?.companion?.onGamingOpacityChanged?.(setGamingOpacity)
+  }, [])
+
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState<boolean>(false)
   const [isContextMenuOpen, setIsContextMenuOpen] = useState<boolean>(false)
   useCompanionHitTest({
@@ -386,19 +394,26 @@ export const CompanionView: React.FC = () => {
     return undefined
   }, [])
 
-  // In-app window keydown listener for ArrowDown (Flecha abajo)
+  // The same keys while one of her windows has the focus, where the global shortcuts are off
   useEffect(() => {
+    let hotkeys = DEFAULT_HOTKEYS
+    window.api?.voice?.getHotkeys?.().then((saved) => (hotkeys = saved)).catch(() => {})
+    const unsub = window.api?.voice?.onHotkeysChanged?.((saved) => (hotkeys = saved))
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const pressed = acceleratorFromEvent(e)
+      if (!pressed || !HOTKEY_ACTIONS.some((action) => hotkeys[action] === pressed)) return
       const target = e.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
       e.preventDefault()
-      if (e.key === 'ArrowDown') toggleVoiceRecordingSafe()
-      else if (e.key === 'ArrowLeft') toggleDesktopChatRef.current()
+      if (pressed === hotkeys.talk) toggleVoiceRecordingSafe()
+      else if (pressed === hotkeys.chat) toggleDesktopChatRef.current()
       else toggleAlwaysListeningRef.current()
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      unsub?.()
+      window.removeEventListener('keydown', handleKeyDown)
+    }
   }, [])
 
   const toggleVoiceMute = () => {
@@ -1960,7 +1975,8 @@ export const CompanionView: React.FC = () => {
           className="w-full aspect-video flex items-center justify-center relative z-10 cursor-pointer overflow-visible select-none flex-shrink-0"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <div className="w-full h-full flex items-center justify-center overflow-visible">
+          {/* Only her: what she says has to stay readable */}
+          <div className="w-full h-full flex items-center justify-center overflow-visible" style={{ opacity: isGamingMode ? gamingOpacity : 1 }}>
             <CapriRenderer
               pixelHitTest
               state={desktopCompanionState}

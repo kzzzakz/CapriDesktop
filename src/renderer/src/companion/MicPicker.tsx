@@ -17,7 +17,6 @@ export const MicPicker: React.FC = () => {
   const [result, setResult] = useState<'heard' | 'silent' | 'error' | 'understood' | 'noWords' | null>(null)
   const [understood, setUnderstood] = useState('')
   const [failure, setFailure] = useState('')
-  const [arrowKeys, setArrowKeys] = useState(true)
   const stopRef = useRef<(() => void) | null>(null)
 
   const loadDevices = async () => {
@@ -26,7 +25,6 @@ export const MicPicker: React.FC = () => {
   }
 
   useEffect(() => {
-    window.api.voice.getArrowKeys().then(setArrowKeys).catch(() => {})
     void loadDevices()
     navigator.mediaDevices.addEventListener?.('devicechange', loadDevices)
     return () => {
@@ -154,17 +152,6 @@ export const MicPicker: React.FC = () => {
       )}
       {result === 'silent' && <p className="text-[13px] text-amber-400">{t('vs_micSilent')}</p>}
       {result === 'error' && <p className="text-[13px] text-red-400">{t('vs_micError')}</p>}
-      <label className="flex items-center gap-2 text-[13px] text-stone-300 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={arrowKeys}
-          onChange={(e) => {
-            setArrowKeys(e.target.checked)
-            void window.api.voice.setArrowKeys(e.target.checked)
-          }}
-        />
-        {t('vs_arrowKeys')}
-      </label>
     </div>
   )
 }
