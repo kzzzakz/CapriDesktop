@@ -269,7 +269,18 @@ export const de: Messages = {
   vs_micError: 'Es konnte nicht geöffnet werden. Prüfe die Datenschutzeinstellungen oder probiere ein anderes.',
   vs_micUnderstood: 'Ich habe verstanden:',
   vs_micNoWords: 'Ton kommt an, aber ich konnte keine Wörter erkennen.',
-  vs_arrowKeys: 'Pfeiltasten in anderen Apps als Kürzel nutzen (Strg+Alt+V geht immer)',
+  vs_arrowKeys: 'Diese Tasten in anderen Apps als Kürzel nutzen (Strg+Alt+V geht immer)',
+  vs_hotkeys: 'Tasten',
+  vs_hotkeyTalk: 'Mit ihr sprechen',
+  vs_hotkeyListen: 'Dauerhaft zuhören',
+  vs_hotkeyChat: 'Ihren Chat öffnen',
+  vs_hotkeyPress: 'Taste drücken...',
+  vs_hotkeyReset: 'Zurück zu den Pfeiltasten',
+  vs_hotkeyNeedsModifier: 'Ein Buchstabe, eine Zahl oder Enter allein würden überall sonst nicht mehr funktionieren: kombiniere sie mit Strg oder Alt.',
+  vs_hotkeyReserved: 'Diese Taste ist für etwas anderes reserviert.',
+  vs_hotkeyInUse: 'Eine andere Aktion nutzt diese Taste bereits.',
+  vs_hotkeyTaken: 'Eine andere App nutzt diese Taste bereits.',
+  vs_gamingOpacity: 'Ihre Deckkraft im Gaming-Modus',
   vs_sound: 'Ton',
   vs_voiceVolume: 'Stimmlautstärke',
   vs_effectsVolume: 'Effektlautstärke',
@@ -278,6 +289,36 @@ export const de: Messages = {
   ob_storageDefault: 'Standardordner auf dem Systemlaufwerk',
   ob_storageChange: 'Ändern',
   ob_storageReset: 'Standard verwenden',
+
+  ob_moveTitle: "Bereits Installiertes verschieben?",
+
+  ob_moveModels: "Ihre Modelle",
+
+  ob_moveWhisper: "Ihr Gehör (Whisper)",
+
+  ob_moveVoiceEnv: "Ihre Sprachumgebung",
+
+  ob_moveTools: "FFmpeg und Werkzeuge",
+
+  ob_moveOllamaProgram: "Ollama-Programm (wird neu heruntergeladen)",
+
+  ob_moveTotal: "Gesamt",
+
+  ob_moveFree: "Dort frei",
+
+  ob_moveNote: "Zuerst wird kopiert, die alten Dateien werden erst am Ende gelöscht. Python bleibt, wo es ist. Um Capri selbst zu verschieben, starte ihr Installationsprogramm erneut und wähle einen anderen Ordner.",
+
+  ob_moveNoSpace: "Auf diesem Datenträger ist nicht genug Speicher frei.",
+
+  ob_moveBadFolder: "Dieser Ordner liegt in dem, was verschoben wird. Wähle einen anderen.",
+
+  ob_moveCancel: "Abbrechen",
+
+  ob_moveConfirm: "Verschieben",
+
+  ob_moveDone: "Fertig. Sie nutzt jetzt den neuen Ort.",
+
+  ob_moveFailed: "Verschieben fehlgeschlagen. Was nicht fertig wurde, bleibt, wo es war.",
   vs_monitor: 'Monitor',
   vs_monitorMain: 'Haupt',
   vs_boredom: 'Sie darf sich langweilen: öffnet von selbst Tabs und Musik, wenn du still bist',

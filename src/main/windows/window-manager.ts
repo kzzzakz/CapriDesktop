@@ -1,5 +1,6 @@
 import { createOnboardingWindow } from './onboarding-window'
 import { BrowserWindow, app, screen, globalShortcut } from 'electron'
+import { DEFAULT_HOTKEYS, hotkeyProblem, type HotkeyAction, type HotkeyProblem, type Hotkeys } from '../../shared/hotkeys'
 import { createCompanionWindow } from './companion-window'
 import { createDeckWindow } from './deck-window'
 import { createScannerWindow } from './scanner-window'
@@ -188,23 +189,35 @@ export class WindowManager {
     })
   }
 
-  private arrowKeysRegistered = false
+  private registeredHotkeys: string[] = []
+
+  private releaseHotkeys(): void {
+    for (const key of this.registeredHotkeys) {
+      try {
+        globalShortcut.unregister(key)
+      } catch (err) {
+        console.warn(`[WindowManager] Could not release the shortcut ${key}:`, err)
+      }
+    }
+    this.registeredHotkeys = []
+  }
 
   private syncArrowKeys(): void {
     const wanted = consciousnessService.getArrowKeysEnabled() && !BrowserWindow.getFocusedWindow()
-    if (wanted === this.arrowKeysRegistered) return
-    this.arrowKeysRegistered = wanted
+    if (wanted === this.registeredHotkeys.length > 0) return
+    if (!wanted) return this.releaseHotkeys()
+    const hotkeys = consciousnessService.getHotkeys()
     const keys: [string, string][] = [
-      ['Down', IPC_CHANNELS.VOICE_TOGGLE_RECORDING],
-      ['Right', IPC_CHANNELS.VOICE_TOGGLE_ALWAYS_LISTENING],
-      ['Left', IPC_CHANNELS.COMPANION_TOGGLE_CHAT]
+      [hotkeys.talk, IPC_CHANNELS.VOICE_TOGGLE_RECORDING],
+      [hotkeys.listen, IPC_CHANNELS.VOICE_TOGGLE_ALWAYS_LISTENING],
+      [hotkeys.chat, IPC_CHANNELS.COMPANION_TOGGLE_CHAT]
     ]
     for (const [key, channel] of keys) {
       try {
-        if (wanted) globalShortcut.register(key, () => this.broadcast(channel))
-        else globalShortcut.unregister(key)
+        if (globalShortcut.register(key, () => this.broadcast(channel))) this.registeredHotkeys.push(key)
+        else console.warn(`[WindowManager] The shortcut ${key} belongs to another app`)
       } catch (err) {
-        console.warn(`[WindowManager] Could not change the shortcut ${key}:`, err)
+        console.warn(`[WindowManager] Could not register the shortcut ${key}:`, err)
       }
     }
   }
@@ -212,6 +225,42 @@ export class WindowManager {
   public setArrowKeysEnabled(enabled: boolean): void {
     consciousnessService.setArrowKeysEnabled(enabled)
     this.syncArrowKeys()
+  }
+
+  /** Changes one of her keys. It stays as it was if the new one can't be used, and says why */
+  public setHotkey(action: HotkeyAction, accelerator: string): { hotkeys: Hotkeys; problem: HotkeyProblem | null } {
+    const current = consciousnessService.getHotkeys()
+    if (current[action] === accelerator) return { hotkeys: current, problem: null }
+    let problem = hotkeyProblem(accelerator, action, current)
+    if (!problem) {
+      this.releaseHotkeys()
+      problem = this.canRegister(accelerator) ? null : 'taken'
+    }
+    if (!problem) {
+      consciousnessService.setHotkeys({ ...current, [action]: accelerator })
+      this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, consciousnessService.getHotkeys())
+    }
+    this.syncArrowKeys()
+    return { hotkeys: consciousnessService.getHotkeys(), problem }
+  }
+
+  public resetHotkeys(): Hotkeys {
+    this.releaseHotkeys()
+    consciousnessService.setHotkeys(DEFAULT_HOTKEYS)
+    this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, DEFAULT_HOTKEYS)
+    this.syncArrowKeys()
+    return DEFAULT_HOTKEYS
+  }
+
+  /** Whether the system would give her this key: another app may already hold it */
+  private canRegister(accelerator: string): boolean {
+    try {
+      if (!globalShortcut.register(accelerator, () => {})) return false
+      globalShortcut.unregister(accelerator)
+      return true
+    } catch {
+      return false
+    }
   }
 
   public finishOnboarding(): void {

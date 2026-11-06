@@ -269,7 +269,18 @@ export const ko: Messages = {
   vs_micError: '열 수 없습니다. 시스템 개인 정보 설정을 확인하거나 다른 마이크를 사용하세요.',
   vs_micUnderstood: '이해한 내용:',
   vs_micNoWords: '소리는 들어오지만 말을 알아들을 수 없었어.',
-  vs_arrowKeys: '다른 앱에서도 화살표 키를 단축키로 사용 (Ctrl+Alt+V는 항상 작동)',
+  vs_arrowKeys: '다른 앱에서도 이 키를 단축키로 사용 (Ctrl+Alt+V는 항상 작동)',
+  vs_hotkeys: '키',
+  vs_hotkeyTalk: '말 걸기',
+  vs_hotkeyListen: '항상 듣기',
+  vs_hotkeyChat: '채팅 열기',
+  vs_hotkeyPress: '키를 누르세요...',
+  vs_hotkeyReset: '화살표 키로 되돌리기',
+  vs_hotkeyNeedsModifier: '문자, 숫자, Enter를 단독으로 쓰면 다른 곳에서 작동하지 않게 돼요. Ctrl이나 Alt와 함께 쓰세요.',
+  vs_hotkeyReserved: '그 키는 다른 용도로 예약되어 있어요.',
+  vs_hotkeyInUse: '다른 동작이 이미 그 키를 쓰고 있어요.',
+  vs_hotkeyTaken: '다른 앱이 이미 그 키를 쓰고 있어요.',
+  vs_gamingOpacity: '게이밍 모드에서의 불투명도',
   vs_sound: '소리',
   vs_voiceVolume: '음성 볼륨',
   vs_effectsVolume: '효과음 볼륨',
@@ -278,6 +289,36 @@ export const ko: Messages = {
   ob_storageDefault: '시스템 디스크의 기본 폴더',
   ob_storageChange: '변경',
   ob_storageReset: '기본값 사용',
+
+  ob_moveTitle: "이미 설치된 항목을 옮길까요?",
+
+  ob_moveModels: "모델",
+
+  ob_moveWhisper: "청각 (Whisper)",
+
+  ob_moveVoiceEnv: "음성 환경",
+
+  ob_moveTools: "FFmpeg 및 도구",
+
+  ob_moveOllamaProgram: "Ollama 프로그램 (다시 다운로드됨)",
+
+  ob_moveTotal: "합계",
+
+  ob_moveFree: "대상 여유 공간",
+
+  ob_moveNote: "먼저 복사한 뒤 이전 파일은 마지막에 삭제합니다. Python은 그대로 둡니다. Capri 자체를 옮기려면 설치 프로그램을 다시 실행해 다른 폴더를 선택하세요.",
+
+  ob_moveNoSpace: "해당 디스크의 여유 공간이 부족합니다.",
+
+  ob_moveBadFolder: "그 폴더는 옮길 항목 안에 있습니다. 다른 폴더를 선택하세요.",
+
+  ob_moveCancel: "취소",
+
+  ob_moveConfirm: "옮기기",
+
+  ob_moveDone: "완료했습니다. 이제 새 위치를 사용합니다.",
+
+  ob_moveFailed: "옮기지 못했습니다. 끝나지 않은 항목은 원래 위치에 남아 있습니다.",
   vs_monitor: '모니터',
   vs_monitorMain: '주 모니터',
   vs_boredom: '심심해하기 허용: 말을 걸지 않으면 혼자 탭과 음악을 엽니다',
