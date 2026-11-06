@@ -824,5 +824,8 @@
  "[worried] I couldn't install it: {0}. I'm opening the page so you can do it by hand.",
  "[curious] I can't find {0} anywhere, choomba. Show me where it is and I'll remember it.",
  "Where is {0}?",
- "I couldn't open {0}, choomba. Ask me again whenever you want and show me where it is."
+ "I couldn't open {0}, choomba. Ask me again whenever you want and show me where it is.",
+ "Show Capri",
+ "Dev Deck",
+ "Quit"
 ]
