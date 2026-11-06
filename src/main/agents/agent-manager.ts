@@ -223,7 +223,7 @@ export class AgentManager extends EventEmitter {
   public async detectOllama(): Promise<{ running: boolean; models: string[] }> {
     if (isRemoteMode()) {
       const settings = getLlmSettings()
-      return { running: true, models: [settings.provider === 'claude-code' ? settings.claudeModel : settings.model] }
+      return { running: true, models: [settings.provider === 'claude-code' ? settings.claudeModel : settings.provider === 'codex' ? settings.codexModel || 'Codex' : settings.model] }
     }
     return await ollamaService.ensureRunning()
   }

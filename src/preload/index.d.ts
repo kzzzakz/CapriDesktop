@@ -110,6 +110,7 @@ export interface IElectronAPI {
     getLlmSettings: () => Promise<LlmPublicSettings>
     setLlmSettings: (update: LlmSettingsUpdate) => Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }>
     listLlmModels: (baseUrl: string, apiKey?: string) => Promise<{ ok: boolean; models: string[]; error?: string }>
+    testCodex: (model: string) => Promise<{ ok: boolean; error?: string }>
     testClaude: (model: 'haiku' | 'sonnet' | 'opus') => Promise<{ ok: boolean; error?: string }>
     testLlm: (baseUrl: string, model: string, apiKey?: string) => Promise<{ ok: boolean; error?: string }>
     clearHistory: () => Promise<boolean>
