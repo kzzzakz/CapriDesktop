@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
 import { IPC_CHANNELS, ScannerBounds } from '../ipc/channels'
+import { clampGamingOpacity, normalizeHotkeys, type Hotkeys } from '../../shared/hotkeys'
 
 export type MusicPlatform = 'youtube_music' | 'spotify'
 
@@ -29,6 +30,8 @@ export interface ConsciousnessData {
   companionDisplayId?: number
   /** The arrow keys work as shortcuts while another app has the focus */
   arrowKeysEnabled?: boolean
+  hotkeys?: Hotkeys
+  gamingOpacity?: number
   /** Hash of the Modelfile the installed persona was built from */
   personaVersion?: string
   /** App version of the previous run, to read the patch scripts after an update */
@@ -282,6 +285,24 @@ class ConsciousnessService {
 
   public setCompanionDisplayId(id: number): void {
     this.data.companionDisplayId = id
+    this.save()
+  }
+
+  public getHotkeys(): Hotkeys {
+    return normalizeHotkeys(this.data.hotkeys)
+  }
+
+  public setHotkeys(hotkeys: Hotkeys): void {
+    this.data.hotkeys = hotkeys
+    this.save()
+  }
+
+  public getGamingOpacity(): number {
+    return clampGamingOpacity(this.data.gamingOpacity)
+  }
+
+  public setGamingOpacity(value: number): void {
+    this.data.gamingOpacity = clampGamingOpacity(value)
     this.save()
   }
 

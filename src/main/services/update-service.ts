@@ -112,6 +112,12 @@ class UpdateService {
     consciousnessService.setLastRunVersion(current)
   }
 
+  /** "¿En qué versión estás?" */
+  public versionLine(lang: Lang): string {
+    const current = app.getVersion()
+    return lang === 'es' ? `[happy] Estoy en la versión ${current}, choomba.` : `[happy] I'm on version ${current}, choomba.`
+  }
+
   /** "¿Qué hay de nuevo?": the script of the version that's running */
   public whatsNew(lang: Lang): string {
     const current = app.getVersion()

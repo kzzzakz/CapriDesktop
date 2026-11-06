@@ -269,7 +269,18 @@ export const ja: Messages = {
   vs_micError: '開けませんでした。システムのプライバシー設定を確認するか、別のマイクを試してください。',
   vs_micUnderstood: '聞き取れた内容:',
   vs_micNoWords: '音は入っていますが、言葉を聞き取れませんでした。',
-  vs_arrowKeys: '他のアプリでも矢印キーをショートカットにする (Ctrl+Alt+V は常に使えます)',
+  vs_arrowKeys: 'これらのキーを他のアプリでもショートカットにする (Ctrl+Alt+V は常に使えます)',
+  vs_hotkeys: 'キー',
+  vs_hotkeyTalk: '話しかける',
+  vs_hotkeyListen: '常に聞く',
+  vs_hotkeyChat: 'チャットを開く',
+  vs_hotkeyPress: 'キーを押して...',
+  vs_hotkeyReset: '矢印キーに戻す',
+  vs_hotkeyNeedsModifier: '文字、数字、Enter を単独で使うと他の場所で使えなくなります。Ctrl か Alt と組み合わせてください。',
+  vs_hotkeyReserved: 'そのキーは別の用途に予約されています。',
+  vs_hotkeyInUse: 'そのキーは別の操作で使われています。',
+  vs_hotkeyTaken: 'そのキーは別のアプリが使っています。',
+  vs_gamingOpacity: 'ゲーミングモードでの不透明度',
   vs_sound: 'サウンド',
   vs_voiceVolume: '音声の音量',
   vs_effectsVolume: '効果音の音量',
@@ -278,6 +289,36 @@ export const ja: Messages = {
   ob_storageDefault: 'システムディスクの既定のフォルダー',
   ob_storageChange: '変更',
   ob_storageReset: '既定に戻す',
+
+  ob_moveTitle: "インストール済みのものを移動しますか?",
+
+  ob_moveModels: "彼女のモデル",
+
+  ob_moveWhisper: "彼女の聴覚 (Whisper)",
+
+  ob_moveVoiceEnv: "彼女の音声環境",
+
+  ob_moveTools: "FFmpeg とツール",
+
+  ob_moveOllamaProgram: "Ollama 本体 (再ダウンロードされます)",
+
+  ob_moveTotal: "合計",
+
+  ob_moveFree: "移動先の空き",
+
+  ob_moveNote: "先にコピーし、古いファイルは最後に削除します。Python はそのままです。Capri 本体を移動するには、インストーラーをもう一度実行して別のフォルダーを選んでください。",
+
+  ob_moveNoSpace: "そのディスクの空き容量が足りません。",
+
+  ob_moveBadFolder: "そのフォルダーは移動対象の中にあります。別のフォルダーを選んでください。",
+
+  ob_moveCancel: "キャンセル",
+
+  ob_moveConfirm: "移動",
+
+  ob_moveDone: "完了しました。新しい場所を使っています。",
+
+  ob_moveFailed: "移動できませんでした。完了していないものは元の場所に残っています。",
   vs_monitor: 'モニター',
   vs_monitorMain: 'メイン',
   vs_boredom: '退屈を許可: 話しかけないと自分でタブや音楽を開きます',

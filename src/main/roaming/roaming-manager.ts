@@ -95,6 +95,9 @@ export class RoamingManager {
   private isTabMode = false
   private isEyeMode = false
   private isSelfMoving = false
+  /** She was told to stay where she is: nothing moves her until the user does, or tells her she can */
+  private holdingStill = false
+  private heldAt: { x: number; y: number } | null = null
   private tabTrackTimer: NodeJS.Timeout | null = null
   private trackProcess: ChildProcess | null = null
   private linuxTrackTimer: NodeJS.Timeout | null = null
@@ -153,9 +156,30 @@ export class RoamingManager {
     return this.isEyeMode
   }
 
+  public holdStill(): void {
+    this.clearTimers()
+    if (this.isTabMode || this.currentBehavior === 'tab') {
+      windowManager.setTabMode(false, undefined, true)
+      windowManager.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE, false)
+      this.isTabMode = false
+    }
+    this.holdingStill = true
+    this.heldAt = windowManager.getCompanionWindow()?.getBounds() ?? null
+    this.isRoaming = false
+    this.isPaused = false
+    this.currentBehavior = 'still'
+    if (!this.isEyeMode && !windowManager.isGamingModeActive()) agentManager.setCompanionState('standing')
+    this.broadcastStatus()
+  }
+
+  public releaseHold(): void {
+    this.holdingStill = false
+    this.startAutonomousCycle()
+  }
+
   // --- Autonomous Behavior Cycle (Desktop Mode) ---
   public startAutonomousCycle(): void {
-    if (this.isEyeMode || this.isCatchGameActive || windowManager.isGamingModeActive()) return
+    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive || windowManager.isGamingModeActive()) return
     this.clearTimers()
     this.isPaused = false
 
@@ -169,7 +193,7 @@ export class RoamingManager {
   }
 
   private scheduleNextAutonomousBehavior(delayMs?: number): void {
-    if (this.isEyeMode || this.isCatchGameActive || this.isPaused || windowManager.isGamingModeActive()) return
+    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive || this.isPaused || windowManager.isGamingModeActive()) return
     if (this.autonomousTimer) clearTimeout(this.autonomousTimer)
 
     // Weighted random selection of next autonomous behavior
@@ -203,7 +227,7 @@ export class RoamingManager {
   }
 
   public transitionToBehavior(behavior: 'walking' | 'still' | 'tab'): void {
-    if (this.isEyeMode || this.isCatchGameActive) return
+    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive) return
 
     if (behavior !== 'tab') {
       this.stopTabTracking()
@@ -277,6 +301,7 @@ export class RoamingManager {
   }
 
   public async sitOnWindowedTab(): Promise<WindowedAppInfo | null> {
+    this.holdingStill = false
     this.isEyeMode = false
     this.isPaused = false
     this.clearTimers()
@@ -488,6 +513,7 @@ export class RoamingManager {
 
   public toggle(): boolean {
     if (this.isEyeMode) return false
+    this.holdingStill = false
     if (this.isRoaming) {
       this.transitionToBehavior('still')
       return false
@@ -501,6 +527,7 @@ export class RoamingManager {
     if (this.isTabMode || this.currentBehavior === 'tab') {
       return
     }
+    this.holdingStill = false
     this.isEyeMode = false
     this.isPaused = false
     this.transitionToBehavior('walking')
@@ -527,12 +554,15 @@ export class RoamingManager {
     }
     this.isEyeMode = false
     this.isPaused = false
+    if (this.holdingStill) return this.broadcastStatus()
     this.transitionToBehavior('walking')
     this.startAutonomousCycle()
     this.broadcastStatus()
   }
 
-  public notifyUserDrag(_x?: number, _y?: number): void {
+  public notifyUserDrag(x?: number, y?: number): void {
+    // A click that shakes a pixel isn't moving her: same distance the window uses to call it a drag
+    if (this.holdingStill && this.heldAt && x !== undefined && y !== undefined && Math.hypot(x - this.heldAt.x, y - this.heldAt.y) <= 10) return
     this.stopTabTracking()
     if (this.isTabMode || this.currentBehavior === 'tab') {
       this.isTabMode = false
@@ -547,6 +577,7 @@ export class RoamingManager {
 
   public handleUserDrag(): void {
     if (this.isEyeMode || windowManager.isGamingModeActive()) return
+    this.holdingStill = false // "until you move me": this is that
     this.stopTabTracking()
     // If user dragged window, pause autonomous transitions for 10 seconds
     if (this.autonomousTimer) clearTimeout(this.autonomousTimer)
@@ -584,6 +615,7 @@ export class RoamingManager {
     windowManager.hideDeck()
     this.clearTimers()
 
+    this.holdingStill = false
     this.isRoaming = true
     this.isPaused = false
     this.isCatchGameActive = true

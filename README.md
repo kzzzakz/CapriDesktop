@@ -200,7 +200,7 @@ Capri understands commands in both English and Spanish.
 | Hold `Ctrl` in Game Mode | In Game Mode Capri lets clicks pass through to the game; hold `Ctrl` over her to move or touch her. |
 | `Ctrl+Alt+G` in Game Mode (Linux) | Same as holding `Ctrl`, which Linux can't detect in that mode. |
 
-> **Note:** while another app has the focus, those arrows are reserved for her. You can turn that off in the voice settings; `Ctrl+Alt+V` always works. In her own windows the arrows work normally in text fields.
+> **Note:** while another app has the focus, those arrows are reserved for her. You can change those keys or turn them off in the voice settings; `Ctrl+Alt+V` always works. In her own windows the arrows work normally in text fields.
 
 ### Mouse
 | Action | What it does |
@@ -216,6 +216,7 @@ Capri understands commands in both English and Spanish.
 | `show me your red eye` / `mostrame tu ojo rojo` | Changes her look. Also `your eye` / `tu ojo` and `your big eyes` / `tus ojos`. |
 | `why did you pick that?` / `¿por qué elegiste eso?` | She answers about what she just said or did on her own. |
 | `what's new?` / `¿qué hay de nuevo?` | Reads the notes of this version. |
+| `what version are you on?` / `¿en qué versión estás?` | Tells you her version. |
 | `update yourself` / `actualizate` | Looks for a new version and installs it. A `.deb` asks for your password. |
 | `clip that` / `clipeá eso` | Saves the last moments of your game with ShadowPlay (`F8`). |
 | `are you bored?` / `¿estás aburrida?` | She finds something to do: music, a video or a search. |
@@ -269,6 +270,8 @@ The drawing, League of Legends and Cyberpunk 2077 commands are in [section 8](#8
 | :--- | :--- |
 | `sit on tabs` / `sentate en la pestaña` | Capri perches on your browser tabs. |
 | `sit on the desktop` / `sentate en el escritorio` | She goes back to the desktop. |
+| `stay still` / `quedate quieta` | She stays where she is until you move her. |
+| `you can move` / `podés moverte` | She goes back to wandering around. |
 | `what are you doing?` | She tells you how she feels and what she's up to. |
 
 ---
@@ -426,7 +429,9 @@ Paint drawing isn't available on Linux. Everything that differs from Windows is 
 
 ### Choosing a disk
 
-If you install her on a disk other than the system's, her requirements go there too, in a `CapriData` folder: Python, the voice environment, Whisper, FFmpeg, Ollama and its models. Requirements you already have stay where they are. You can pick another folder in the first-run setup, under **Where to install**.
+If you install her on a disk other than the system's, her requirements go there too, in a `CapriData` folder: Python, the voice environment, Whisper, FFmpeg, Ollama and its models. Models you already have stay where they are. You can pick another folder in the first-run setup, under **Where to install**.
+
+If she's already installed, the same option moves everything to the new folder: it shows what's moving and how much it weighs, copies it, and only deletes the old files at the end. Python stays where it is, and the Ollama program is downloaded again by its own installer. To move Capri herself, run her installer again and pick another folder.
 
 ### If she doesn't hear you
 

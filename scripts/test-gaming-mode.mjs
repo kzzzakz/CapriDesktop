@@ -154,6 +154,7 @@ test('main rejects unlocks over a game and restores Ctrl interaction after alt-t
   manager.companionWin = {
     isDestroyed: () => false,
     setFocusable: (value) => { focusable = value },
+    setSkipTaskbar: () => {},
     setOpacity: () => {},
     setIgnoreMouseEvents: (value, options) => {
       ignoring = value

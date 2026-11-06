@@ -267,7 +267,18 @@ export const en = {
   vs_micError: 'It could not be opened. Check the privacy settings of your system or try another one.',
   vs_micUnderstood: 'I understood:',
   vs_micNoWords: 'Sound is coming in, but I could not make out any words.',
-  vs_arrowKeys: 'Use the arrow keys as shortcuts in other apps (Ctrl+Alt+V always works)',
+  vs_arrowKeys: 'Use these keys as shortcuts in other apps (Ctrl+Alt+V always works)',
+  vs_hotkeys: 'Keys',
+  vs_hotkeyTalk: 'Talk to her',
+  vs_hotkeyListen: 'Always listening',
+  vs_hotkeyChat: 'Open her chat',
+  vs_hotkeyPress: 'Press a key...',
+  vs_hotkeyReset: 'Back to the arrow keys',
+  vs_hotkeyNeedsModifier: 'A letter, number or Enter on its own would stop working everywhere else: combine it with Ctrl or Alt.',
+  vs_hotkeyReserved: 'That key is reserved for something else.',
+  vs_hotkeyInUse: 'Another action already uses that key.',
+  vs_hotkeyTaken: 'Another app is already using that key.',
+  vs_gamingOpacity: 'Her opacity in Gaming Mode',
   vs_sound: 'Sound',
   vs_voiceVolume: 'Voice volume',
   vs_effectsVolume: 'Effects volume',
@@ -276,6 +287,36 @@ export const en = {
   ob_storageDefault: 'Default folders on the system disk',
   ob_storageChange: 'Change',
   ob_storageReset: 'Use default',
+
+  ob_moveTitle: "Move what's already installed?",
+
+  ob_moveModels: "Her models",
+
+  ob_moveWhisper: "Her hearing (Whisper)",
+
+  ob_moveVoiceEnv: "Her voice environment",
+
+  ob_moveTools: "FFmpeg and tools",
+
+  ob_moveOllamaProgram: "Ollama program (downloaded again)",
+
+  ob_moveTotal: "Total",
+
+  ob_moveFree: "Free there",
+
+  ob_moveNote: "It's copied first and the old files are deleted only at the end. Python stays where it is. To move Capri herself, run her installer again and pick another folder.",
+
+  ob_moveNoSpace: "There isn't enough free space on that disk.",
+
+  ob_moveBadFolder: "That folder is inside what's being moved. Pick another one.",
+
+  ob_moveCancel: "Cancel",
+
+  ob_moveConfirm: "Move",
+
+  ob_moveDone: "Moved. She's using the new location.",
+
+  ob_moveFailed: "It couldn't be moved. Everything that wasn't finished stays where it was.",
   vs_monitor: 'Monitor',
   vs_monitorMain: 'main',
   vs_boredom: 'Let her get bored: she opens tabs and music by herself when you are quiet',

@@ -269,7 +269,18 @@ export const it: Messages = {
   vs_micError: 'Impossibile aprirlo. Controlla la privacy del sistema o provane un altro.',
   vs_micUnderstood: 'Ho capito:',
   vs_micNoWords: 'Il suono arriva, ma non ho distinto parole.',
-  vs_arrowKeys: 'Usa le frecce come scorciatoie nelle altre app (Ctrl+Alt+V funziona sempre)',
+  vs_arrowKeys: 'Usa questi tasti come scorciatoie nelle altre app (Ctrl+Alt+V funziona sempre)',
+  vs_hotkeys: 'Tasti',
+  vs_hotkeyTalk: 'Parlarle',
+  vs_hotkeyListen: 'Ascolto continuo',
+  vs_hotkeyChat: 'Aprire la sua chat',
+  vs_hotkeyPress: 'Premi un tasto...',
+  vs_hotkeyReset: 'Torna alle frecce',
+  vs_hotkeyNeedsModifier: 'Una lettera, un numero o Invio da soli smetterebbero di funzionare altrove: combinali con Ctrl o Alt.',
+  vs_hotkeyReserved: 'Questo tasto è riservato ad altro.',
+  vs_hotkeyInUse: 'Un\'altra azione usa già questo tasto.',
+  vs_hotkeyTaken: 'Un\'altra app usa già questo tasto.',
+  vs_gamingOpacity: 'La sua opacità in modalità gaming',
   vs_sound: 'Suono',
   vs_voiceVolume: 'Volume della voce',
   vs_effectsVolume: 'Volume degli effetti',
@@ -278,6 +289,36 @@ export const it: Messages = {
   ob_storageDefault: 'Cartelle predefinite sul disco di sistema',
   ob_storageChange: 'Cambia',
   ob_storageReset: 'Usa predefinito',
+
+  ob_moveTitle: "Spostare ciò che è già installato?",
+
+  ob_moveModels: "I suoi modelli",
+
+  ob_moveWhisper: "Il suo udito (Whisper)",
+
+  ob_moveVoiceEnv: "Il suo ambiente vocale",
+
+  ob_moveTools: "FFmpeg e strumenti",
+
+  ob_moveOllamaProgram: "Programma Ollama (verrà riscaricato)",
+
+  ob_moveTotal: "Totale",
+
+  ob_moveFree: "Libero lì",
+
+  ob_moveNote: "Prima viene copiato e i vecchi file vengono eliminati solo alla fine. Python resta dov'è. Per spostare Capri stessa, riesegui il suo programma di installazione e scegli un'altra cartella.",
+
+  ob_moveNoSpace: "Non c'è abbastanza spazio libero su quel disco.",
+
+  ob_moveBadFolder: "Quella cartella è dentro ciò che verrà spostato. Scegline un'altra.",
+
+  ob_moveCancel: "Annulla",
+
+  ob_moveConfirm: "Sposta",
+
+  ob_moveDone: "Fatto. Ora usa la nuova posizione.",
+
+  ob_moveFailed: "Non è stato possibile spostare. Ciò che non è stato completato resta dov'era.",
   vs_monitor: 'Monitor',
   vs_monitorMain: 'principale',
   vs_boredom: 'Può annoiarsi: apre schede e musica da sola quando non le parli',

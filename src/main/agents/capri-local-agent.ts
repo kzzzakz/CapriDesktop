@@ -31,6 +31,8 @@ import { lolCommentator } from '../services/game/adapters/lol/lol-commentator'
 import { CodingAgent, isCodingRequest } from './coding-agent'
 import { updateService } from '../services/update-service'
 import { cleanAppRequest } from '../services/app-finder'
+import { commandInEnglish } from './command-translations'
+import { appRequestInEnglish, isHoldStillRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
  * Deleting is only allowed when the user asked to delete and named that file or folder
@@ -105,7 +107,7 @@ function parseLolCommand(norm: string) {
 
   // Cancel / Stop queue / Cancel plan
   const wantsCancel =
-    /(?:cancel(?:a|ar)?|deten(?:er)?|stop)\s+(?:la\s+)?(?:b[uú]squeda|matchmaking|queue|cola|plan(?:\s+de\s+lol)?)|sal(?:ir|í)?\s+de\s+(?:la\s+)?cola|leave\s+queue/i.test(norm)
+    /(?:cancel(?:a|ar)?|deten(?:er)?|stop)\s+(?:la\s+|the\s+)?(?:b[uú]squeda|matchmaking|queue|cola|plan(?:\s+de\s+lol)?)|sal(?:ir|í)?\s+de\s+(?:la\s+)?cola|leave\s+queue/i.test(norm)
 
   // Search queue
   const wantsSearch =
@@ -303,13 +305,18 @@ export class CapriLocalAgent extends EventEmitter {
     // stays in the language of the conversation.
     const spokenPrompt = prompt
     const heardLang = voiceService.languageOfTranscript(prompt.trim())
-    const detectedLang = heardLang || CapriLocalAgent.detectLanguage(prompt.trim())
+    // A fixed command needs no model and no guessing: the phrase itself says which language it's in
+    const fixedCommand = commandInEnglish(prompt)
+    const detectedLang = heardLang || fixedCommand?.lang || CapriLocalAgent.detectLanguage(prompt.trim())
     if (detectedLang !== 'unknown') consciousnessService.setSpokenLanguage(detectedLang)
     const conversationLang = consciousnessService.getSpokenLanguage()
 
     // Her commands are recognized in English and Spanish. In any other language the command is
     // understood through a translation, while the answer stays in the language it was asked in.
-    if (conversationLang && !['en', 'es'].includes(conversationLang) && prompt.length < 300) {
+    if (fixedCommand) {
+      console.log(`[Capri Agent] Command in ${fixedCommand.lang}, read as: "${fixedCommand.text}"`)
+      prompt = fixedCommand.text
+    } else if (conversationLang && !['en', 'es'].includes(conversationLang) && prompt.length < 300) {
       const english = await voiceService.translateCommand(prompt.trim())
       // Sometimes the model answers instead of translating: an answer is not the command
       if (english && !/[\r\n]/.test(english) && english.length <= prompt.length * 2 + 20) {
@@ -418,8 +425,33 @@ export class CapriLocalAgent extends EventEmitter {
       }
     }
 
+    // "Quedate quieta": she stays where she is until the user moves her
+    if (isHoldStillRequest(trimmed)) {
+      roamingManager.holdStill()
+      this.emitAssistant(
+        isSpanish
+          ? '[happy] Listo, me quedo acá. [playful] No me muevo hasta que me muevas vos.'
+          : "[happy] Okay, I'm staying right here. [playful] I won't move until you move me."
+      )
+      this.finishSession()
+      return
+    }
+
+    if (isMoveAgainRequest(trimmed)) {
+      roamingManager.releaseHold()
+      this.emitAssistant(isSpanish ? '[excited] ¡Libre otra vez! Vuelvo a dar vueltas, choomba.' : '[excited] Free again! Back to wandering around, choomba.')
+      this.finishSession()
+      return
+    }
+
+    if (isVersionRequest(trimmed)) {
+      this.emitAssistant(updateService.versionLine(activeLang))
+      this.finishSession()
+      return
+    }
+
     // Self-update: "Capri, actualizate" -> latest GitHub Release, silent install, restart
-    if (isUpdateRequest(norm)) {
+    if (isUpdateRequest(norm) || isUpdateInOtherLanguage(trimmed)) {
       this.emitAssistant(
         isSpanish
           ? '[excited] ¡Dale! Me fijo si salió una versión nueva...'
@@ -431,7 +463,7 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // "¿Qué hay de nuevo?" -> the patch script of the running version (scripts-capri/)
-    if (isWhatsNewRequest(norm)) {
+    if (isWhatsNewRequest(norm) || isWhatsNewInOtherLanguage(trimmed)) {
       this.emitAssistant(updateService.whatsNew(activeLang))
       this.finishSession()
       return
@@ -1234,6 +1266,13 @@ export class CapriLocalAgent extends EventEmitter {
           ]
       this.emitAssistant(searchLines[Math.floor(Math.random() * searchLines.length)])
       this.finishSession()
+      return
+    }
+
+    // Opening or closing an app in a language or word order the patterns below can't read
+    const appRequest = appRequestInEnglish(trimmed)
+    if (appRequest) {
+      await this.runSmartAutonomous(appRequest, projectPath)
       return
     }
 
