@@ -39,6 +39,8 @@ export class SystemObserver {
   private isRunning = false
   private previousProcesses: Set<string> = new Set()
   private initialScanDone = false
+  private engagedGamingMode = false
+  private gamingModeUnsub: (() => void) | null = null
   private globalLastTriggered = 0
   private globalCooldownMs = 60 * 1000 // At least 60s between any proactive lines
 
@@ -62,6 +64,9 @@ export class SystemObserver {
   public start(): void {
     if (this.isRunning) return
     this.isRunning = true
+    this.gamingModeUnsub = windowManager.onGamingModeChanged((enabled) => {
+      if (!enabled) this.engagedGamingMode = false
+    })
     // Initial delay so app finishes loading before scanning
     setTimeout(() => {
       this.tick()
@@ -75,6 +80,8 @@ export class SystemObserver {
       this.timer = null
     }
     this.isRunning = false
+    this.gamingModeUnsub?.()
+    this.gamingModeUnsub = null
   }
 
   private async tick(): Promise<void> {
@@ -153,6 +160,32 @@ export class SystemObserver {
     }
   }
 
+  private engageGamingMode(): void {
+    if (windowManager.isGamingModeActive()) return
+    windowManager.setGamingMode(true)
+    this.engagedGamingMode = true
+  }
+
+  // If all games closed, disengage observer-owned Gaming Mode (with active adapter safeguard)
+  private reconcileGamingMode(isAnyGameNow: boolean): void {
+    if (!windowManager.isGamingModeActive()) {
+      this.engagedGamingMode = false
+      return
+    }
+    if (!this.engagedGamingMode || isAnyGameNow) return
+    try {
+      const hasActiveTelemetry =
+        cyberpunkAdapter.isCyberpunkActive() ||
+        lolLiveAdapter.isRunning() ||
+        valorantAdapter.isRunning() ||
+        wutheringWavesAdapter.isRunning()
+      if (hasActiveTelemetry) return
+      console.log('[SystemObserver] All game processes closed. Exiting Gaming Mode.')
+      windowManager.setGamingMode(false)
+      this.engagedGamingMode = false
+    } catch {}
+  }
+
   private async checkProcesses(): Promise<void> {
     const detectedMedia = await this.detectActiveMedia()
 
@@ -167,7 +200,7 @@ export class SystemObserver {
           if (currentProcesses.has('cyberpunk2077.exe')) {
             console.log('[SystemObserver] Cyberpunk 2077 already active on startup. Engaging Gaming Mode.')
             try {
-              windowManager.setGamingMode(true)
+              this.engageGamingMode()
             } catch {}
             try {
               if (!cyberpunkAdapter.isRunning()) {
@@ -179,6 +212,85 @@ export class SystemObserver {
         }
 
         const isEs = consciousnessService.getPreferredLanguage() === 'es'
+
+        // Universal Gaming Mode and Adapter Management for any Game
+        // (LoL, Cyberpunk, Valorant, CS2, Palworld, Roblox, etc.)
+        const isLolProcess = (p: Set<string>) => p.has('league of legends.exe')
+        const isCyberpunkProcess = (p: Set<string>) => p.has('cyberpunk2077.exe')
+        const isValorantProcess = (p: Set<string>) => p.has('valorant.exe') || p.has('valorant-win64-shipping.exe')
+        const isOtherGameProcess = (p: Set<string>) =>
+          p.has('cs2.exe') ||
+          p.has('csgo.exe') ||
+          p.has('dota2.exe') ||
+          p.has('palworld.exe') ||
+          p.has('palworld-win64-shipping.exe') ||
+          p.has('robloxplayerbeta.exe') ||
+          p.has('fortniteclient-win64-shipping.exe') ||
+          p.has('gta5.exe') ||
+          p.has('overwatch.exe') ||
+          p.has('r5apex.exe') ||
+          p.has('apex.exe') ||
+          p.has('rocketleague.exe') ||
+          p.has('eldenring.exe') ||
+          p.has('witcher3.exe')
+
+        const hasLolNow = isLolProcess(currentProcesses)
+        const hadLolBefore = isLolProcess(this.previousProcesses)
+
+        const hasCyberpunkNow = isCyberpunkProcess(currentProcesses)
+        const hadCyberpunkBefore = isCyberpunkProcess(this.previousProcesses)
+
+        const isAnyGameNow =
+          hasCyberpunkNow ||
+          hasLolNow ||
+          isValorantProcess(currentProcesses) ||
+          isOtherGameProcess(currentProcesses)
+
+        const wasAnyGameBefore =
+          hadCyberpunkBefore ||
+          hadLolBefore ||
+          isValorantProcess(this.previousProcesses) ||
+          isOtherGameProcess(this.previousProcesses)
+
+        // If any game starts, engage Gaming Mode and relevant adapters
+        if (isAnyGameNow && !wasAnyGameBefore) {
+          console.log('[SystemObserver] Game detected. Engaging Gaming Mode.')
+          try {
+            this.engageGamingMode()
+          } catch {}
+        }
+
+        // Specific LoL adapter lifecycle
+        if (hasLolNow && !hadLolBefore) {
+          try {
+            if (!lolLiveAdapter.isRunning()) {
+              lolLiveAdapter.start().catch(() => {})
+            }
+          } catch {}
+        } else if (!hasLolNow) {
+          try {
+            if (lolLiveAdapter.isRunning()) {
+              lolLiveAdapter.stop().catch(() => {})
+            }
+          } catch {}
+        }
+
+        // Specific Cyberpunk adapter lifecycle
+        if (hasCyberpunkNow && !hadCyberpunkBefore) {
+          try {
+            if (!cyberpunkAdapter.isRunning()) {
+              cyberpunkAdapter.start().catch(() => {})
+            }
+          } catch {}
+        } else if (!hasCyberpunkNow && hadCyberpunkBefore) {
+          try {
+            if (cyberpunkAdapter.isRunning()) {
+              cyberpunkAdapter.stop().catch(() => {})
+            }
+          } catch {}
+        }
+
+        this.reconcileGamingMode(isAnyGameNow)
 
         // Check for proactive media comment (YouTube, TikTok, Reels, Twitch, Netflix, Spotify)
         if (
@@ -287,99 +399,6 @@ export class SystemObserver {
           )
           this.previousProcesses = currentProcesses
           return resolve()
-        }
-
-        // Universal Gaming Mode and Adapter Management for any Game (LoL, Cyberpunk, Valorant, CS2, Palworld, Roblox, etc.)
-        const isLolProcess = (p: Set<string>) => p.has('league of legends.exe')
-        const isCyberpunkProcess = (p: Set<string>) => p.has('cyberpunk2077.exe')
-        const isValorantProcess = (p: Set<string>) => p.has('valorant.exe') || p.has('valorant-win64-shipping.exe')
-        const isOtherGameProcess = (p: Set<string>) =>
-          p.has('cs2.exe') ||
-          p.has('csgo.exe') ||
-          p.has('dota2.exe') ||
-          p.has('palworld.exe') ||
-          p.has('palworld-win64-shipping.exe') ||
-          p.has('robloxplayerbeta.exe') ||
-          p.has('fortniteclient-win64-shipping.exe') ||
-          p.has('gta5.exe') ||
-          p.has('overwatch.exe') ||
-          p.has('r5apex.exe') ||
-          p.has('apex.exe') ||
-          p.has('rocketleague.exe') ||
-          p.has('eldenring.exe') ||
-          p.has('witcher3.exe')
-
-        const hasLolNow = isLolProcess(currentProcesses)
-        const hadLolBefore = isLolProcess(this.previousProcesses)
-
-        const hasCyberpunkNow = isCyberpunkProcess(currentProcesses)
-        const hadCyberpunkBefore = isCyberpunkProcess(this.previousProcesses)
-
-        const isAnyGameNow =
-          hasCyberpunkNow ||
-          hasLolNow ||
-          isValorantProcess(currentProcesses) ||
-          isOtherGameProcess(currentProcesses)
-
-        const wasAnyGameBefore =
-          hadCyberpunkBefore ||
-          hadLolBefore ||
-          isValorantProcess(this.previousProcesses) ||
-          isOtherGameProcess(this.previousProcesses)
-
-        // If any game starts, engage Gaming Mode and relevant adapters
-        if (isAnyGameNow && !wasAnyGameBefore) {
-          console.log('[SystemObserver] Game detected. Engaging Gaming Mode.')
-          try {
-            windowManager.setGamingMode(true)
-          } catch {}
-        }
-
-        // If all games closed, disengage Gaming Mode (with active adapter safeguard)
-        if (!isAnyGameNow && wasAnyGameBefore) {
-          let hasActiveTelemetry = false
-          try {
-            if (cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()) {
-              hasActiveTelemetry = true
-            }
-          } catch {}
-
-          if (!hasActiveTelemetry) {
-            console.log('[SystemObserver] All game processes closed. Exiting Gaming Mode.')
-            try {
-              windowManager.setGamingMode(false)
-            } catch {}
-          }
-        }
-
-        // Specific LoL adapter lifecycle
-        if (hasLolNow && !hadLolBefore) {
-          try {
-            if (!lolLiveAdapter.isRunning()) {
-              lolLiveAdapter.start().catch(() => {})
-            }
-          } catch {}
-        } else if (!hasLolNow && hadLolBefore) {
-          try {
-            if (lolLiveAdapter.isRunning()) {
-              lolLiveAdapter.stop().catch(() => {})
-            }
-          } catch {}
-        }
-
-        // Specific Cyberpunk adapter lifecycle
-        if (hasCyberpunkNow && !hadCyberpunkBefore) {
-          try {
-            if (!cyberpunkAdapter.isRunning()) {
-              cyberpunkAdapter.start().catch(() => {})
-            }
-          } catch {}
-        } else if (!hasCyberpunkNow && hadCyberpunkBefore) {
-          try {
-            if (cyberpunkAdapter.isRunning()) {
-              cyberpunkAdapter.stop().catch(() => {})
-            }
-          } catch {}
         }
 
         // Reactions to specific game starts:
