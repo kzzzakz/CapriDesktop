@@ -569,7 +569,7 @@ export class SystemObserver {
             const lowerTitle = rawTitle.toLowerCase()
 
             // YouTube Video
-            if (lowerTitle.includes('youtube') && !freshRegistry.youtube) {
+            if (lowerTitle.includes('youtube') && !lowerTitle.includes('youtube music') && !freshRegistry.youtube) {
               let cleanTitle = rawTitle
                 .replace(/\s*-\s*YouTube.*$/i, '')
                 .replace(/\s*-\s*(?:Google Chrome|Microsoft Edge|Brave|Mozilla Firefox|Opera(?:\s+GX)?).*$/i, '')
