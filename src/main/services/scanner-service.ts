@@ -232,6 +232,9 @@ export class ScannerService {
     return source.thumbnail.toJPEG(75).toString('base64')
   }
 
+  /**
+   * Detects available vision model in Ollama (qwen2.5-vl, llava, minicpm-v, etc.)
+   */
   public async detectVisionModel(localOnly = false): Promise<string | null> {
     try {
       const resp = await (localOnly ? fetch : llmFetch)('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) })

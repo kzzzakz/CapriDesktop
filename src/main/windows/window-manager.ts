@@ -379,6 +379,7 @@ export class WindowManager {
       this.companionWin.showInactive()
 
       this.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE, true)
+      // Broadcast appropriate sitting state: 'idle_front' for front pose, 'idle' for tab perch
       const targetState = sittingPose === 'front' ? 'idle_front' : 'idle'
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, targetState)
       return true
@@ -449,6 +450,10 @@ export class WindowManager {
     this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true, foreground)
   }
 
+  /**
+   * Outside her body clicks go to whatever is behind her window. In Gaming Mode she never eats
+   * clicks meant for the foreground game; elsewhere forwarded mouse events let Ctrl re-enable clicks.
+   */
   public setCompanionClickThrough(ignore: boolean): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
     const blocked = this.isGameForeground()

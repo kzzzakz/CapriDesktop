@@ -38,6 +38,8 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
   ({ onProviderChange }, ref) => {
     const t = useT()
     const [provider, setProvider] = useState<'local' | 'cloud' | 'claude-code' | 'codex'>('local')
+    const [claudeInstalled, setClaudeInstalled] = useState(false)
+    const [savedClaudeProvider, setSavedClaudeProvider] = useState(false)
     const [preset, setPreset] = useState('openai')
     const [baseUrl, setBaseUrl] = useState(PRESETS[0].baseUrl)
     const [model, setModel] = useState('')
@@ -52,9 +54,11 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
     const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
     useEffect(() => {
+      window.api?.agent?.isClaudeInstalled?.().then(setClaudeInstalled).catch(() => setClaudeInstalled(false))
       window.api?.agent?.getLlmSettings?.().then((s) => {
         if (!s) return
         setProvider(s.provider)
+        setSavedClaudeProvider(s.provider === 'claude-code')
         if (s.preset) setPreset(s.preset)
         if (s.baseUrl) setBaseUrl(s.baseUrl)
         setModel(s.model)
@@ -147,6 +151,7 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
     }))
 
     const field = 'cp-input w-full px-3 py-2 text-[15px] select-text'
+    const showClaude = claudeInstalled || savedClaudeProvider
 
     return (
       <div className="space-y-4">
@@ -158,7 +163,7 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
               ['claude-code', 'llm_claudeCode', 'llm_claudeCodeDesc', <Terminal size={16} key="i" />],
               ['codex', 'llm_codex', 'llm_codexDesc', <Terminal size={16} key="i" />]
             ] as const
-          ).map(([id, title, desc, icon]) => {
+          ).filter(([id]) => id !== 'claude-code' || showClaude).map(([id, title, desc, icon]) => {
             const active = provider === id
             return (
               <button

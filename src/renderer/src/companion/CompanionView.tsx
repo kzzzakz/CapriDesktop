@@ -775,6 +775,7 @@ export const CompanionView: React.FC = () => {
         console.warn('[VoiceRecord] AudioContext visualizer init note:', e)
       }
 
+      // MediaRecorder with 700ms chunk slices for real-time word streaming
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm'
@@ -787,6 +788,7 @@ export const CompanionView: React.FC = () => {
         if (e.data.size > 0) {
           audioChunksRef.current.push(e.data)
 
+          // Incremental transcription so words stream in real-time as the user speaks
           if (recorder.state === 'recording' && Date.now() - lastPartialAt >= 1500 && !isTranscribingChunkRef.current) {
             lastPartialAt = Date.now()
             isTranscribingChunkRef.current = true
@@ -1353,6 +1355,7 @@ export const CompanionView: React.FC = () => {
       return 'curious'
     }
 
+    // Tab Mode: Capri is perched sitting on window tab or sitting front in the screen corner -> 'idle_front' or 'idle'
     if (isTabMode) return emotion === 'idle_front' ? 'idle_front' : 'idle'
 
     // Closed or sleep

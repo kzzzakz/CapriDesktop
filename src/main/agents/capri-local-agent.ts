@@ -1185,6 +1185,7 @@ export class CapriLocalAgent extends EventEmitter {
         return
       }
 
+      // If user specified an explicit target song, route directly to play on the selected music platform
       await this.runSingleTool(
         'open_application',
         { appOrUrl: directMusic.platform, query: directMusic.songQuery, isChange: !!directMusic.isChange },

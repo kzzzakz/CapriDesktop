@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { isCapriHit } from './companion-hit-test'
 
+// Her window is much wider than she is: only her body and UI take clicks, the rest goes to what is behind.
+// Mouse moves keep arriving while it lets clicks through, including forwarded moves on Linux.
+// Gaming Mode: Capri is click-through so she never steals clicks from the foreground game.
+// Hold Ctrl over her to interact / drag her when the game is in the background.
 export function useCompanionHitTest(options: {
   isGamingMode: boolean
   isGameForeground: boolean

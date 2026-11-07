@@ -662,6 +662,7 @@ export class ToolExecutor {
         if (opened) return { success: true, output: `Launched ${opened} successfully!` }
       }
 
+      // YouTube (with direct song / video search and playback)
       if (target.includes('youtube')) {
         const platform = resolveMusicPlatform(target)
         const isMusic = platform === 'youtube_music'

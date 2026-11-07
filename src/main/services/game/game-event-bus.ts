@@ -124,6 +124,7 @@ export class GameEventBus extends EventEmitter {
     this.checking = true
     try {
       for (const adapter of this.adapters.values()) {
+        // Don't auto-stop or auto-start the mock adapter; it is user/test controlled
         if (adapter.id === 'mock') continue
 
         try {

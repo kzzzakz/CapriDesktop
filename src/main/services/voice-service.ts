@@ -163,6 +163,7 @@ export class VoiceService {
 
       worker.on('error', (err) => {
         console.error('[VoiceService Worker Error]', err)
+        // Restarted on purpose: the new one is already running and this says nothing about it
         if (this.sttWorker !== worker) return
         this.drainQueueWithError(err.message)
       })
@@ -218,6 +219,7 @@ export class VoiceService {
     this.activeRequestId = id
     req.timer = setTimeout(() => {
       this.finishRequest(id, { success: false, error: `STT Worker timeout (${req.waitMs}ms)` })
+      // A worker that never answers would also swallow every later request
       this.restartHungWorker()
     }, req.waitMs)
     const payload = JSON.stringify({ id, file: req.tempIn, lang: req.lang, partial: req.partial, hint: req.hint }) + '\n'
@@ -257,9 +259,11 @@ export class VoiceService {
 
   public async transcribe(audioBuffer: Buffer, options: { partial?: boolean } | boolean = {}): Promise<TranscribeResult> {
     const partial = typeof options === 'boolean' ? options : options.partial === true
+    // Words on screen while talking are a nicety: they never make the real request wait in line
     if (partial && (this.sttState !== 'ready' || this.pendingRequests.size > 0)) {
       return { success: false, error: 'busy' }
     }
+    // A worker that failed gets another try: Python may have been installed since
     if (this.sttState === 'failed') this.restartWorker()
     if (!partial) {
       for (const [queuedId, req] of this.pendingRequests) {
