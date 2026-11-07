@@ -1393,8 +1393,10 @@ export class CapriLocalAgent extends EventEmitter {
     endpoint: string,
     config: AgentConfig
   ): Promise<void> {
-    // She answers in the language she's spoken to. The language settings are for her fixed lines
-    const effectiveLang = consciousnessService.getSpokenLanguage() || 'unknown'
+    // A fixed text language takes priority; auto follows the language she's spoken to
+    const textLang = consciousnessService.getLanguageSettings().textLang
+    const fixedTextLang = textLang && textLang !== 'auto'
+    const effectiveLang = fixedTextLang ? textLang : consciousnessService.getSpokenLanguage() || 'unknown'
     const detectedLang = effectiveLang
     let retriedLanguage = false
     let toolsUnsupported = false
@@ -1544,9 +1546,14 @@ ${lastScanContext}
     const fallbackLangName = langNames[settingLang] || 'English'
 
     // With no clear language the model decides from the message itself
-    const notSpanish = effectiveLang === 'es' ? '' : ' Do NOT answer in Spanish unless the message is in Spanish.'
+    const notSpanish = effectiveLang === 'es' ? '' : fixedTextLang
+      ? ' Do NOT answer in Spanish.'
+      : ' Do NOT answer in Spanish unless the message is in Spanish.'
+    const replyLanguage = fixedTextLang
+      ? `Always answer in ${targetLangName} (the user's chosen language).`
+      : `The user wrote to you in ${targetLangName}.`
     const langDirective = targetLangName
-      ? `The user wrote to you in ${targetLangName}. You MUST respond strictly and authentically in ${targetLangName}, even if earlier messages or examples are in another language.${notSpanish}`
+      ? `${replyLanguage} You MUST respond strictly and authentically in ${targetLangName}, even if earlier messages or examples are in another language.${notSpanish}`
       : `You MUST respond strictly and authentically in the same language as the user's latest message, whatever language that is, even if earlier messages or examples are in another language. If you can't tell, use ${fallbackLangName}.${notSpanish}`
 
     // Maintain multi-turn memory so Capri doesn't repeat phrases or forget context
@@ -1558,13 +1565,15 @@ ${lastScanContext}
 LANGUAGE RULE: ${langDirective}` })
       // Exemplars of authentic series dialogue:
       // A Spanish example here made small models drift into Spanish with everyone
-      if (effectiveLang === 'es') this.conversationHistory.push({ role: 'user', content: 'Hola Capri! Cómo andás che?' })
-      this.conversationHistory.push({
-        role: 'assistant',
-        content: fishVoice
-          ? '[happy] ¡Acá ando, {name}! Con el ciberware al mango y vigilando la red de Night City para que ningún ICE corporativo nos joda el día. [playful] ¿Vos cómo venís, choomba? [giggles] ¿Descansaste o nos ponemos a romper algo?'
-          : '¡Acá ando, {name}! Con el ciberware al mango y vigilando la red de Night City para que ningún ICE corporativo nos joda el día. ¿Vos cómo venís, choomba? ¿Descansaste o nos ponemos a romper algo?'
-      })
+      if (effectiveLang === 'es') {
+        this.conversationHistory.push({ role: 'user', content: 'Hola Capri! Cómo andás che?' })
+        this.conversationHistory.push({
+          role: 'assistant',
+          content: fishVoice
+            ? '[happy] ¡Acá ando, {name}! Con el ciberware al mango y vigilando la red de Night City para que ningún ICE corporativo nos joda el día. [playful] ¿Vos cómo venís, choomba? [giggles] ¿Descansaste o nos ponemos a romper algo?'
+            : '¡Acá ando, {name}! Con el ciberware al mango y vigilando la red de Night City para que ningún ICE corporativo nos joda el día. ¿Vos cómo venís, choomba? ¿Descansaste o nos ponemos a romper algo?'
+        })
+      }
       this.conversationHistory.push({ role: 'user', content: 'Who are you really, Capri?' })
       this.conversationHistory.push({
         role: 'assistant',

@@ -1,5 +1,5 @@
 import { storageDir } from './storage-location'
-import { detectLanguage } from './language-detect'
+import { clearLanguageOf, detectLanguage } from './language-detect'
 import { isCloudMode, llmFetch } from './llm-gateway'
 import { envFilePath, localFfmpegPath, pythonPath, scriptPath, voiceDataDir } from './app-paths'
 import { spawn, ChildProcess } from 'child_process'
@@ -395,11 +395,12 @@ export class VoiceService {
     let spokenText = cleanText
     const speechLang = consciousnessService.getLanguageSettings().speechLang
     if (!langOverride && speechLang && speechLang !== 'auto' && targetLang !== speechLang) {
-      const translated = await this.translateForSpeech(cleanText, speechLang)
-      if (translated) {
-        spokenText = translated
-        targetLang = speechLang
+      const translated = await this.translateForSpeech(cleanText, speechLang, 45000)
+      if (!translated) {
+        return { success: false, error: `Could not translate speech to ${speechLang}` }
       }
+      spokenText = translated
+      targetLang = speechLang
     }
 
     const cacheKey = `${targetLang || 'auto'}:${spokenText}`
@@ -520,7 +521,7 @@ export class VoiceService {
 
   /**
    * A command in any language, in English, for the part of her that recognizes commands. Waits
-   * as long as a spoken translation at most; without an answer the text goes as it came.
+   * at most 8s; without an answer the text goes as it came.
    */
   public async translateCommand(text: string, lang = 'en'): Promise<string | null> {
     return this.translateForSpeech(text, lang)
@@ -547,10 +548,10 @@ export class VoiceService {
 
   /**
    * Translates a line to the chosen speech language with the local LLM, keeping [emotion] tags.
-   * Waits at most 8s: if the model is still loading, the original text is spoken this time and
-   * the translation keeps going in the background so it's cached for the next time.
+   * Waits up to the caller's timeout; the translation keeps going in the background so a valid
+   * result is cached for the next time.
    */
-  private async translateForSpeech(text: string, lang: string): Promise<string | null> {
+  private async translateForSpeech(text: string, lang: string, timeoutMs = 8000): Promise<string | null> {
     const key = `${lang}:${text}`
     const hit = this.translationCache.get(key)
     if (hit) return hit
@@ -585,6 +586,8 @@ export class VoiceService {
       const data = (await res.json()) as { message?: { content?: string } }
       const out = (data.message?.content || '').trim().replace(/^["“]|["”]$/g, '')
       if (!out) return null
+      const translatedLang = clearLanguageOf(stripLookTags(out))
+      if (translatedLang && translatedLang !== lang) return null
       if (this.translationCache.size > 300) this.translationCache.clear()
       this.translationCache.set(key, out)
       console.log(`[VoiceService] Spoken translation (${lang}): "${out}"`)
@@ -594,9 +597,11 @@ export class VoiceService {
       return null
     })
 
-    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000))
+    let timer: NodeJS.Timeout | undefined
+    const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs) })
     const result = await Promise.race([job, timeout])
-    if (!result) console.warn('[VoiceService] Translator not ready yet, speaking the original text this time')
+    clearTimeout(timer)
+    if (!result) console.warn('[VoiceService] Translation unavailable or in the wrong language')
     return result
   }
 
