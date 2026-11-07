@@ -64,8 +64,8 @@ export class SystemObserver {
   public start(): void {
     if (this.isRunning) return
     this.isRunning = true
-    this.gamingModeUnsub = windowManager.onGamingModeChanged((enabled) => {
-      if (!enabled) this.engagedGamingMode = false
+    this.gamingModeUnsub = windowManager.onGamingModeChanged(() => {
+      this.engagedGamingMode = false
     })
     // Initial delay so app finishes loading before scanning
     setTimeout(() => {

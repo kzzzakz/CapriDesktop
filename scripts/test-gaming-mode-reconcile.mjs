@@ -134,6 +134,14 @@ test('an external off then manual on clears observer ownership between scans', a
   assert.deepEqual(state.changes, [true, false, true])
 })
 
+test('a manual on while a game is running keeps Gaming Mode after the game closes', async () => {
+  const { state, windowManager, scan, startLol } = setup()
+  await startLol()
+  windowManager.setGamingMode(true)
+  await scan()
+  assert.deepEqual(state.changes, [true, true])
+})
+
 test('Cyberpunk already open at startup is owned and reconciled', async () => {
   const { state, scan } = setup()
   await scan('cyberpunk2077.exe')
