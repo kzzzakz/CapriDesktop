@@ -1,6 +1,6 @@
 import { execFile } from './hidden-process'
 import { scriptPath } from './app-paths'
-import { isWindows, isLinux, linuxMediaControl } from './platform'
+import { isWindows } from './platform'
 
 export function youtubeMusicTitle(rawTitle: string): string | null {
   const match = rawTitle.match(/^(.*?)\s+[-\u2013\u2014]\s+YouTube Music(?:\s+[-\u2013\u2014].*)?$/i)
@@ -79,8 +79,4 @@ export function windowsYoutubeMusic(action: 'status' | 'play', expectedTitle = '
 
 export async function startYoutubeMusic(title: string): Promise<void> {
   if (isWindows) await windowsYoutubeMusic('play', title)
-  else if (isLinux) {
-    await new Promise((resolve) => setTimeout(resolve, 2500))
-    await linuxMediaControl('play', true)
-  }
 }
