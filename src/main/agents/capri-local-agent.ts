@@ -3588,6 +3588,9 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     if (/^(?:(?:abre|abrir|open|launch)\s+)?(?:spotify|youtube(?:[ _]+music)?)$/i.test(text)) {
       return { platform: resolveMusicPlatform(text), songQuery: null }
     }
+    if (/^(?:pon|pone|reproduce|reproducir|play|reanuda|reanudar|continua|continuar|resume)\s+(?:la\s+|el\s+|the\s+)?(?:spotify|youtube(?:[ _]+music)?)$/i.test(text)) {
+      return null
+    }
     const cleanText = text.replace(/^(?:now|hey|capri|por\s+favor|please|ok|oye|bueno|ahora)\s*,?\s*/i, '').trim()
 
     // Pattern 0: "change/switch/cambia the song/track/cancion to/a <target_song>"
