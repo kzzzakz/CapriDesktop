@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Monitor } from 'lucide-react'
 import { useT } from '../utils/useUiLang'
-import { GAMING_OPACITY_MIN } from '../../../shared/hotkeys'
+import { GamingOpacitySettings } from './GamingOpacitySettings'
 
 interface DisplayInfo {
   id: number
@@ -17,14 +17,12 @@ export const BehaviorSettings: React.FC = () => {
   const t = useT()
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
   const [boredom, setBoredom] = useState(true)
-  const [gamingOpacity, setGamingOpacity] = useState(1)
 
   const load = () => window.api.companion.listDisplays().then(setDisplays).catch(() => {})
 
   useEffect(() => {
     void load()
     window.api.boredom.getEnabled().then(setBoredom).catch(() => {})
-    window.api.companion.getGamingOpacity().then(setGamingOpacity).catch(() => {})
   }, [])
 
   const current = displays.find((d) => d.current)
@@ -61,25 +59,7 @@ export const BehaviorSettings: React.FC = () => {
         />
         {t('vs_boredom')}
       </label>
-      <label className="block text-[13px] text-stone-300">
-        <span className="flex justify-between mb-1">
-          <span>{t('vs_gamingOpacity')}</span>
-          <span className="text-stone-400">{Math.round(gamingOpacity * 100)}%</span>
-        </span>
-        <input
-          type="range"
-          min={GAMING_OPACITY_MIN * 100}
-          max="100"
-          step="5"
-          value={Math.round(gamingOpacity * 100)}
-          onChange={(e) => {
-            const value = parseInt(e.target.value, 10) / 100
-            setGamingOpacity(value)
-            void window.api.companion.setGamingOpacity(value)
-          }}
-          className="w-full"
-        />
-      </label>
+      <GamingOpacitySettings />
     </div>
   )
 }

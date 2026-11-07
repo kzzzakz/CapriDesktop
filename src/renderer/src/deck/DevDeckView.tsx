@@ -3,6 +3,7 @@ import { CapriCommandCenter } from './CapriCommandCenter'
 import { CodeEditorView } from './CodeEditorView'
 import { AgentSettingsModal } from './AgentSettingsModal'
 import { VoiceSettingsModal } from '../companion/VoiceSettingsModal'
+import { HotkeySettingsModal } from './HotkeySettingsModal'
 import { LanguageSettingsModal } from './LanguageSettingsModal'
 import { useCompanionStore } from '../stores/useCompanionStore'
 import { useAgentStore } from '../stores/useAgentStore'
@@ -19,7 +20,8 @@ import {
   Volume2,
   VolumeX,
   Sliders,
-  Languages
+  Languages,
+  Keyboard
 } from 'lucide-react'
 
 type DeckTab = 'chat' | 'editor'
@@ -28,6 +30,7 @@ export const DevDeckView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<DeckTab>('chat')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false)
+  const [isHotkeyModalOpen, setIsHotkeyModalOpen] = useState(false)
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false)
   const { setEmotion, setSpeech } = useCompanionStore()
   const t = useT()
@@ -192,6 +195,16 @@ export const DevDeckView: React.FC = () => {
             </button>
           </div>
 
+          <button
+            type="button"
+            onClick={() => setIsHotkeyModalOpen(true)}
+            className="cp-btn flex items-center gap-1.5 px-2 py-0.5 text-[12px]"
+            title={`${t('vs_hotkeys')} / ${t('st_gaming')}`}
+          >
+            <Keyboard size={12} />
+            {t('vs_hotkeys')}
+          </button>
+
           {/* Language Settings Button */}
           <button
             type="button"
@@ -266,6 +279,8 @@ export const DevDeckView: React.FC = () => {
       {isSettingsOpen && (
         <AgentSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       )}
+
+      {isHotkeyModalOpen && <HotkeySettingsModal onClose={() => setIsHotkeyModalOpen(false)} />}
 
       <LanguageSettingsModal isOpen={isLanguageModalOpen} onClose={() => setIsLanguageModalOpen(false)} />
 

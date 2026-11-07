@@ -13,8 +13,6 @@ import { consciousnessService } from '../services/consciousness-service'
 import { scannerService } from '../services/scanner-service'
 import { isLinux, linuxCursorPosition } from '../services/platform'
 
-const GAMING_OPACITY = 0.15
-
 export class WindowManager {
   private companionWin: BrowserWindow | null = null
   private onboardingWin: BrowserWindow | null = null
@@ -457,9 +455,6 @@ export class WindowManager {
     const effective = ignore || blocked
     this.companionWin.setFocusable(!blocked)
     this.companionWin.setSkipTaskbar(true)
-    if (this.isGamingMode) {
-      this.companionWin.setOpacity(effective ? GAMING_OPACITY : 1)
-    }
     if (effective) {
       this.companionWin.setIgnoreMouseEvents(true, { forward: !blocked })
     } else {
@@ -557,7 +552,7 @@ export class WindowManager {
       }
 
       this.companionWin.setBounds({ x, y, width, height }, false)
-      this.companionWin.setOpacity(GAMING_OPACITY)
+      this.companionWin.setOpacity(1)
       this.companionWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.companionWin.moveTop()
