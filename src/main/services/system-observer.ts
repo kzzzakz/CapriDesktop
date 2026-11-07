@@ -267,7 +267,7 @@ export class SystemObserver {
               lolLiveAdapter.start().catch(() => {})
             }
           } catch {}
-        } else if (!hasLolNow) {
+        } else if (!hasLolNow && hadLolBefore) {
           try {
             if (lolLiveAdapter.isRunning()) {
               lolLiveAdapter.stop().catch(() => {})
