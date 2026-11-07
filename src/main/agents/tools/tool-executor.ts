@@ -17,6 +17,7 @@ import {
   matchDesktopEntry,
   startCommand
 } from '../../services/platform'
+import { searchYoutubeMusic, startYoutubeMusic } from '../../services/youtube-music'
 import { scriptPath } from '../../services/app-paths'
 import * as os from 'os'
 import * as fs from 'fs'
@@ -672,7 +673,15 @@ export class ToolExecutor {
         let finalUrl = query
           ? (isMusic ? `${homeUrl}/search?q=${encodeURIComponent(query)}` : `${homeUrl}/results?search_query=${encodeURIComponent(query)}`)
           : homeUrl
-        if (query) {
+        let songTitle: string | undefined
+        if (query && isMusic) {
+          const song = await searchYoutubeMusic(query)
+          if (song) {
+            songTitle = song.title
+            finalUrl = `${homeUrl}/watch?v=${song.videoId}&autoplay=1`
+          }
+        }
+        if (query && !isMusic) {
           try {
             const res = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, {
               headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -686,6 +695,7 @@ export class ToolExecutor {
           } catch {}
         }
         await shell.openExternal(finalUrl).catch(() => { exec(startCommand(finalUrl)) })
+        if (songTitle) await startYoutubeMusic(songTitle)
         return { success: true, output: query ? `Playing "${query}" on ${name}: ${finalUrl}` : `Launched ${name} in your browser.` }
       }
 

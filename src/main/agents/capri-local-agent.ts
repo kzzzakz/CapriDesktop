@@ -16,7 +16,7 @@ import { CAPRI_TOOLS, ToolExecutor } from './tools/tool-executor'
 import { ollamaService } from '../services/ollama-service'
 import { windowManager } from '../windows/window-manager'
 import { roamingManager } from '../roaming/roaming-manager'
-import { systemObserver } from '../services/system-observer'
+import { systemObserver, type ActiveMediaInfo } from '../services/system-observer'
 import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '../services/music-platform'
 import { consciousnessService } from '../services/consciousness-service'
 import { scannerService } from '../services/scanner-service'
@@ -4083,6 +4083,13 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     return false
   }
 
+  private formatYoutubeMusicReaction(music: ActiveMediaInfo, es: boolean): string {
+    const artist = music.artist ? ` (${music.artist})` : ''
+    return es
+      ? `¡Estás escuchando "${music.track || music.title}"${artist} en YouTube Music, choomba!`
+      : `You're listening to "${music.track || music.title}"${artist} on YouTube Music, choomba!`
+  }
+
   private formatSpotifyReaction(spotify: any, isSpanish?: boolean): string {
     const artist = spotify.artist || spotify.creator
     const track = spotify.track || spotify.title
@@ -4305,6 +4312,17 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     const isReelsQuery = /(?:reel|reels|instagram)/i.test(lower)
     const isBrowserQuery = /(?:google|browser|navegador|search|busqueda|búsqueda|page|p[aá]gina|website|web|tab)/i.test(lower)
 
+    const isYoutubeMusicQuery = /youtube[ _]+music/i.test(lower)
+    if (isYoutubeMusicQuery || (isSpotifyQuery && !/spotify/i.test(lower) && !isYoutubeQuery)) {
+      const music = await systemObserver.getActiveMediaAsync('youtube_music')
+      if (music) return this.formatYoutubeMusicReaction(music, es)
+      if (isYoutubeMusicQuery) {
+        return es
+          ? 'No detecto una canción en YouTube Music ahora, choomba.'
+          : "I can't detect a song on YouTube Music right now, choomba."
+      }
+    }
+
     // Music / Song / Audio question
     if (isSpotifyQuery && !isYoutubeQuery) {
       const spotify = await systemObserver.getActiveMediaAsync('spotify')
@@ -4434,6 +4452,9 @@ DIRECTIVES FOR FORMATTING AND REASONING:
           : `Streaming "${videoMedia.title}"! Pop some popcorn, choomba, let's see where this plot goes!`
       }
     }
+
+    const music = await systemObserver.getActiveMediaAsync('youtube_music')
+    if (music) return this.formatYoutubeMusicReaction(music, es)
 
     const browserMedia = await systemObserver.getActiveMediaAsync('browser')
     if (browserMedia) {
