@@ -26,7 +26,7 @@ export function createCompanionWindow(): BrowserWindow {
     alwaysOnTop: true,
     resizable: false,
     hasShadow: false,
-    skipTaskbar: false,
+    skipTaskbar: true,
     webPreferences: {
       preload: preloadPath,
       sandbox: false,
@@ -34,6 +34,8 @@ export function createCompanionWindow(): BrowserWindow {
       nodeIntegration: false
     }
   })
+
+  companionWindow.setIgnoreMouseEvents(true, { forward: true })
 
   // Ensure window stays above DirectX games and handles fullscreen blur without dropping z-order
   companionWindow.setAlwaysOnTop(true, 'screen-saver', 1)

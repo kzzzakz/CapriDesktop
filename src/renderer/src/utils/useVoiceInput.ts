@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { openMicrophone } from './microphone'
 
 export type VoiceInputState = 'idle' | 'recording' | 'transcribing'
 
@@ -80,7 +81,7 @@ export function useVoiceInput({ onText, onError, maxMs = 120000 }: Options) {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') return
     let stream: MediaStream
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await openMicrophone()
     } catch {
       onErrorRef.current?.('mic')
       return

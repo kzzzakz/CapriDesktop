@@ -5,7 +5,9 @@
  */
 
 import { app } from 'electron'
-import { exec } from 'child_process'
+import { ChildProcess, spawn } from 'child_process'
+import { exec } from './hidden-process'
+import { createInterface } from 'readline'
 import * as fs from 'fs'
 import * as path from 'path'
 import { agentManager } from '../agents/agent-manager'
@@ -20,6 +22,7 @@ import {
   fallbackGameComment,
   ForegroundApp,
   generateGameComment,
+  isGameForeground,
   researchGame
 } from './game/game-commentary'
 
@@ -43,7 +46,7 @@ function isAlive(pid: number): boolean {
   }
 }
 
-function foregroundApp(): Promise<ForegroundApp | null> {
+export function foregroundApp(): Promise<ForegroundApp | null> {
   if (isLinux) return linuxForegroundWindow()
   return new Promise((resolve) => {
     exec(
@@ -53,7 +56,7 @@ function foregroundApp(): Promise<ForegroundApp | null> {
         if (err) return resolve(null)
         try {
           const parsed = JSON.parse(stdout.trim())
-          resolve({ title: parsed.Title || '', process: parsed.Process || '', path: parsed.Path || '', pid: Number(parsed.Pid) || 0 })
+          resolve({ title: parsed.Title || '', process: parsed.Process || '', path: parsed.Path || '', pid: Number(parsed.Pid) || 0, windowId: String(parsed.WindowId || '') })
         } catch {
           resolve(null)
         }
@@ -68,16 +71,34 @@ export class GamePresenceService {
   private nextCommentAt = 0
   private generating = false
   private recent: string[] = []
+  private polling = false
+  private gamingModeUnsub: (() => void) | null = null
+  private foregroundWatcher: ChildProcess | null = null
+  private watchedForeground: ForegroundApp | null = null
+  private nextWatcherAttemptAt = 0
+
+  public getForegroundApp(): ForegroundApp | null {
+    return this.watchedForeground
+  }
 
   public start(): void {
     if (this.timer || (!isWindows && !isLinux)) return
+    this.gamingModeUnsub = windowManager.onGamingModeChanged((enabled) => {
+      if (enabled) this.startForegroundWatcher()
+      else this.stopForegroundWatcher()
+    })
     this.timer = setInterval(() => void this.tick(), POLL_MS)
+    this.startForegroundWatcher()
     void this.tick()
   }
 
   public stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    this.gamingModeUnsub?.()
+    this.gamingModeUnsub = null
+    this.stopForegroundWatcher()
+    this.nextWatcherAttemptAt = 0
   }
 
   /** A game Capri has no in-match adapter for is open, even if it isn't the focused window */
@@ -85,8 +106,67 @@ export class GamePresenceService {
     return !!this.game && isAlive(this.game.pid)
   }
 
+  private startForegroundWatcher(): void {
+    if (!isWindows || !windowManager.isGamingModeActive() || this.foregroundWatcher || Date.now() < this.nextWatcherAttemptAt) return
+    this.nextWatcherAttemptAt = Date.now() + POLL_MS
+    this.watchedForeground = null
+    windowManager.setGameForeground(true)
+    try {
+      const watcher = spawn('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', scriptPath('watch_foreground.ps1'), '-ParentPid', String(process.pid)
+      ], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
+      this.foregroundWatcher = watcher
+      const lines = createInterface({ input: watcher.stdout! })
+      lines.on('line', (line) => {
+        if (this.foregroundWatcher !== watcher) return
+        try {
+          const parsed = JSON.parse(line)
+          this.watchedForeground = parsed.Pid > 0 && typeof parsed.Process === 'string' && parsed.Process
+            ? { title: parsed.Title || '', process: parsed.Process, path: parsed.Path || '', pid: Number(parsed.Pid), windowId: String(parsed.WindowId || '') }
+            : null
+        } catch {
+          this.watchedForeground = null
+        }
+        windowManager.setGameForeground(this.watchedForeground ? isGameForeground(this.watchedForeground) : true)
+      })
+      const failed = (): void => {
+        lines.close()
+        if (this.foregroundWatcher !== watcher) return
+        this.foregroundWatcher = null
+        this.watchedForeground = null
+        this.nextWatcherAttemptAt = Date.now() + POLL_MS
+        windowManager.setGameForeground(true)
+        watcher.kill()
+        console.warn('[GamePresence] Foreground watcher stopped; retrying on a later poll.')
+      }
+      watcher.on('error', failed)
+      watcher.on('exit', failed)
+      this.nextWatcherAttemptAt = 0
+    } catch {
+      console.warn('[GamePresence] Could not start foreground watcher.')
+    }
+  }
+
+  private stopForegroundWatcher(): void {
+    const watcher = this.foregroundWatcher
+    this.foregroundWatcher = null
+    this.watchedForeground = null
+    watcher?.stdin?.end()
+    watcher?.kill()
+  }
+
   private async tick(): Promise<void> {
-    const current = await foregroundApp()
+    if (this.polling) return
+    this.polling = true
+    this.startForegroundWatcher()
+    let current: ForegroundApp | null
+    try {
+      current = isWindows && windowManager.isGamingModeActive() ? this.watchedForeground : await foregroundApp()
+    } finally {
+      this.polling = false
+    }
+    if (!this.timer) return
 
     if (this.game && !isAlive(this.game.pid)) {
       console.log(`[GamePresence] ${this.game.name} closed.`)
@@ -105,8 +185,14 @@ export class GamePresenceService {
       this.recent = []
     }
 
+    if (!isWindows || !windowManager.isGamingModeActive()) {
+      windowManager.setGameForeground(current?.pid ? isGameForeground(current) : true)
+    }
+
     // Only while they're actually in the game, not when they alt-tab away
-    if (this.game && name === this.game.name && Date.now() >= this.nextCommentAt) await this.comment(this.game.name)
+    if (this.game && name === this.game.name && Date.now() >= this.nextCommentAt) {
+      void this.comment(this.game.name).catch((err) => console.warn('[GamePresence] Comment failed:', err))
+    }
   }
 
   private notesPath(): string {

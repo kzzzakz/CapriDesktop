@@ -7,6 +7,8 @@ export const fr: Messages = {
   llm_bypassWarning: "Claude pourra exécuter toute commande sur ce PC sans vérifier les permissions, y compris les commandes demandées à la voix.",
   llm_bypassDetail: "Cela peut modifier ou supprimer des fichiers, installer des logiciels et accéder à des données privées. Activez ce mode uniquement si vous acceptez ces risques. Annuler conserve les vérifications de permissions.",
   llm_bypassConfirm: "Activer le contournement",
+  music_platformTitle: 'Plateforme musicale',
+  music_platformHelp: 'Utilisée quand vous demandez à Capri de jouer de la musique. Vous pouvez aussi nommer une plateforme.',
   close: 'Fermer',
   done: 'Terminé',
   saved: 'Enregistré',
@@ -178,6 +180,10 @@ export const fr: Messages = {
   llm_title: 'Capri // Cerveau',
   llm_local: 'Sur ce PC',
   llm_localDesc: 'Gratuit et privé, avec Ollama. Nécessite un PC puissant et environ 6 Go.',
+  llm_codex: 'Codex',
+  llm_codexDesc: 'Utilise votre connexion Codex CLI sans clé API supplémentaire.',
+  llm_codexDefault: 'Modèle par défaut de Codex',
+  llm_codexHelp: 'Installez Codex CLI et lancez codex login. Laissez le modèle vide pour utiliser celui de Codex. Les commandes natives sont en lecture seule, sans demande de permission. Messages et images sont envoyés au service configuré.',
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: 'Utilise votre connexion Claude CLI sans clé API supplémentaire. Haiku est le plus rapide.',
   llm_cloud: 'Modèle cloud (API)',
@@ -258,6 +264,68 @@ export const fr: Messages = {
   vs_dspHolo: 'hologramme spatial',
   vs_dspRobot: 'vocodeur robotique',
   vs_dspGlitch: 'mécanique avec trémolo',
+  vs_mic: 'Microphone',
+  vs_micDefault: 'Par défaut du système',
+  vs_micTest: 'Tester',
+  vs_micSpeak: 'Parle maintenant...',
+  vs_micHeard: 'Je t\'entends.',
+  vs_micSilent: 'Aucun son ne passe. Essaie un autre micro ou vérifie qu\'il n\'est pas coupé.',
+  vs_micError: 'Impossible de l\'ouvrir. Vérifie la confidentialité du système ou essaie un autre micro.',
+  vs_micUnderstood: 'J\'ai compris :',
+  vs_micNoWords: 'Le son arrive, mais je n\'ai pas distingué de mots.',
+  vs_arrowKeys: 'Utiliser ces touches comme raccourcis dans les autres applis (Ctrl+Alt+V marche toujours)',
+  vs_hotkeys: 'Touches',
+  vs_hotkeyTalk: 'Lui parler',
+  vs_hotkeyListen: 'Écoute continue',
+  vs_hotkeyChat: 'Ouvrir son chat',
+  vs_hotkeyPress: 'Appuie sur une touche...',
+  vs_hotkeyReset: 'Revenir aux flèches',
+  vs_hotkeyNeedsModifier: 'Une lettre, un chiffre ou Entrée seuls ne marcheraient plus ailleurs : combine-les avec Ctrl ou Alt.',
+  vs_hotkeyReserved: 'Cette touche est réservée à autre chose.',
+  vs_hotkeyInUse: 'Une autre action utilise déjà cette touche.',
+  vs_hotkeyTaken: 'Une autre appli utilise déjà cette touche.',
+  vs_gamingOpacity: 'Son opacité en mode gaming',
+  vs_sound: 'Son',
+  vs_voiceVolume: 'Volume de la voix',
+  vs_effectsVolume: 'Volume des effets',
+  vs_glitchSound: 'Son de clic et de glitch quand elle change d\'animation',
+  ob_storageTitle: 'Où installer',
+  ob_storageDefault: 'Dossiers par défaut sur le disque système',
+  ob_storageChange: 'Changer',
+  ob_storageReset: 'Par défaut',
+
+  ob_moveTitle: "Déplacer ce qui est déjà installé ?",
+
+  ob_moveModels: "Ses modèles",
+
+  ob_moveWhisper: "Son audition (Whisper)",
+
+  ob_moveVoiceEnv: "Son environnement vocal",
+
+  ob_moveTools: "FFmpeg et outils",
+
+  ob_moveOllamaProgram: "Programme Ollama (téléchargé à nouveau)",
+
+  ob_moveTotal: "Total",
+
+  ob_moveFree: "Libre là-bas",
+
+  ob_moveNote: "Tout est d'abord copié, et les anciens fichiers ne sont supprimés qu'à la fin. Python reste où il est. Pour déplacer Capri elle-même, relance son installateur et choisis un autre dossier.",
+
+  ob_moveNoSpace: "Il n'y a pas assez d'espace libre sur ce disque.",
+
+  ob_moveBadFolder: "Ce dossier se trouve dans ce qui va être déplacé. Choisis-en un autre.",
+
+  ob_moveCancel: "Annuler",
+
+  ob_moveConfirm: "Déplacer",
+
+  ob_moveDone: "C'est fait. Elle utilise le nouvel emplacement.",
+
+  ob_moveFailed: "Le déplacement a échoué. Ce qui n'est pas terminé reste où c'était.",
+  vs_monitor: 'Écran',
+  vs_monitorMain: 'principal',
+  vs_boredom: 'Elle peut s\'ennuyer : elle ouvre des onglets et de la musique toute seule quand tu ne dis rien',
   vs_pitch: 'Hauteur :',
   vs_low: 'Grave (-20Hz)',
   vs_normal: 'Normal (0Hz)',

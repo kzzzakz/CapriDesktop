@@ -1,3 +1,4 @@
+import { voiceVolume } from './soundSettings'
 import { personalize } from './userName'
 import dialogueBlipAudio from '../assets/dialogue_blip.wav'
 import { useAgentStore } from '../stores/useAgentStore'
@@ -142,6 +143,7 @@ function playDevLine(text: string, options?: DevLineOptions): Promise<void> {
 
           if (res.success && res.audioDataUrl) {
             const audio = new Audio(res.audioDataUrl)
+            audio.volume = voiceVolume()
             audio.playbackRate = 1.05
             activeDevAudio = audio
             audio.onended = () => {

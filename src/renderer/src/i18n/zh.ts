@@ -7,6 +7,8 @@ export const zh: Messages = {
   llm_bypassWarning: "Claude 将能够在此电脑上执行任何命令而不进行权限检查，包括通过语音提出的请求。",
   llm_bypassDetail: "这可能修改或删除文件、安装软件并访问私人数据。仅在接受这些风险时启用。取消将保留权限检查。",
   llm_bypassConfirm: "启用权限跳过模式",
+  music_platformTitle: '音乐平台',
+  music_platformHelp: '请 Capri 播放音乐时使用。也可以直接指定平台名称。',
   close: '关闭',
   done: '完成',
   saved: '已保存',
@@ -178,6 +180,10 @@ export const zh: Messages = {
   llm_title: 'Capri // 大脑',
   llm_local: '在这台电脑上',
   llm_localDesc: '通过 Ollama 免费且私密。需要性能较好的电脑和约 6 GB 空间。',
+  llm_codex: 'Codex',
+  llm_codexDesc: "使用 Codex CLI 连接，无需额外 API 密钥。",
+  llm_codexDefault: "Codex 默认模型",
+  llm_codexHelp: "先安装 Codex CLI 并运行 codex login。模型留空则使用 Codex 默认值。原生命令以只读模式运行，不请求批准。消息和图像会发送到配置的服务。",
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: '使用 Claude CLI 的连接配置，无需额外 API 密钥。Haiku 速度最快。',
   llm_cloud: '云端模型 (API)',
@@ -258,6 +264,68 @@ export const zh: Messages = {
   vs_dspHolo: '空间全息',
   vs_dspRobot: '机器人声码器',
   vs_dspGlitch: '带颤音的机械声',
+  vs_mic: '麦克风',
+  vs_micDefault: '系统默认',
+  vs_micTest: '测试',
+  vs_micSpeak: '现在说话...',
+  vs_micHeard: '我听到你了。',
+  vs_micSilent: '没有声音输入。请换一个麦克风或检查是否静音。',
+  vs_micError: '无法打开。请检查系统隐私设置或换一个麦克风。',
+  vs_micUnderstood: '我听懂了:',
+  vs_micNoWords: '有声音输入,但我没听清说了什么。',
+  vs_arrowKeys: '在其他应用中将这些键用作快捷键 (Ctrl+Alt+V 始终可用)',
+  vs_hotkeys: '按键',
+  vs_hotkeyTalk: '和她说话',
+  vs_hotkeyListen: '持续聆听',
+  vs_hotkeyChat: '打开她的聊天',
+  vs_hotkeyPress: '请按一个键...',
+  vs_hotkeyReset: '恢复方向键',
+  vs_hotkeyNeedsModifier: '单独的字母、数字或 Enter 会在其他地方失效:请与 Ctrl 或 Alt 组合。',
+  vs_hotkeyReserved: '该键已保留作其他用途。',
+  vs_hotkeyInUse: '另一个操作已在使用该键。',
+  vs_hotkeyTaken: '另一个应用已在使用该键。',
+  vs_gamingOpacity: '她在游戏模式下的不透明度',
+  vs_sound: '声音',
+  vs_voiceVolume: '语音音量',
+  vs_effectsVolume: '音效音量',
+  vs_glitchSound: '切换动画时的点击和故障音效',
+  ob_storageTitle: '安装位置',
+  ob_storageDefault: '系统盘上的默认文件夹',
+  ob_storageChange: '更改',
+  ob_storageReset: '使用默认',
+
+  ob_moveTitle: "要移动已安装的内容吗?",
+
+  ob_moveModels: "她的模型",
+
+  ob_moveWhisper: "她的听觉 (Whisper)",
+
+  ob_moveVoiceEnv: "她的语音环境",
+
+  ob_moveTools: "FFmpeg 和工具",
+
+  ob_moveOllamaProgram: "Ollama 程序(将重新下载)",
+
+  ob_moveTotal: "总计",
+
+  ob_moveFree: "目标可用空间",
+
+  ob_moveNote: "先复制,旧文件最后才删除。Python 保持原位。要移动 Capri 本身,请重新运行安装程序并选择其他文件夹。",
+
+  ob_moveNoSpace: "该磁盘的可用空间不足。",
+
+  ob_moveBadFolder: "该文件夹位于要移动的内容之中。请选择其他文件夹。",
+
+  ob_moveCancel: "取消",
+
+  ob_moveConfirm: "移动",
+
+  ob_moveDone: "完成。她已在使用新位置。",
+
+  ob_moveFailed: "无法移动。未完成的内容仍在原处。",
+  vs_monitor: '显示器',
+  vs_monitorMain: '主显示器',
+  vs_boredom: '允许她感到无聊: 你不说话时她会自己打开标签页和音乐',
   vs_pitch: '音高:',
   vs_low: '低 (-20Hz)',
   vs_normal: '正常 (0Hz)',

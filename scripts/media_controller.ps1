@@ -4,6 +4,8 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$Query = "",
     [Parameter(Mandatory=$false)]
+    [switch]$SystemMedia,
+    [Parameter(Mandatory=$false)]
     [switch]$Force
 )
 
@@ -281,25 +283,10 @@ public class NativeMediaControl {
         IntPtr render = FindRenderWidget(mainHwnd);
         if (render == IntPtr.Zero) return false;
 
-        // Focus search bar & clear existing text
-        Click(render, 550, 32);
-        Thread.Sleep(120);
-
-        for (int i = 0; i < 80; i++) {
-            SendKey(render, 0x08); // VK_BACK
-            Thread.Sleep(6);
-        }
-        Thread.Sleep(100);
-
-        // Type query
-        foreach (char c in query) {
-            SendChar(render, c);
-        }
-        Thread.Sleep(200);
-
-        // Submit search with Enter
-        SendKey(render, 0x0D);
-        Thread.Sleep(850);
+        // Its own link goes to the results whatever the size of the window and wherever the focus is.
+        // Clicking the search bar by coordinates broke whenever the layout changed.
+        System.Diagnostics.Process.Start("spotify:search:" + Uri.EscapeDataString(query));
+        Thread.Sleep(1800);
 
         // Try clicking green play button / top card up to 4 attempts
         var sb = new StringBuilder(256);
@@ -341,6 +328,14 @@ public class NativeMediaControl {
         return true;
     }
 
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    public static void SystemMediaKey(byte key) {
+        keybd_event(key, 0, 0, UIntPtr.Zero);
+        keybd_event(key, 0, 2, UIntPtr.Zero);
+    }
+
     public static void NextTrack(IntPtr hWnd) {
         if (hWnd != IntPtr.Zero) {
             SendMessage(hWnd, WM_APPCOMMAND, hWnd, (IntPtr)(APPCOMMAND_MEDIA_NEXTTRACK << 16));
@@ -362,6 +357,39 @@ public class NativeMediaControl {
 "@
 
 Add-Type -TypeDefinition $code -ReferencedAssemblies System.Drawing -ErrorAction SilentlyContinue
+
+function Get-SystemPlaybackStatus {
+    try {
+        Add-Type -AssemblyName System.Runtime.WindowsRuntime
+        $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+            $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+        } | Select-Object -First 1
+        $managerType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+        $task = $asTask.MakeGenericMethod($managerType).Invoke($null, @($managerType::RequestAsync()))
+        if (-not $task.Wait(2000)) { return $null }
+        $session = $task.Result.GetCurrentSession()
+        if ($null -eq $session) { return $null }
+        return [string]$session.GetPlaybackInfo().PlaybackStatus
+    } catch {
+        return $null
+    }
+}
+
+if ($SystemMedia) {
+    $action = $Action.ToLower()
+    if ($action -eq "play" -or $action -eq "pause") {
+        $status = Get-SystemPlaybackStatus
+        if ($action -eq "play" -and $status -eq "Playing") { return }
+        if ($action -eq "pause" -and $null -ne $status -and $status -ne "Playing") { return }
+    }
+    $key = switch ($action) {
+        "next" { 0xB0 }
+        "prev" { 0xB1 }
+        default { 0xB3 }
+    }
+    [NativeMediaControl]::SystemMediaKey([byte]$key)
+    return
+}
 
 $hwnd = [NativeMediaControl]::FindSpotifyWindow()
 $title = ""

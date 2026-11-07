@@ -17,7 +17,7 @@ scripts-capri/
 
 1. Write `scripts-capri/<version>.es.txt` and `.en.txt`.
 2. Bump `"version"` in `package.json` to that same version.
-3. `npm run dist:win`.
-4. On GitHub, create a Release with the tag `v<version>` and upload `release/CapriDesktop-Setup-<version>.exe`.
+3. `npm run dist:win`, and `npm run dist:linux` on Linux.
+4. On GitHub, create a Release with the tag `v<version>` and upload `release/CapriDesktop-Setup-<version>.exe`, `release/CapriDesktop-<version>.deb` and `release/CapriDesktop-<version>.tar.gz`.
 
-When someone says "Capri, actualizate", she checks the latest Release. If it's newer than hers, she downloads the installer, installs it silently and comes back on the new version, reading the scripts.
+When someone says "Capri, actualizate", she checks the latest Release. If it's newer than hers, she downloads the file for her system, installs it and comes back on the new version, reading the scripts. A `.deb` asks for the password first.

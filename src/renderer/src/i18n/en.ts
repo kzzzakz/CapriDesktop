@@ -5,6 +5,8 @@ export const en = {
   llm_bypassWarning: "Claude can run any command on this PC without permission checks, including commands requested by voice.",
   llm_bypassDetail: "This can change or delete files, install software and access private data. Only enable this if you accept these risks. Cancel keeps permission checks on.",
   llm_bypassConfirm: "Enable bypass mode",
+  music_platformTitle: 'Music platform',
+  music_platformHelp: 'Used when you ask Capri to play music. You can also request a platform by name.',
   close: 'Close',
   done: 'Done',
   saved: 'Saved',
@@ -176,6 +178,10 @@ export const en = {
   llm_title: 'Capri // Brain',
   llm_local: 'On this PC',
   llm_localDesc: 'Free and private, with Ollama. Needs a capable PC and about 6 GB.',
+  llm_codex: 'Codex',
+  llm_codexDesc: "Uses your Codex CLI connection, without an extra API key.",
+  llm_codexDefault: "Default from Codex settings",
+  llm_codexHelp: "Install Codex CLI and run codex login first. Leave the model empty to use your Codex default. Native commands run read-only without approval prompts. Messages and images go to your configured service.",
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: 'Uses your signed-in Claude CLI connection, without an extra API key. Haiku is the fastest option.',
   llm_cloud: 'Cloud model (API)',
@@ -256,6 +262,68 @@ export const en = {
   vs_dspHolo: 'spatial hologram',
   vs_dspRobot: 'robotic vocoder',
   vs_dspGlitch: 'mechanical with tremolo',
+  vs_mic: 'Microphone',
+  vs_micDefault: 'System default',
+  vs_micTest: 'Test',
+  vs_micSpeak: 'Speak now...',
+  vs_micHeard: 'I can hear you.',
+  vs_micSilent: 'No sound is coming in. Try another microphone or check that it is not muted.',
+  vs_micError: 'It could not be opened. Check the privacy settings of your system or try another one.',
+  vs_micUnderstood: 'I understood:',
+  vs_micNoWords: 'Sound is coming in, but I could not make out any words.',
+  vs_arrowKeys: 'Use these keys as shortcuts in other apps (Ctrl+Alt+V always works)',
+  vs_hotkeys: 'Keys',
+  vs_hotkeyTalk: 'Talk to her',
+  vs_hotkeyListen: 'Always listening',
+  vs_hotkeyChat: 'Open her chat',
+  vs_hotkeyPress: 'Press a key...',
+  vs_hotkeyReset: 'Back to the arrow keys',
+  vs_hotkeyNeedsModifier: 'A letter, number or Enter on its own would stop working everywhere else: combine it with Ctrl or Alt.',
+  vs_hotkeyReserved: 'That key is reserved for something else.',
+  vs_hotkeyInUse: 'Another action already uses that key.',
+  vs_hotkeyTaken: 'Another app is already using that key.',
+  vs_gamingOpacity: 'Her opacity in Gaming Mode',
+  vs_sound: 'Sound',
+  vs_voiceVolume: 'Voice volume',
+  vs_effectsVolume: 'Effects volume',
+  vs_glitchSound: 'Click and glitch sound when she changes animation',
+  ob_storageTitle: 'Where to install',
+  ob_storageDefault: 'Default folders on the system disk',
+  ob_storageChange: 'Change',
+  ob_storageReset: 'Use default',
+
+  ob_moveTitle: "Move what's already installed?",
+
+  ob_moveModels: "Her models",
+
+  ob_moveWhisper: "Her hearing (Whisper)",
+
+  ob_moveVoiceEnv: "Her voice environment",
+
+  ob_moveTools: "FFmpeg and tools",
+
+  ob_moveOllamaProgram: "Ollama program (downloaded again)",
+
+  ob_moveTotal: "Total",
+
+  ob_moveFree: "Free there",
+
+  ob_moveNote: "It's copied first and the old files are deleted only at the end. Python stays where it is. To move Capri herself, run her installer again and pick another folder.",
+
+  ob_moveNoSpace: "There isn't enough free space on that disk.",
+
+  ob_moveBadFolder: "That folder is inside what's being moved. Pick another one.",
+
+  ob_moveCancel: "Cancel",
+
+  ob_moveConfirm: "Move",
+
+  ob_moveDone: "Moved. She's using the new location.",
+
+  ob_moveFailed: "It couldn't be moved. Everything that wasn't finished stays where it was.",
+  vs_monitor: 'Monitor',
+  vs_monitorMain: 'main',
+  vs_boredom: 'Let her get bored: she opens tabs and music by herself when you are quiet',
   vs_pitch: 'Pitch:',
   vs_low: 'Low (-20Hz)',
   vs_normal: 'Normal (0Hz)',

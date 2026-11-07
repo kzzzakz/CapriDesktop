@@ -6,6 +6,15 @@ export interface ReactionTemplateSet {
 }
 
 export const GAME_REACTION_TEMPLATES: Record<GameEventType, ReactionTemplateSet> = {
+  game_opened: { es: ['Conectada, choomba. Te acompaño en esta.'], en: ['Connected, choomba. Your netrunner is watching your back.'] },
+  game_closed: { es: ['Sesión cerrada, choomba. Enfriando los circuitos.'], en: ['Session closed, choomba. Cooling the circuits.'] },
+  agent_picked: { es: ['Agente listo, choomba. A romperla.'], en: ['Agent locked, choomba. Make that pick count.'] },
+  round_won: { es: ['Ronda nuestra, choomba. Seguí así.'], en: ['Round secured, choomba. Keep that momentum.'] },
+  round_lost: { es: ['Se fue esa ronda, choomba. Respirá y reajustá.'], en: ['Lost that round, choomba. Breathe and reset.'] },
+  match_point: { es: ['Punto de partida. Nervios de acero, choomba.'], en: ['Match point. Keep those nerves wired tight, choomba.'] },
+  overtime: { es: ['Prórroga, choomba. Cada ronda pesa.'], en: ['Overtime, choomba. Every round carries weight.'] },
+  area_changed: { es: ['Nueva zona, choomba. Ojos atentos.'], en: ['New area, choomba. Keep those optics sharp.'] },
+  scene_observed: { es: ['Lindo paisaje, choomba. Te sigo desde acá.'], en: ['Quite a view, choomba. Your netrunner is riding along.'] },
   player_died: {
     es: [
       '¡Uff, choomba! Nos reiniciaron el sistema. Respawn y nos vengamos.',

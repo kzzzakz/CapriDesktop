@@ -7,6 +7,8 @@ export const pt: Messages = {
   llm_bypassWarning: "O Claude poderá executar qualquer comando neste PC sem verificar permissões, inclusive comandos solicitados por voz.",
   llm_bypassDetail: "Isso pode alterar ou excluir arquivos, instalar programas e acessar dados privados. Ative somente se aceitar esses riscos. Cancelar mantém a verificação de permissões.",
   llm_bypassConfirm: "Ativar modo sem permissões",
+  music_platformTitle: 'Plataforma de música',
+  music_platformHelp: 'Usada quando você pede para Capri tocar música. Você também pode pedir uma plataforma pelo nome.',
   close: 'Fechar',
   done: 'Pronto',
   saved: 'Salvo',
@@ -178,6 +180,10 @@ export const pt: Messages = {
   llm_title: 'Capri // Cérebro',
   llm_local: 'Neste PC',
   llm_localDesc: 'Grátis e privado, com Ollama. Precisa de um PC potente e cerca de 6 GB.',
+  llm_codex: 'Codex',
+  llm_codexDesc: 'Usa sua conexão do CLI Codex sem uma chave de API adicional.',
+  llm_codexDefault: 'Padrão do Codex',
+  llm_codexHelp: 'Instale o Codex CLI e execute codex login. Deixe o modelo vazio para usar o padrão do Codex. Comandos nativos são somente leitura, sem solicitações de aprovação. Mensagens e imagens vão para o serviço configurado.',
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: 'Usa a conexão do CLI Claude sem uma chave de API adicional. Haiku é a opção mais rápida.',
   llm_cloud: 'Modelo na nuvem (API)',
@@ -258,6 +264,68 @@ export const pt: Messages = {
   vs_dspHolo: 'holograma espacial',
   vs_dspRobot: 'vocoder robótico',
   vs_dspGlitch: 'mecânico com trêmolo',
+  vs_mic: 'Microfone',
+  vs_micDefault: 'Padrão do sistema',
+  vs_micTest: 'Testar',
+  vs_micSpeak: 'Fale agora...',
+  vs_micHeard: 'Estou te ouvindo.',
+  vs_micSilent: 'Nenhum som está entrando. Tente outro microfone ou veja se ele não está mudo.',
+  vs_micError: 'Não foi possível abrir. Veja a privacidade do sistema ou tente outro.',
+  vs_micUnderstood: 'Entendi:',
+  vs_micNoWords: 'O som está entrando, mas não consegui distinguir palavras.',
+  vs_arrowKeys: 'Usar estas teclas como atalhos em outros apps (Ctrl+Alt+V sempre funciona)',
+  vs_hotkeys: 'Teclas',
+  vs_hotkeyTalk: 'Falar com ela',
+  vs_hotkeyListen: 'Escuta contínua',
+  vs_hotkeyChat: 'Abrir o chat dela',
+  vs_hotkeyPress: 'Aperte uma tecla...',
+  vs_hotkeyReset: 'Voltar para as setas',
+  vs_hotkeyNeedsModifier: 'Uma letra, um número ou Enter sozinhos parariam de funcionar em todo lugar: combine com Ctrl ou Alt.',
+  vs_hotkeyReserved: 'Essa tecla está reservada para outra coisa.',
+  vs_hotkeyInUse: 'Outra ação já usa essa tecla.',
+  vs_hotkeyTaken: 'Outro app já está usando essa tecla.',
+  vs_gamingOpacity: 'A opacidade dela no modo gaming',
+  vs_sound: 'Som',
+  vs_voiceVolume: 'Volume da voz',
+  vs_effectsVolume: 'Volume dos efeitos',
+  vs_glitchSound: 'Som de clique e glitch ao mudar de animação',
+  ob_storageTitle: 'Onde instalar',
+  ob_storageDefault: 'Pastas padrão no disco do sistema',
+  ob_storageChange: 'Alterar',
+  ob_storageReset: 'Usar padrão',
+
+  ob_moveTitle: "Mover o que já está instalado?",
+
+  ob_moveModels: "Os modelos dela",
+
+  ob_moveWhisper: "A audição dela (Whisper)",
+
+  ob_moveVoiceEnv: "O ambiente de voz dela",
+
+  ob_moveTools: "FFmpeg e ferramentas",
+
+  ob_moveOllamaProgram: "Programa Ollama (será baixado de novo)",
+
+  ob_moveTotal: "Total",
+
+  ob_moveFree: "Livre lá",
+
+  ob_moveNote: "Primeiro é copiado, e os arquivos antigos só são apagados no final. O Python fica onde está. Para mover a própria Capri, execute o instalador de novo e escolha outra pasta.",
+
+  ob_moveNoSpace: "Não há espaço livre suficiente nesse disco.",
+
+  ob_moveBadFolder: "Essa pasta está dentro do que será movido. Escolha outra.",
+
+  ob_moveCancel: "Cancelar",
+
+  ob_moveConfirm: "Mover",
+
+  ob_moveDone: "Pronto. Ela já usa o novo local.",
+
+  ob_moveFailed: "Não foi possível mover. O que não terminou continua onde estava.",
+  vs_monitor: 'Monitor',
+  vs_monitorMain: 'principal',
+  vs_boredom: 'Deixar ela ficar entediada: abre abas e música sozinha quando você não fala',
   vs_pitch: 'Tom:',
   vs_low: 'Grave (-20Hz)',
   vs_normal: 'Normal (0Hz)',

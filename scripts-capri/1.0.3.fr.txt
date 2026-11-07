@@ -1,0 +1,2 @@
+[excited] Nouvelle mise à jour, {name} !
+[happy] Maintenant j'ouvre n'importe quelle appli que tu me demandes, et si je ne la trouve pas, tu me montres où elle est une fois et je m'en souviens. [giggles] Et sous Linux je me mets à jour toute seule : je télécharge le paquet, je te demande ton mot de passe si besoin et je reviens.

@@ -60,7 +60,7 @@ The first-run wizard downloads FFmpeg and Ollama into the app's own folder witho
 | `wmctrl` | Perching on windows, detecting videos in the browser | She doesn't perch or comment on what you're watching |
 | `playerctl` | Spotify status and song | Play and skip still work, she doesn't know what's playing |
 | `xdg-utils` | Opening links and apps | Links and unknown apps don't open |
-| `pkexec` (polkit) | The wizard's password prompt | The wizard shows the command to run by hand |
+| `pkexec` (polkit) | The password prompt of the wizard and of her updates | The wizard shows the command to run by hand, and updating a `.deb` opens the release page |
 
 ```bash
 sudo apt install python3-venv zstd xdotool wmctrl playerctl   # Debian, Ubuntu, Mint, Kali
@@ -82,7 +82,7 @@ Differences from Windows:
 - **Cyberpunk 2077** runs through Proton. Capri looks for the mod in your Steam libraries (native or Flatpak) and in Heroic.
 - **Clips** press F8, for whichever recorder you bind to that key. ShadowPlay doesn't exist on Linux.
 - **Gaming Mode**: `Ctrl+Alt+G` turns click-through on and off, because Linux can't report Ctrl while she is click-through.
-- **Updates**: Capri opens the release page, because installing a `.deb` needs your password.
+- **Updates**: Capri updates herself and comes back. A `.deb` asks for your password through the desktop's prompt; a `.tar.gz` needs no password as long as you can write to its folder. If she can't do either, she opens the release page.
 
 ---
 

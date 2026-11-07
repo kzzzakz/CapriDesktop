@@ -1,3 +1,4 @@
+import { effectsVolume, glitchSoundOn } from '../utils/soundSettings'
 import { localizeLine } from '../../../shared/lines'
 import { getLineLanguage } from '../utils/lineLanguage'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
@@ -18,6 +19,8 @@ interface CapriRendererProps {
   overrideDirection?: 'left' | 'right'
   noShadow?: boolean
   isGamingMode?: boolean
+  isGameForeground?: boolean
+  pixelHitTest?: boolean
 }
 
 // Avatar change audio effect
@@ -31,8 +34,9 @@ const playAvatarChangeSound = () => {
         activeAvatarAudio.currentTime = 0
       } catch {}
     }
+    if (!glitchSoundOn()) return
     const audio = new Audio(avatarChangeSound)
-    audio.volume = 0.55
+    audio.volume = 0.55 * effectsVolume()
     activeAvatarAudio = audio
     audio.play().catch(() => {
       playGlitchSound()
@@ -44,6 +48,7 @@ const playAvatarChangeSound = () => {
 
 // Cyber glitch audio click (50ms) using Web Audio API
 const playGlitchSound = () => {
+  if (!glitchSoundOn()) return
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioCtx) return
@@ -82,11 +87,12 @@ const playGlitchSound = () => {
 
 // Multi-burst glitch audio effect for cyber shock / scared state
 export const playMultiGlitchSound = (count = 5, intervalMs = 180) => {
+  if (!glitchSoundOn()) return
   for (let i = 0; i < count; i++) {
     setTimeout(() => {
       try {
         const audio = new Audio(avatarChangeSound)
-        audio.volume = 0.65
+        audio.volume = 0.65 * effectsVolume()
         audio.playbackRate = 0.90 + Math.random() * 0.25 // authentic cybernetic stutter
         audio.play().catch(() => {
           playGlitchSound()
@@ -135,9 +141,12 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
   className = '',
   overrideDirection,
   noShadow = false,
-  isGamingMode = false
+  isGamingMode = false,
+  isGameForeground = false,
+  pixelHitTest = false
 }) => {
-  const { renderMode, direction: storeDirection, isCatchGameActive } = useCompanionStore()
+  const { renderMode: preferredRenderMode, direction: storeDirection, isCatchGameActive } = useCompanionStore()
+  const renderMode = pixelHitTest ? 'frames' : preferredRenderMode
   const direction = overrideDirection || storeDirection
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -518,13 +527,14 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
   return (
     <div
       onClick={onClick}
+      data-capri-art
       className={`relative inline-flex items-center justify-center cursor-pointer select-none ${className}`}
       style={{
         width: '100%',
         height: '100%',
         WebkitAppRegion: 'no-drag'
       } as React.CSSProperties}
-      title={isCatchGameActive ? localizeLine('CLICK TO CATCH CAPRICORN!', getLineLanguage()) : 'Capricorn // Shift+Drag to move | Click for Dev Deck | Ctrl+Click to chat'}
+      title={isGameForeground ? undefined : isCatchGameActive ? localizeLine('CLICK TO CATCH CAPRICORN!', getLineLanguage()) : 'Capricorn // Shift+Drag to move | Click for Dev Deck | Ctrl+Click to chat'}
     >
       {/* Background Cyber Glow Rings only during Catch Game (never on hover) */}
       {!noShadow && isCatchGameActive && (
@@ -549,6 +559,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           }}
         >
           <video
+            data-capri-sprite
             ref={videoRef}
             key="capri2-trim-video"
             src={capri2TrimVideo}
@@ -566,6 +577,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
 
           {/* Cyberpunk HUD Frame overlay (Horizontal in Gaming Mode, Portrait on Desktop) */}
           <img
+            data-capri-sprite
             src={isGamingMode ? capriFrameHorizontalImg : capriFrameImg}
             alt="cyber-frame"
             draggable={false}
@@ -585,6 +597,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           }}
         >
           <video
+            data-capri-sprite
             ref={asustadaVideoRef}
             key="capri-asustada-video"
             src={capriAsustadaVideo}
@@ -609,6 +622,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           }}
         >
           <video
+            data-capri-sprite
             ref={ojosVideoRef}
             key="capri-ojos2-video"
             src={ojos2Video}
@@ -627,6 +641,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
 
           {/* Cyberpunk HUD Horizontal Frame overlay matching exact size of eyes clip (16:9) */}
           <img
+            data-capri-sprite
             src={capriFrameHorizontalImg}
             alt="cyber-frame"
             draggable={false}
@@ -649,6 +664,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           {/* Red Silhouette Razor Ghost: Projecting left with sharp slices */}
           {isGlitching && (
             <img
+              data-capri-sprite
               key={`glitch-red-${glitchKey}`}
               src={currentSrc}
               alt="glitch-red"
@@ -665,6 +681,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           {/* Green Silhouette Razor Ghost: Projecting right with sharp slices */}
           {isGlitching && (
             <img
+              data-capri-sprite
               key={`glitch-green-${glitchKey}`}
               src={currentSrc}
               alt="glitch-green"
@@ -681,6 +698,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
           {/* Counter-slice B: PNG deformed and severed with knife cuts shifting right */}
           {isGlitching && (
             <img
+              data-capri-sprite
               key={`glitch-slice-b-${glitchKey}`}
               src={currentSrc}
               alt="glitch-slice-b"
@@ -698,6 +716,7 @@ export const CapriRenderer: React.FC<CapriRendererProps> = ({
 
           {/* Base Character Image: Clean full-body sprite in pet mode */}
           <img
+            data-capri-sprite
             key={`${state}-${renderMode}-${glitchKey}`}
             src={currentSrc}
             alt={`Capri (${state})`}

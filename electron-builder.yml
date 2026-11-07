@@ -42,6 +42,9 @@ linux:
   target:
     - target: deb
       arch: [x64]
+    # For any other distribution: extract it and run capridesktop
+    - target: tar.gz
+      arch: [x64]
   category: Utility
   icon: assets/icon.png
   maintainer: nunezValen
@@ -67,7 +70,8 @@ deb:
     - libatspi2.0-0
     - libuuid1
     - libsecret-1-0
-    - libasound2
+    # In this order: on Ubuntu 24.04 "libasound2" alone can install liboss4-salsa, and she won't start with that
+    - libasound2t64 | libasound2
   recommends:
     - xdotool
     - wmctrl

@@ -7,6 +7,8 @@ export const ja: Messages = {
   llm_bypassWarning: "Claude は音声による要求も含め、この PC 上であらゆるコマンドを権限確認なしに実行できるようになります。",
   llm_bypassDetail: "ファイルの変更や削除、ソフトウェアのインストール、個人データへのアクセスが可能になります。危険性を理解し同意する場合のみ有効にしてください。キャンセルすると権限確認は有効のままです。",
   llm_bypassConfirm: "権限確認の省略を有効にする",
+  music_platformTitle: '音楽プラットフォーム',
+  music_platformHelp: 'Capriに音楽の再生を頼むときに使用します。プラットフォーム名を指定することもできます。',
   close: '閉じる',
   done: '完了',
   saved: '保存しました',
@@ -178,6 +180,10 @@ export const ja: Messages = {
   llm_title: 'カプリ // 頭脳',
   llm_local: 'このPCで',
   llm_localDesc: 'Ollamaで無料かつプライベート。高性能なPCと約6 GBが必要です。',
+  llm_codex: 'Codex',
+  llm_codexDesc: "Codex CLIの接続設定を使用します。追加のAPIキーは不要です。",
+  llm_codexDefault: "Codexの既定モデル",
+  llm_codexHelp: "Codex CLIをインストールし、codex loginを実行してください。空欄ならCodexの既定モデルを使用します。ネイティブコマンドは承認要求なしの読み取り専用です。メッセージと画像は設定済みサービスに送信されます。",
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: 'Claude CLIの接続設定を使用します。追加のAPIキーは不要です。Haikuが最速です。',
   llm_cloud: 'クラウドモデル (API)',
@@ -258,6 +264,68 @@ export const ja: Messages = {
   vs_dspHolo: '空間ホログラム',
   vs_dspRobot: 'ロボットボコーダー',
   vs_dspGlitch: 'トレモロ付きメカニカル',
+  vs_mic: 'マイク',
+  vs_micDefault: 'システムの既定',
+  vs_micTest: 'テスト',
+  vs_micSpeak: '話してみて...',
+  vs_micHeard: '聞こえてるよ。',
+  vs_micSilent: '音が入ってきません。別のマイクを試すか、ミュートになっていないか確認してください。',
+  vs_micError: '開けませんでした。システムのプライバシー設定を確認するか、別のマイクを試してください。',
+  vs_micUnderstood: '聞き取れた内容:',
+  vs_micNoWords: '音は入っていますが、言葉を聞き取れませんでした。',
+  vs_arrowKeys: 'これらのキーを他のアプリでもショートカットにする (Ctrl+Alt+V は常に使えます)',
+  vs_hotkeys: 'キー',
+  vs_hotkeyTalk: '話しかける',
+  vs_hotkeyListen: '常に聞く',
+  vs_hotkeyChat: 'チャットを開く',
+  vs_hotkeyPress: 'キーを押して...',
+  vs_hotkeyReset: '矢印キーに戻す',
+  vs_hotkeyNeedsModifier: '文字、数字、Enter を単独で使うと他の場所で使えなくなります。Ctrl か Alt と組み合わせてください。',
+  vs_hotkeyReserved: 'そのキーは別の用途に予約されています。',
+  vs_hotkeyInUse: 'そのキーは別の操作で使われています。',
+  vs_hotkeyTaken: 'そのキーは別のアプリが使っています。',
+  vs_gamingOpacity: 'ゲーミングモードでの不透明度',
+  vs_sound: 'サウンド',
+  vs_voiceVolume: '音声の音量',
+  vs_effectsVolume: '効果音の音量',
+  vs_glitchSound: 'アニメーション変更時のクリック音とグリッチ音',
+  ob_storageTitle: 'インストール先',
+  ob_storageDefault: 'システムディスクの既定のフォルダー',
+  ob_storageChange: '変更',
+  ob_storageReset: '既定に戻す',
+
+  ob_moveTitle: "インストール済みのものを移動しますか?",
+
+  ob_moveModels: "彼女のモデル",
+
+  ob_moveWhisper: "彼女の聴覚 (Whisper)",
+
+  ob_moveVoiceEnv: "彼女の音声環境",
+
+  ob_moveTools: "FFmpeg とツール",
+
+  ob_moveOllamaProgram: "Ollama 本体 (再ダウンロードされます)",
+
+  ob_moveTotal: "合計",
+
+  ob_moveFree: "移動先の空き",
+
+  ob_moveNote: "先にコピーし、古いファイルは最後に削除します。Python はそのままです。Capri 本体を移動するには、インストーラーをもう一度実行して別のフォルダーを選んでください。",
+
+  ob_moveNoSpace: "そのディスクの空き容量が足りません。",
+
+  ob_moveBadFolder: "そのフォルダーは移動対象の中にあります。別のフォルダーを選んでください。",
+
+  ob_moveCancel: "キャンセル",
+
+  ob_moveConfirm: "移動",
+
+  ob_moveDone: "完了しました。新しい場所を使っています。",
+
+  ob_moveFailed: "移動できませんでした。完了していないものは元の場所に残っています。",
+  vs_monitor: 'モニター',
+  vs_monitorMain: 'メイン',
+  vs_boredom: '退屈を許可: 話しかけないと自分でタブや音楽を開きます',
   vs_pitch: 'ピッチ:',
   vs_low: '低い (-20Hz)',
   vs_normal: '標準 (0Hz)',

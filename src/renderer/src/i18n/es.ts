@@ -7,6 +7,8 @@ export const es: Messages = {
   llm_bypassWarning: "Claude podrá ejecutar cualquier comando en esta PC sin comprobar permisos, incluso mediante solicitudes por voz.",
   llm_bypassDetail: "Esto puede modificar o borrar archivos, instalar programas y acceder a datos privados. Actívalo solo si aceptas estos riesgos. Cancelar mantiene la comprobación de permisos.",
   llm_bypassConfirm: "Activar modo sin permisos",
+  music_platformTitle: 'Plataforma de música',
+  music_platformHelp: 'Se usa cuando le pides a Capri que ponga música. También puedes pedir una plataforma por su nombre.',
   close: 'Cerrar',
   done: 'Listo',
   saved: 'Guardado',
@@ -178,6 +180,10 @@ export const es: Messages = {
   llm_title: 'Capri // Cerebro',
   llm_local: 'En esta PC',
   llm_localDesc: 'Gratis y privado, con Ollama. Necesita una PC potente y unos 6 GB.',
+  llm_codex: 'Codex',
+  llm_codexDesc: 'Usa la conexión de tu CLI Codex, sin una API key adicional.',
+  llm_codexDefault: "Predeterminado de Codex",
+  llm_codexHelp: 'Instalá Codex CLI y ejecutá codex login. Dejá el modelo vacío para usar el predeterminado de Codex. Los comandos nativos se ejecutan en modo solo lectura, sin pedir permisos. Los mensajes e imágenes se envían al servicio configurado.',
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: 'Usa la conexión de tu CLI Claude, sin una API key adicional. Haiku es la opción más rápida.',
   llm_cloud: 'Modelo en la nube (API)',
@@ -258,6 +264,68 @@ export const es: Messages = {
   vs_dspHolo: 'holograma espacial',
   vs_dspRobot: 'vocoder robótico',
   vs_dspGlitch: 'mecánico con trémolo',
+  vs_mic: 'Micrófono',
+  vs_micDefault: 'El predeterminado del sistema',
+  vs_micTest: 'Probar',
+  vs_micSpeak: 'Hablá ahora...',
+  vs_micHeard: 'Te escucho.',
+  vs_micSilent: 'No entra sonido. Probá otro micrófono o fijate que no esté silenciado.',
+  vs_micError: 'No se pudo abrir. Revisá la privacidad del sistema o probá otro.',
+  vs_micUnderstood: 'Entendí:',
+  vs_micNoWords: 'Entra sonido, pero no pude distinguir palabras.',
+  vs_arrowKeys: 'Usar estas teclas como atajos en otras apps (Ctrl+Alt+V siempre funciona)',
+  vs_hotkeys: 'Teclas',
+  vs_hotkeyTalk: 'Hablarle',
+  vs_hotkeyListen: 'Escucha continua',
+  vs_hotkeyChat: 'Abrir su chat',
+  vs_hotkeyPress: 'Apretá una tecla...',
+  vs_hotkeyReset: 'Volver a las flechas',
+  vs_hotkeyNeedsModifier: 'Una letra, un número o Enter solos dejarían de funcionar en todos lados: combinalos con Ctrl o Alt.',
+  vs_hotkeyReserved: 'Esa tecla está reservada para otra cosa.',
+  vs_hotkeyInUse: 'Otra acción ya usa esa tecla.',
+  vs_hotkeyTaken: 'Otra app ya está usando esa tecla.',
+  vs_gamingOpacity: 'Su opacidad en el modo gaming',
+  vs_sound: 'Sonido',
+  vs_voiceVolume: 'Volumen de la voz',
+  vs_effectsVolume: 'Volumen de los efectos',
+  vs_glitchSound: 'Sonido de clic y glitch al cambiar de animación',
+  ob_storageTitle: 'Dónde instalar',
+  ob_storageDefault: 'Carpetas predeterminadas en el disco del sistema',
+  ob_storageChange: 'Cambiar',
+  ob_storageReset: 'Usar predeterminado',
+
+  ob_moveTitle: "¿Mover lo que ya está instalado?",
+
+  ob_moveModels: "Sus modelos",
+
+  ob_moveWhisper: "Su oído (Whisper)",
+
+  ob_moveVoiceEnv: "Su entorno de voz",
+
+  ob_moveTools: "FFmpeg y herramientas",
+
+  ob_moveOllamaProgram: "Programa Ollama (se descarga de nuevo)",
+
+  ob_moveTotal: "Total",
+
+  ob_moveFree: "Libre ahí",
+
+  ob_moveNote: "Primero se copia y lo viejo se borra recién al final. Python queda donde está. Para mover a Capri, volvé a correr su instalador y elegí otra carpeta.",
+
+  ob_moveNoSpace: "No hay suficiente espacio libre en ese disco.",
+
+  ob_moveBadFolder: "Esa carpeta está dentro de lo que se va a mover. Elegí otra.",
+
+  ob_moveCancel: "Cancelar",
+
+  ob_moveConfirm: "Mover",
+
+  ob_moveDone: "Listo. Ya usa la ubicación nueva.",
+
+  ob_moveFailed: "No se pudo mover. Lo que no terminó sigue donde estaba.",
+  vs_monitor: 'Monitor',
+  vs_monitorMain: 'principal',
+  vs_boredom: 'Que se pueda aburrir: abre pestañas y música por su cuenta cuando no le hablás',
   vs_pitch: 'Tono:',
   vs_low: 'Grave (-20Hz)',
   vs_normal: 'Normal (0Hz)',

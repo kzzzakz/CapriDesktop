@@ -7,6 +7,8 @@ export const ko: Messages = {
   llm_bypassWarning: "Claude가 음성 요청을 포함하여 이 PC에서 모든 명령을 권한 확인 없이 실행할 수 있게 됩니다.",
   llm_bypassDetail: "파일 변경이나 삭제, 소프트웨어 설치 및 개인 데이터 접근이 가능해집니다. 이러한 위험에 동의하는 경우에만 켜세요. 취소하면 권한 확인이 유지됩니다.",
   llm_bypassConfirm: "권한 확인 건너뛰기 켜기",
+  music_platformTitle: '음악 플랫폼',
+  music_platformHelp: 'Capri에게 음악 재생을 요청할 때 사용합니다. 플랫폼 이름을 직접 지정할 수도 있습니다.',
   close: '닫기',
   done: '완료',
   saved: '저장됨',
@@ -178,6 +180,10 @@ export const ko: Messages = {
   llm_title: '카프리 // 두뇌',
   llm_local: '이 PC에서',
   llm_localDesc: 'Ollama로 무료이며 비공개입니다. 고성능 PC와 약 6GB가 필요합니다.',
+  llm_codex: 'Codex',
+  llm_codexDesc: "Codex CLI 연결을 사용합니다. 추가 API 키가 필요 없습니다.",
+  llm_codexDefault: "Codex 기본 모델",
+  llm_codexHelp: "Codex CLI를 설치하고 codex login을 실행하세요. 비워 두면 Codex 기본 모델을 사용합니다. 기본 명령은 승인 요청 없이 읽기 전용으로 실행됩니다. 메시지와 이미지는 설정된 서비스로 전송됩니다.",
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: 'Claude CLI 연결 설정을 사용합니다. 추가 API 키가 필요 없습니다. Haiku가 가장 빠릅니다.',
   llm_cloud: '클라우드 모델 (API)',
@@ -258,6 +264,68 @@ export const ko: Messages = {
   vs_dspHolo: '공간 홀로그램',
   vs_dspRobot: '로봇 보코더',
   vs_dspGlitch: '트레몰로 기계음',
+  vs_mic: '마이크',
+  vs_micDefault: '시스템 기본값',
+  vs_micTest: '테스트',
+  vs_micSpeak: '지금 말해 봐...',
+  vs_micHeard: '잘 들려.',
+  vs_micSilent: '소리가 들어오지 않습니다. 다른 마이크를 사용하거나 음소거 여부를 확인하세요.',
+  vs_micError: '열 수 없습니다. 시스템 개인 정보 설정을 확인하거나 다른 마이크를 사용하세요.',
+  vs_micUnderstood: '이해한 내용:',
+  vs_micNoWords: '소리는 들어오지만 말을 알아들을 수 없었어.',
+  vs_arrowKeys: '다른 앱에서도 이 키를 단축키로 사용 (Ctrl+Alt+V는 항상 작동)',
+  vs_hotkeys: '키',
+  vs_hotkeyTalk: '말 걸기',
+  vs_hotkeyListen: '항상 듣기',
+  vs_hotkeyChat: '채팅 열기',
+  vs_hotkeyPress: '키를 누르세요...',
+  vs_hotkeyReset: '화살표 키로 되돌리기',
+  vs_hotkeyNeedsModifier: '문자, 숫자, Enter를 단독으로 쓰면 다른 곳에서 작동하지 않게 돼요. Ctrl이나 Alt와 함께 쓰세요.',
+  vs_hotkeyReserved: '그 키는 다른 용도로 예약되어 있어요.',
+  vs_hotkeyInUse: '다른 동작이 이미 그 키를 쓰고 있어요.',
+  vs_hotkeyTaken: '다른 앱이 이미 그 키를 쓰고 있어요.',
+  vs_gamingOpacity: '게이밍 모드에서의 불투명도',
+  vs_sound: '소리',
+  vs_voiceVolume: '음성 볼륨',
+  vs_effectsVolume: '효과음 볼륨',
+  vs_glitchSound: '애니메이션 변경 시 클릭 및 글리치 소리',
+  ob_storageTitle: '설치 위치',
+  ob_storageDefault: '시스템 디스크의 기본 폴더',
+  ob_storageChange: '변경',
+  ob_storageReset: '기본값 사용',
+
+  ob_moveTitle: "이미 설치된 항목을 옮길까요?",
+
+  ob_moveModels: "모델",
+
+  ob_moveWhisper: "청각 (Whisper)",
+
+  ob_moveVoiceEnv: "음성 환경",
+
+  ob_moveTools: "FFmpeg 및 도구",
+
+  ob_moveOllamaProgram: "Ollama 프로그램 (다시 다운로드됨)",
+
+  ob_moveTotal: "합계",
+
+  ob_moveFree: "대상 여유 공간",
+
+  ob_moveNote: "먼저 복사한 뒤 이전 파일은 마지막에 삭제합니다. Python은 그대로 둡니다. Capri 자체를 옮기려면 설치 프로그램을 다시 실행해 다른 폴더를 선택하세요.",
+
+  ob_moveNoSpace: "해당 디스크의 여유 공간이 부족합니다.",
+
+  ob_moveBadFolder: "그 폴더는 옮길 항목 안에 있습니다. 다른 폴더를 선택하세요.",
+
+  ob_moveCancel: "취소",
+
+  ob_moveConfirm: "옮기기",
+
+  ob_moveDone: "완료했습니다. 이제 새 위치를 사용합니다.",
+
+  ob_moveFailed: "옮기지 못했습니다. 끝나지 않은 항목은 원래 위치에 남아 있습니다.",
+  vs_monitor: '모니터',
+  vs_monitorMain: '주 모니터',
+  vs_boredom: '심심해하기 허용: 말을 걸지 않으면 혼자 탭과 음악을 엽니다',
   vs_pitch: '음높이:',
   vs_low: '낮게 (-20Hz)',
   vs_normal: '보통 (0Hz)',

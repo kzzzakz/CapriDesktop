@@ -7,6 +7,7 @@
  * The API key is encrypted with the OS keychain (safeStorage) and never reaches the renderer.
  */
 
+import { CodexError, runCodex } from './codex-runner'
 import { ClaudeCodeError, runClaudeCode, type ClaudeModel } from './claude-code-runner'
 import { app, dialog, safeStorage, type BrowserWindow } from 'electron'
 import { toUiLang, translator } from '../../renderer/src/i18n'
@@ -15,7 +16,7 @@ import * as path from 'path'
 import { scriptPath } from './app-paths'
 import { personalize } from './user-profile'
 
-export type LlmProvider = 'local' | 'cloud' | 'claude-code'
+export type LlmProvider = 'local' | 'cloud' | 'claude-code' | 'codex'
 export type LlmErrorCode = 'auth' | 'quota' | 'model' | 'network' | 'insecure' | 'other'
 
 export interface LlmPublicSettings {
@@ -23,6 +24,7 @@ export interface LlmPublicSettings {
   preset: string
   baseUrl: string
   model: string
+  codexModel: string
   claudeModel: ClaudeModel
   claudeBypassPermissions: boolean
   hasKey: boolean
@@ -33,6 +35,7 @@ export interface LlmSettingsUpdate {
   preset?: string
   baseUrl?: string
   model?: string
+  codexModel?: string
   claudeModel?: ClaudeModel
   claudeBypassPermissions?: false
   /** undefined keeps the saved key, '' removes it */
@@ -44,11 +47,12 @@ interface StoredSettings {
   preset: string
   baseUrl: string
   model: string
+  codexModel: string
   claudeModel: ClaudeModel
   encryptedKey?: string
 }
 
-const DEFAULTS: StoredSettings = { provider: 'local', preset: 'openai', baseUrl: '', model: '', claudeModel: 'haiku' }
+const DEFAULTS: StoredSettings = { provider: 'local', preset: 'openai', baseUrl: '', model: '', claudeModel: 'haiku', codexModel: '' }
 
 /** The callers ask for these local models by name; in cloud mode all of them mean the chosen model */
 const LOCAL_MODEL_ALIASES = ['capri:latest', 'qwen2.5-coder:7b', 'qwen2.5-vl:latest', 'llava:latest']
@@ -109,12 +113,12 @@ function keyWouldLeakInClear(baseUrl: string, key: string): boolean {
 
 export function isRemoteMode(): boolean {
   const s = load()
-  return s.provider === 'claude-code' || (s.provider === 'cloud' && !!s.baseUrl && !!s.model)
+  return s.provider === 'codex' || s.provider === 'claude-code' || (s.provider === 'cloud' && !!s.baseUrl && !!s.model)
 }
 
 export function getLlmSettings(): LlmPublicSettings {
-  const { provider, preset, baseUrl, model, claudeModel, encryptedKey } = load()
-  return { provider, preset, baseUrl, model, claudeModel, claudeBypassPermissions: claudeBypassConfirmed, hasKey: !!encryptedKey }
+  const { provider, preset, baseUrl, model, claudeModel, codexModel, encryptedKey } = load()
+  return { provider, preset, baseUrl, model, claudeModel, codexModel, claudeBypassPermissions: claudeBypassConfirmed, hasKey: !!encryptedKey }
 }
 
 export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; error?: string; settings: LlmPublicSettings } {
@@ -123,7 +127,8 @@ export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; e
   }
   const current = load()
   const next: StoredSettings = { ...current }
-  if (update.provider === 'local' || update.provider === 'cloud' || update.provider === 'claude-code') next.provider = update.provider
+  if (update.provider === 'local' || update.provider === 'cloud' || update.provider === 'claude-code' || update.provider === 'codex') next.provider = update.provider
+  if (typeof update.codexModel === 'string') next.codexModel = update.codexModel.trim()
   if (update.claudeModel && ['haiku', 'sonnet', 'opus'].includes(update.claudeModel)) next.claudeModel = update.claudeModel
   if (update.claudeBypassPermissions === false) claudeBypassConfirmed = false
   if (typeof update.preset === 'string') next.preset = update.preset
@@ -312,6 +317,11 @@ function normalizeMessages(messages: Body[], keepTools = true): Body[] {
       out.push({ role: 'user', content: `[Result of ${String(msg.name || 'tool')}] ${String(msg.content ?? '')}` })
       continue
     }
+    // Some providers reject a system message in the middle: it joins the first one
+    if (msg.role === 'system' && out.length > 0 && out[0].role === 'system') {
+      out[0] = { ...out[0], content: `${String(out[0].content ?? '')}\n${String(msg.content ?? '')}` }
+      continue
+    }
     out.push(msg)
   }
   return out
@@ -395,15 +405,17 @@ async function ollamaAnswer(res: Response, stream: boolean, kind: 'chat' | 'gene
 export async function llmFetch(input: string, init?: RequestInit): Promise<Response> {
   if (!isRemoteMode()) return fetch(input, init)
 
-  const { baseUrl, provider, claudeModel } = load()
-  const model = provider === 'claude-code' ? claudeModel : load().model
+  const { baseUrl, provider, claudeModel, codexModel } = load()
+  const model = provider === 'claude-code' ? claudeModel : provider === 'codex' ? codexModel || 'Codex' : load().model
   const route = new URL(input).pathname
   const key = keyFor(baseUrl)
   if (provider === 'cloud' && keyWouldLeakInClear(baseUrl, key)) return jsonResponse({ error: 'insecure' }, 403)
   const post = async (body: Body): Promise<Response> => {
-    if (provider !== 'claude-code') return postChat(baseUrl, key, body, init?.signal)
+    if (provider !== 'claude-code' && provider !== 'codex') return postChat(baseUrl, key, body, init?.signal)
     try {
-      return jsonResponse(await runClaudeCode(body, claudeModel, init?.signal, claudeBypassConfirmed))
+      return jsonResponse(provider === 'codex'
+        ? await runCodex(body, codexModel, init?.signal)
+        : await runClaudeCode(body, claudeModel, init?.signal, claudeBypassConfirmed))
     } catch (error) {
       if (init?.signal?.aborted) throw error
       const code = cloudErrorCode(error)
@@ -421,7 +433,7 @@ export async function llmFetch(input: string, init?: RequestInit): Promise<Respo
   }
   if (route.endsWith('/chat/completions')) {
     const messages = normalizeMessages((req.messages || []) as Body[])
-    if (provider === 'claude-code' && /^capri/i.test(String(req.model || '')) && !messages.some((m) => m.role === 'system')) {
+    if ((provider === 'claude-code' || provider === 'codex') && /^capri/i.test(String(req.model || '')) && !messages.some((m) => m.role === 'system')) {
       const persona = capriPersona()
       if (persona) messages.unshift({ role: 'system', content: persona })
     }
@@ -452,7 +464,7 @@ export async function llmFetch(input: string, init?: RequestInit): Promise<Respo
 
 /** Status of the error a cloud request failed with, if the message carries one */
 export function cloudErrorCode(err: unknown): LlmErrorCode {
-  if (err instanceof ClaudeCodeError) return err.code
+  if (err instanceof ClaudeCodeError || err instanceof CodexError) return err.code
   const text = String((err as Error)?.message || err)
   const status = Number((text.match(/HTTP (\d{3})/) || [])[1])
   if (status) return classify(status)
@@ -475,6 +487,15 @@ export function cloudErrorDetail(err: unknown): string {
 export async function testClaudeConnection(model: ClaudeModel): Promise<{ ok: boolean; error?: LlmErrorCode }> {
   try {
     await runClaudeCode({ messages: [{ role: 'user', content: 'Reply with: ok' }] }, model, undefined, claudeBypassConfirmed)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: cloudErrorCode(error) }
+  }
+}
+
+export async function testCodexConnection(model: string): Promise<{ ok: boolean; error?: LlmErrorCode }> {
+  try {
+    await runCodex({ messages: [{ role: 'user', content: 'Reply with: ok' }] }, model)
     return { ok: true }
   } catch (error) {
     return { ok: false, error: cloudErrorCode(error) }

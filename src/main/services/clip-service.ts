@@ -1,6 +1,6 @@
 import { pythonPath } from './app-paths'
 import { isLinux, pressKey } from './platform'
-import { spawn } from 'child_process'
+import { spawn } from './hidden-process'
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'

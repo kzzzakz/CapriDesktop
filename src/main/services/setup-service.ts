@@ -7,14 +7,18 @@
  * has to be a system package (Python) goes through the package manager and its password prompt.
  */
 
+import { getStorageRoot, ollamaModelsDir, programDirs, setStorageRoot, storageDir } from './storage-location'
+import { copyTree, isInside, MovePlan, planMove, samePath } from './storage-move'
 import { app, dialog } from 'electron'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { spawn, execFile } from 'child_process'
 import { localFfmpegPath, pythonEnvDir, scriptPath, toolsDir, venvPython } from './app-paths'
-import { findOnPath, isWindows, linuxInstallCommand, linuxPackageManager } from './platform'
+import { findOnPath, isWindows, killProcesses, linuxInstallCommand, linuxPackageManager } from './platform'
 import { ollamaService } from './ollama-service'
+import { voiceService } from './voice-service'
+import { createHash } from 'crypto'
 import { consciousnessService } from './consciousness-service'
 import { isRemoteMode } from './llm-gateway'
 import { windowManager } from '../windows/window-manager'
@@ -46,7 +50,7 @@ const LINUX_OLLAMA_URL = `https://ollama.com/download/ollama-linux-${LINUX_ARCH}
 const LINUX_OLLAMA_SCRIPT = 'curl -fsSL https://ollama.com/install.sh | sh'
 const LINUX_FFMPEG_URL = `https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux${process.arch === 'arm64' ? 'arm64' : '64'}-gpl.tar.xz`
 
-type Logger = (step: SetupStep, line: string) => void
+type Logger = (step: SetupStep | 'storage', line: string) => void
 
 function run(cmd: string, args: string[], onLine: (l: string) => void, opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<number> {
   return new Promise((resolve) => {
@@ -110,6 +114,7 @@ export class SetupService {
     // Fresh install not yet on PATH (per-user or all-users location)
     for (const v of ['Python311', 'Python312', 'Python313', 'Python310']) {
       const places = [
+        ...programDirs('Python').map((dir) => path.join(dir, 'python.exe')),
         path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', v, 'python.exe'),
         path.join(process.env.ProgramFiles || 'C:\\Program Files', v, 'python.exe')
       ]
@@ -135,6 +140,7 @@ export class SetupService {
       // No password prompts out of nowhere: on Linux a missing system package waits for the setup
       const ok = await this.installVoiceEnv((_step, line) => console.log(`[Setup] ${line}`), false)
       console.log(ok ? '[Setup] Voice environment ready.' : '[Setup] The voice environment is still incomplete.')
+      if (ok) voiceService.restartWorker()
     } finally {
       this.busy = false
     }
@@ -155,6 +161,200 @@ export class SetupService {
       else if (s.ollama.running && s.ollama.models.length === 0) missing.push('model')
     }
     return missing
+  }
+
+  /**
+   * New location for what's installed from now on. What's already somewhere else stays there and
+   * keeps working. Ollama is told too: the copy that starts with Windows would otherwise keep
+   * filling the old disk.
+   */
+  public async changeStorage(root: string | null): Promise<void> {
+    const previous = getStorageRoot()
+    setStorageRoot(root)
+    if (root) fs.mkdirSync(root, { recursive: true })
+    if (!root) await this.forgetOllamaFolder(previous)
+    await this.pointOllamaAtStorage()
+    console.log(`[Setup] Requirements will go to ${root || 'the default folders'}`)
+  }
+
+  /** Back to the default folders: Ollama stops being told to use the folder she gave it */
+  private async forgetOllamaFolder(previousRoot: string | null): Promise<void> {
+    const current = process.env.OLLAMA_MODELS
+    if (!isWindows || !previousRoot || !current || !isInside(current, previousRoot)) return
+    delete process.env.OLLAMA_MODELS
+    await quick('reg', ['delete', 'HKCU\\Environment', '/v', 'OLLAMA_MODELS', '/f'])
+  }
+
+  /**
+   * The Ollama program, when it can go somewhere else. Not one in Program Files: that one needs
+   * administrator rights and isn't hers.
+   */
+  private movableOllamaProgram(root: string | null): { from: string; to: string } | null {
+    if (!isWindows) return null
+    const binary = ollamaService.findOllamaBinary()
+    if (!binary) return null
+    const from = path.dirname(binary)
+    if (path.basename(from).toLowerCase() !== 'ollama') return null
+    for (const protectedDir of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']]) {
+      if (protectedDir && isInside(from, protectedDir)) return null
+    }
+    return { from, to: root ? path.join(root, 'Ollama') : path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama') }
+  }
+
+  /** What moving there would take, for the user to confirm */
+  public planStorageMove(root: string | null): Promise<MovePlan> {
+    return planMove(root, this.movableOllamaProgram(root))
+  }
+
+  /**
+   * Takes what's already installed to a new location. Nothing old is deleted until the copies are
+   * complete and the location has changed: if a copy fails, she stays exactly as she was.
+   */
+  public async moveStorage(root: string | null, log: Logger): Promise<boolean> {
+    if (this.busy) {
+      log('storage', 'Another setup step is still running...')
+      return false
+    }
+    this.busy = true
+    const say = (line: string) => log('storage', line)
+    let stopped = false
+    const resume = async () => {
+      if (!stopped) return
+      voiceService.restartWorker()
+      if (!isRemoteMode()) await ollamaService.ensureRunning()
+    }
+    try {
+      const plan = await this.planStorageMove(root)
+      if (plan.invalid || !plan.enoughSpace) {
+        say(plan.invalid ? "That folder is inside what's being moved." : 'There is not enough free space there.')
+        return false
+      }
+      if (!plan.items.length && !plan.ollamaProgram) {
+        await this.changeStorage(root)
+        return true
+      }
+
+      // Their files stay open while they run, and Windows wouldn't let them be deleted
+      say('Closing Ollama and her hearing while everything moves...')
+      stopped = true
+      voiceService.stopServer()
+      if (isWindows) {
+        await quick('taskkill', ['/IM', 'ollama app.exe', '/F'])
+        await quick('taskkill', ['/IM', 'ollama.exe', '/F'])
+      } else {
+        killProcesses(['ollama'])
+      }
+      await new Promise((r) => setTimeout(r, 1500))
+
+      const toCopy = plan.items.reduce((sum, i) => sum + i.bytes, 0)
+      let copied = 0
+      let lastPct = -10
+      const created: string[] = []
+      try {
+        for (const item of plan.items) {
+          say(`Copying ${item.from} to ${item.to}`)
+          if (!fs.existsSync(item.to)) created.push(item.to)
+          await copyTree(item.from, item.to, (n) => {
+            copied += n
+            const pct = toCopy ? Math.floor((copied / toCopy) * 100) : 100
+            if (pct >= lastPct + 10) {
+              lastPct = pct
+              say(`${pct}% (${(copied / 1048576).toFixed(0)} / ${(toCopy / 1048576).toFixed(0)} MB)`)
+            }
+          })
+        }
+      } catch (err: any) {
+        say(`The copy failed, nothing was moved: ${err?.message || err}`)
+        for (const dir of created) await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {})
+        await resume()
+        return false
+      }
+
+      // A voice environment doesn't always survive being moved. Better to know before relying on it
+      const movedEnv = plan.items.find((i) => i.kind === 'voiceEnv')
+      let rebuildEnv = false
+      if (movedEnv) {
+        const py = isWindows ? path.join(movedEnv.to, 'Scripts', 'python.exe') : path.join(movedEnv.to, 'bin', 'python')
+        if (!(await quick(py, ['-c', 'import edge_tts, faster_whisper'], 60000)).ok) {
+          say('The voice environment needs rebuilding in the new location.')
+          await fs.promises.rm(movedEnv.to, { recursive: true, force: true }).catch(() => {})
+          rebuildEnv = true
+        }
+      }
+
+      const previous = getStorageRoot()
+      setStorageRoot(root)
+      if (root) fs.mkdirSync(root, { recursive: true })
+      if (!root) await this.forgetOllamaFolder(previous)
+
+      if (plan.ollamaProgram) {
+        // By its installer: Windows has it registered, and it updates itself from that folder
+        const { from, to } = plan.ollamaProgram
+        say(`Reinstalling the Ollama program in ${to}`)
+        await this.installOllamaDirect(log, to)
+        if (fs.existsSync(path.join(to, 'ollama.exe'))) {
+          await quick('taskkill', ['/IM', 'ollama app.exe', '/F'])
+          await quick('taskkill', ['/IM', 'ollama.exe', '/F'])
+          await fs.promises.rm(from, { recursive: true, force: true }).catch(() => say(`Couldn't delete ${from}, you can do it by hand.`))
+        } else {
+          say(`The Ollama program couldn't be moved, it stays in ${from} and keeps working.`)
+        }
+      }
+      await this.pointOllamaAtStorage()
+
+      if (rebuildEnv) await this.installVoiceEnv(log, false)
+
+      for (const item of plan.items) {
+        await fs.promises.rm(item.from, { recursive: true, force: true }).catch(() => say(`Couldn't delete ${item.from}, you can do it by hand.`))
+      }
+      if (previous && !samePath(previous, root || '')) {
+        await fs.promises.rm(path.join(previous, 'pip-cache'), { recursive: true, force: true }).catch(() => {})
+        // Only if nothing's left: Python and any other program stay in it
+        await fs.promises.rmdir(previous).catch(() => {})
+      }
+
+      await resume()
+      say('Done.')
+      return true
+    } catch (err: any) {
+      say(`error: ${err?.message || err}`)
+      await resume()
+      return false
+    } finally {
+      this.busy = false
+    }
+  }
+
+  /** Ollama starts with Windows on its own, so it has to be told too or it fills the old disk */
+  private async pointOllamaAtStorage(): Promise<void> {
+    const models = ollamaModelsDir()
+    // Her own environment says nothing about the Ollama that's running: its installer starts one by
+    // itself. Only one she started knows for sure where it's keeping models
+    if (!isWindows || !models || ollamaService.servingModelsDir() === models) return
+    fs.mkdirSync(models, { recursive: true })
+    process.env.OLLAMA_MODELS = models
+    await quick('setx', ['OLLAMA_MODELS', models])
+    await quick('taskkill', ['/IM', 'ollama app.exe', '/F'])
+    await quick('taskkill', ['/IM', 'ollama.exe', '/F'])
+  }
+
+  /** An update can change her persona: an installed model keeps the old one until it's rebuilt */
+  public async refreshPersona(): Promise<void> {
+    if (!app.isPackaged || this.busy || isRemoteMode()) return
+    const version = createHash('sha256').update(fs.readFileSync(scriptPath('Modelfile.capri'))).digest('hex')
+    if (consciousnessService.getPersonaVersion() === version) return
+    const tags = await ollamaService.queryTags()
+    // With Ollama closed there's no way to know: it waits for the next start
+    if (!tags.running) return
+    if (tags.models.some((m) => m.toLowerCase().startsWith('capri'))) {
+      this.busy = true
+      try {
+        if (!(await this.createPersona((_step, line) => console.log(`[Setup] ${line}`)))) return
+      } finally {
+        this.busy = false
+      }
+    }
+    consciousnessService.setPersonaVersion(version)
   }
 
   /** Offers the setup when it was left incomplete. Never in the middle of a game. */
@@ -227,7 +427,8 @@ export class SetupService {
     log(step, `winget install ${id}`)
     const code = await run(
       'winget',
-      ['install', '-e', '--id', id, '--silent', '--accept-package-agreements', '--accept-source-agreements'],
+      ['install', '-e', '--id', id, '--silent', '--accept-package-agreements', '--accept-source-agreements', ...(id === 'Ollama.Ollama' && storageDir('Ollama') ? ['--location', storageDir('Ollama') as string] : []),
+        ...(id.startsWith('Python.') && storageDir('Python') ? ['--location', storageDir('Python') as string] : [])],
       (l) => log(step, l)
     )
     // winget returns non-zero when the package is already installed; detection decides afterwards
@@ -271,18 +472,19 @@ export class SetupService {
   }
 
   private async installPythonDirect(log: Logger): Promise<void> {
-    const exe = path.join(os.tmpdir(), 'capri-python-3.11.9-amd64.exe')
+    const exe = path.join(storageDir('downloads') || os.tmpdir(), 'capri-python-3.11.9-amd64.exe')
     if (!(await this.download(PYTHON_INSTALLER_URL, exe, 'python', log))) return
     log('python', 'Installing Python 3.11 (per user, no admin needed)...')
-    await run(exe, ['/quiet', 'InstallAllUsers=0', 'PrependPath=1', 'Include_launcher=1', 'Include_test=0'], (l) => log('python', l))
+    await run(exe, ['/quiet', ...(storageDir('Python') ? [`TargetDir=${storageDir('Python')}`] : []), 'InstallAllUsers=0', 'PrependPath=1', 'Include_launcher=1', 'Include_test=0'], (l) => log('python', l))
     fs.rmSync(exe, { force: true })
   }
 
-  private async installOllamaDirect(log: Logger): Promise<void> {
-    const exe = path.join(os.tmpdir(), 'OllamaSetup.exe')
+  private async installOllamaDirect(log: Logger, dir = storageDir('Ollama')): Promise<void> {
+    // The installer weighs over a GB: the system disk may be full, which is why she's elsewhere
+    const exe = path.join(storageDir('downloads') || os.tmpdir(), 'OllamaSetup.exe')
     if (!(await this.download(OLLAMA_INSTALLER_URL, exe, 'ollama', log))) return
     log('ollama', 'Installing Ollama...')
-    await run(exe, ['/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES'], (l) => log('ollama', l))
+    await run(exe, ['/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES', ...(dir ? [`/DIR=${dir}`] : [])], (l) => log('ollama', l))
     fs.rmSync(exe, { force: true })
   }
 
@@ -356,14 +558,19 @@ export class SetupService {
     this.busy = true
     try {
       switch (step) {
-        case 'python':
-          return await this.installVoiceEnv(log)
+        case 'python': {
+          const ok = await this.installVoiceEnv(log)
+          // It may have started before Whisper was here, and it wouldn't notice on its own
+          if (ok) voiceService.restartWorker()
+          return ok
+        }
         case 'ffmpeg':
           if (!isWindows) {
             if (!(await this.hasFfmpeg())) await this.installFfmpegLinux(log)
             return this.hasFfmpeg()
           }
-          await this.winget('Gyan.FFmpeg', 'ffmpeg', log)
+          // winget always puts it on the system disk; the direct download goes to the chosen folder
+          if (!storageDir('tools')) await this.winget('Gyan.FFmpeg', 'ffmpeg', log)
           if (!(await this.hasFfmpeg())) await this.installFfmpegDirect(log)
           return this.hasFfmpeg()
         case 'ollama': {
@@ -373,10 +580,12 @@ export class SetupService {
             if (!ollamaService.findOllamaBinary()) await this.winget('Ollama.Ollama', 'ollama', log)
             if (!ollamaService.findOllamaBinary()) await this.installOllamaDirect(log)
           }
+          await this.pointOllamaAtStorage()
           const st = await ollamaService.ensureRunning()
           return st.running
         }
         case 'model':
+          await this.pointOllamaAtStorage()
           return await this.pullModel(DEFAULT_MODEL, log)
         case 'persona':
           return await this.createPersona(log)
@@ -431,10 +640,13 @@ export class SetupService {
     }
 
     log('python', 'Installing voice packages (edge-tts, faster-whisper). This can take a few minutes...')
-    await run(envPython, ['-m', 'pip', 'install', '--upgrade', 'pip'], (l) => log('python', l))
+    // pip's downloads weigh hundreds of MB: they stay on the chosen disk too
+    const pipCache = storageDir('pip-cache')
+    const pipOptions = pipCache ? { env: { ...process.env, PIP_CACHE_DIR: pipCache } } : {}
+    await run(envPython, ['-m', 'pip', 'install', '--upgrade', 'pip'], (l) => log('python', l), pipOptions)
     // On its own first: pip installs a list all or nothing, and speaking shouldn't depend on hearing
-    await run(envPython, ['-m', 'pip', 'install', 'edge-tts>=6.1'], (l) => log('python', l))
-    const code = await run(envPython, ['-m', 'pip', 'install', '-r', scriptPath('requirements.txt')], (l) => log('python', l))
+    await run(envPython, ['-m', 'pip', 'install', 'edge-tts>=6.1'], (l) => log('python', l), pipOptions)
+    const code = await run(envPython, ['-m', 'pip', 'install', '-r', scriptPath('requirements.txt')], (l) => log('python', l), pipOptions)
     return code === 0 && (await this.voiceEnvReady())
   }
 

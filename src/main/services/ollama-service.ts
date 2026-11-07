@@ -1,7 +1,9 @@
+import { ollamaModelsDir, programDirs, storageDir } from './storage-location'
 import { isRemoteMode, llmFetch } from './llm-gateway'
 import { toolsDir } from './app-paths'
-import { findOnPath, isLinux, killProcesses } from './platform'
-import { spawn } from 'child_process'
+import { findOnPath, isLinux, isWindows, killProcesses } from './platform'
+import { spawn } from './hidden-process'
+import type { ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -14,6 +16,7 @@ export interface OllamaStatus {
 export class OllamaService {
   private static instance: OllamaService
   private isStarting = false
+  private serving: { child: ChildProcess; modelsDir: string | undefined } | null = null
   private cachedModels: string[] = []
   private idleTimer: NodeJS.Timeout | null = null
   private readonly IDLE_TIMEOUT_MS = 60 * 60 * 1000 // 1 hour of inactivity (keeps model warm in memory)
@@ -39,6 +42,11 @@ export class OllamaService {
       console.log('[OllamaService] Inactivity detected (1h idle without prompts). Powering down Ollama to save system resources...')
       this.stop()
     }, this.IDLE_TIMEOUT_MS)
+  }
+
+  /** The models folder of the Ollama she started, while it's alive. Null for one started by anything else */
+  public servingModelsDir(): string | null {
+    return this.serving?.modelsDir ?? null
   }
 
   /**
@@ -103,6 +111,7 @@ export class OllamaService {
     }
 
     const candidates = [
+      ...programDirs('Ollama').map((dir) => path.join(dir, 'ollama.exe')),
       process.env.LOCALAPPDATA
         ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
         : '',
@@ -154,7 +163,7 @@ export class OllamaService {
         return { running: false, models: [] }
       }
 
-      const modelsDir = process.env.OLLAMA_MODELS || undefined
+      const modelsDir = ollamaModelsDir() || process.env.OLLAMA_MODELS || undefined
 
       console.log(`[OllamaService] Starting Ollama daemon from: ${binary}`)
       if (modelsDir) {
@@ -169,15 +178,22 @@ export class OllamaService {
         OLLAMA_CONTEXT_LENGTH: process.env.OLLAMA_CONTEXT_LENGTH || '8192'
       }
 
-      // Launch detached background process
+      // Never detached on Windows: that leaves it with no console at all, even with windowsHide, so
+      // Windows opens a visible one for each runner it starts when a model loads. Not detached it has
+      // a hidden console its runners share, and it closes with her, which stop() already does
       const child = spawn(binary, ['serve'], {
-        detached: true,
+        detached: !isWindows,
         stdio: 'ignore',
         windowsHide: true,
         env
       })
 
       child.unref()
+      const serving = { child, modelsDir }
+      this.serving = serving
+      child.once('exit', () => {
+        if (this.serving === serving) this.serving = null
+      })
 
       // Poll until alive (up to 6 seconds)
       for (let attempt = 1; attempt <= 12; attempt++) {

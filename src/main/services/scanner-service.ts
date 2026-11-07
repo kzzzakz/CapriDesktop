@@ -7,6 +7,8 @@ import { windowManager } from '../windows/window-manager'
 import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
 import { ollamaService } from './ollama-service'
+import { execFile } from './hidden-process'
+import { scriptPath } from './app-paths'
 import {
   IPC_CHANNELS,
   ScannerScanResult,
@@ -212,15 +214,35 @@ export class ScannerService {
     }
   }
 
+  public async captureGameWindow(windowId: string, thumbnailSize = { width: 768, height: 432 }): Promise<string | null> {
+    if (!/^\d+$/.test(windowId)) return null
+    if (process.platform === 'win32') {
+      return new Promise((resolve) => {
+        execFile('powershell.exe', [
+          '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath('capture_game_window.ps1'),
+          '-WindowId', windowId, '-Width', String(thumbnailSize.width), '-Height', String(thumbnailSize.height)
+        ], { timeout: 4000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' }, (error, stdout) => {
+          resolve(error ? null : stdout.trim() || null)
+        })
+      })
+    }
+    const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize })
+    const source = sources.find(source => source.id.split(':')[1] === windowId)
+    if (!source || source.thumbnail.isEmpty()) return null
+    return source.thumbnail.toJPEG(75).toString('base64')
+  }
+
   /**
    * Detects available vision model in Ollama (qwen2.5-vl, llava, minicpm-v, etc.)
    */
-  public async detectVisionModel(): Promise<string | null> {
+  public async detectVisionModel(localOnly = false): Promise<string | null> {
     try {
-      const resp = await llmFetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) })
+      const resp = await (localOnly ? fetch : llmFetch)('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) })
       if (!resp.ok) return null
       const data = (await resp.json()) as any
-      const models: string[] = (data.models || []).map((m: any) => String(m.name))
+      const models: string[] = (data.models || [])
+        .filter((m: any) => !localOnly || (!m.remote_host && !/cloud/i.test(String(m.name))))
+        .map((m: any) => String(m.name))
 
       const configured = consciousnessService.getScannerVisionModel()
       if (configured && configured !== 'auto') {

@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { MicPicker } from './MicPicker'
+import { SoundSettings } from './SoundSettings'
+import { BehaviorSettings } from './BehaviorSettings'
+import { HotkeySettings } from './HotkeySettings'
+import { voiceVolume } from '../utils/soundSettings'
 import { useT } from '../utils/useUiLang'
 import {
   X,
@@ -76,6 +81,7 @@ interface VoiceSettingsModalProps {
 
 export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, onClose }) => {
   const t = useT()
+  const [musicPlatform, setMusicPlatform] = useState<'youtube_music' | 'spotify'>('youtube_music')
   const [provider, setProvider] = useState<'edge-tts' | 'elevenlabs' | 'fish-audio'>('edge-tts')
 
   // Edge-TTS State
@@ -112,6 +118,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   // Load configuration on mount or open
   useEffect(() => {
     if (!isOpen) return
+
+    window.api.companion.getMusicPlatform().then(setMusicPlatform).catch(() => {})
 
     if (window.api?.voice?.getConfig) {
       window.api.voice.getConfig().then((cfg) => {
@@ -187,6 +195,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
     try {
       const res = await window.api.voice.setConfig(payload)
       if (res.success) {
+        await window.api.companion.setMusicPlatform(musicPlatform)
         setSaveSuccess(true)
         setStatusMessage(t('vs_stSaved'))
         setTimeout(() => setSaveSuccess(false), 2500)
@@ -219,6 +228,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
       if (res.success && res.audioDataUrl) {
         setStatusMessage(t('vs_stPlaying'))
         const audio = new Audio(res.audioDataUrl)
+        audio.volume = voiceVolume()
         activeAudioRef.current = audio
         setIsPlayingAudio(true)
 
@@ -258,7 +268,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   if (!isOpen) return null
 
   return (
-    <div className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none text-[14px]">
+    <div data-capri-hit className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none text-[14px]">
       {/* Outer Cyber Frame */}
       <div className="cp-frame w-full max-w-2xl max-h-full flex flex-col overflow-hidden animate-fade-in" style={{ ['--c' as string]: '14px' }}>
         {/* Header */}
@@ -278,6 +288,24 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
 
         {/* Modal Content */}
         <div className="min-h-0 p-5 space-y-5 overflow-y-auto">
+          <MicPicker />
+          <SoundSettings />
+          <HotkeySettings />
+          <BehaviorSettings />
+
+          <label className="block space-y-2">
+            <span className="text-stone-300 font-bold tracking-wide">{t('music_platformTitle')}</span>
+            <select
+              value={musicPlatform}
+              onChange={(e) => setMusicPlatform(e.target.value as 'youtube_music' | 'spotify')}
+              className="cp-input w-full px-3 py-2 text-[15px] cursor-pointer"
+              style={{ colorScheme: 'dark' }}
+            >
+              <option value="youtube_music">YouTube Music</option>
+              <option value="spotify">Spotify</option>
+            </select>
+            <span className="block text-[13px] text-stone-400">{t('music_platformHelp')}</span>
+          </label>
           {/* Provider Tabs */}
           <div>
             <label className="text-stone-300 font-bold tracking-wide block mb-2 flex items-center gap-2">

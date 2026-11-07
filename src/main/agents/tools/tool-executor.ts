@@ -21,9 +21,13 @@ import { scriptPath } from '../../services/app-paths'
 import * as os from 'os'
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from 'child_process'
-import { shell } from 'electron'
+import { exec } from '../../services/hidden-process'
+import { app, shell } from 'electron'
+import { consciousnessService } from '../../services/consciousness-service'
+import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '../../services/music-platform'
 import { clipService } from '../../services/clip-service'
+import { askWhereAppIs, openInstalledApp, protocolIsRegistered } from '../../services/app-launcher'
+import { cleanAppRequest } from '../../services/app-finder'
 
 /** Containers and binary formats: handling them as text destroys them for good */
 const NON_TEXT_EXTENSIONS = /\.(?:docx?|docm|dotx|xlsx?|xlsm|pptx?|pptm|odt|ods|odp|pdf|epub|zip|rar|7z|png|jpe?g|gif|webp|bmp|ico|mp3|wav|ogg|mp4|mkv|avi|exe|dll)$/i
@@ -141,7 +145,7 @@ export const CAPRI_TOOLS: ToolDefinition[] = [
       properties: {
         appOrUrl: {
           type: 'string',
-          description: 'Name of the app or game (e.g. "lol", "cyberpunk", "palworld", "spotify", "youtube", "obs", "chrome", "steam", "discord", "notepad", "calc") or website URL.'
+          description: 'Name of the app or game (e.g. "lol", "cyberpunk", "palworld", "spotify", "youtube", "obs", "chrome", "steam", "discord", "notepad", "calc") or website URL. Use "music" for music on the preferred platform unless the user explicitly requests Spotify, YouTube Music, or YouTube.'
         },
         query: {
           type: 'string',
@@ -185,10 +189,14 @@ export const CAPRI_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'media_control',
-    description: 'Control music playback without changing to a specific title (e.g. skip to next song, previous song, play, pause). If the user asks for a specific song name (e.g. "change song to X", "play X"), use open_application with appOrUrl: "spotify" and query: "<song>" instead.',
+    description: 'Control music playback without changing to a specific title (e.g. skip to next song, previous song, play, pause). If the user asks for a specific song name (e.g. "change song to X", "play X"), use open_application with appOrUrl: "music" (the preferred platform), or an explicitly requested "spotify", "youtube music", or "youtube", and query: "<song>" instead.',
     parameters: {
       type: 'object',
       properties: {
+        appOrUrl: {
+          type: 'string',
+          description: 'Optional explicitly requested platform: spotify, youtube music, or youtube. Omit to use the preferred music platform.'
+        },
         action: {
           type: 'string',
           enum: ['next', 'prev', 'play', 'pause', 'play_pause'],
@@ -270,7 +278,7 @@ export class ToolExecutor {
       switch (name) {
         case 'media_control': {
           const action = String(args.action || 'next') as 'next' | 'prev' | 'play' | 'pause' | 'play_pause'
-          return await ToolExecutor.mediaControl(action)
+          return await ToolExecutor.mediaControl(action, resolveMusicPlatform(String(args.appOrUrl || '')))
         }
         case 'trigger_clip': {
           const res = await clipService.triggerClip()
@@ -608,27 +616,31 @@ export class ToolExecutor {
       return { success: false, output: 'Error: No application, URL, or song query provided to open.' }
     }
 
-    let target = (rawTarget || (rawQuery ? 'spotify' : '')).toLowerCase().trim()
+    let target = (rawTarget || (rawQuery ? 'music' : '')).toLowerCase().trim()
 
     // Conversational Context Repair: Fix inputs like "play on spotify <song>" where target became "on" or "on spotify"
     if (/^(?:on|in|en)\s+spotify$/i.test(target) || (target === 'on' && (/spotify/i.test(rawQuery) || /spotify/i.test(rawTarget)))) {
       target = 'spotify'
     } else if (target === 'on' || target === 'en' || target === 'in') {
       if (rawQuery.toLowerCase().includes('spotify') || /musica|music|song|cancion/i.test(rawQuery)) {
-        target = 'spotify'
+        target = resolveMusicPlatform(rawQuery)
         rawQuery = rawQuery.replace(/^(?:on\s+spotify|en\s+spotify|spotify)\s*/i, '').trim()
       } else {
-        target = 'spotify'
+        target = resolveMusicPlatform(rawQuery)
       }
     } else if (target.startsWith('on ') || target.startsWith('en ') || target.startsWith('in ')) {
       const stripped = target.replace(/^(?:on|en|in)\s+/i, '').trim()
       if (stripped.includes('spotify')) {
         target = 'spotify'
       } else if (stripped.includes('youtube')) {
-        target = 'youtube'
+        target = resolveMusicPlatform(stripped)
       } else {
         target = stripped
       }
+    }
+
+    if (/^(?:music|musica|música|cancion|canción|song)(?:\s|$)/i.test(target)) {
+      target = resolveMusicPlatform(`${rawTarget} ${rawQuery}`)
     }
 
     try {
@@ -642,45 +654,45 @@ export class ToolExecutor {
         return { success: true, output: `Opened website: ${rawUrl}` }
       }
 
-      // YouTube (with direct song / video search and playback)
-      if (target.includes('youtube') || rawUrl.includes('youtube')) {
-        const query = rawQuery || (target.includes('youtube') ? target.replace(/^(?:youtube|abre\s+youtube|open\s+youtube)\s*/i, '').trim() : '')
-        let finalUrl = rawUrl || 'https://www.youtube.com'
+      // An installed app by its name comes before the shortcuts below, which go by a word inside the
+      // name: without this "google earth" opens the browser. These names are what those shortcuts are for
+      const handledBelow = /^(?:youtube|spotify|musica|música|music|cancion|canción|navegador|browser|browser_search|internet|google|notas|bloc de notas)$/i
+      if (!rawUrl && !rawQuery && !handledBelow.test(cleanAppRequest(target))) {
+        const opened = await openInstalledApp(rawTarget)
+        if (opened) return { success: true, output: `Launched ${opened} successfully!` }
+      }
 
+      // YouTube (with direct song / video search and playback)
+      if (target.includes('youtube')) {
+        const platform = resolveMusicPlatform(target)
+        const isMusic = platform === 'youtube_music'
+        const name = musicPlatformName(platform)
+        const query = (rawQuery || target.replace(/^(?:(?:abre|open)\s+)?youtube(?:[ _]+music)?\s*/i, '')).trim()
+        const homeUrl = isMusic ? 'https://music.youtube.com' : 'https://www.youtube.com'
+        let finalUrl = query
+          ? (isMusic ? `${homeUrl}/search?q=${encodeURIComponent(query)}` : `${homeUrl}/results?search_query=${encodeURIComponent(query)}`)
+          : homeUrl
         if (query) {
           try {
             const res = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, {
-              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+              signal: AbortSignal.timeout(8000)
             })
-            const html = await res.text()
-            const m = html.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/)
-            if (m && m[1]) {
-              finalUrl = `https://www.youtube.com/watch?v=${m[1]}&autoplay=1`
-            } else {
-              finalUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
+            if (res.ok) {
+              const html = await res.text()
+              const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/) || html.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/)
+              if (match) finalUrl = `${homeUrl}/watch?v=${match[1]}${isMusic ? '' : '&autoplay=1'}`
             }
-          } catch {
-            finalUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
-          }
+          } catch {}
         }
-
-        shell.openExternal(finalUrl).catch(() => {
-          exec(startCommand(finalUrl))
-        })
-        return {
-          success: true,
-          output: query
-            ? `Playing "${query}" on YouTube: ${finalUrl}`
-            : 'Launched YouTube in your browser.'
-        }
+        await shell.openExternal(finalUrl).catch(() => { exec(startCommand(finalUrl)) })
+        return { success: true, output: query ? `Playing "${query}" on ${name}: ${finalUrl}` : `Launched ${name} in your browser.` }
       }
 
       // OBS Studio
-      if (target.includes('obs')) {
+      if (/\bobs\b/.test(target)) {
         if (isLinux) {
-          return launchLinuxApp('obs')
-            ? { success: true, output: 'Launched OBS Studio.' }
-            : { success: false, output: 'OBS Studio is not installed on this PC.' }
+          return launchLinuxApp('obs') ? { success: true, output: 'Launched OBS Studio.' } : await ToolExecutor.appNotFound('OBS Studio', args)
         }
         const obsCandidates = [
           'C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe',
@@ -691,10 +703,8 @@ export class ToolExecutor {
           const obsDir = path.dirname(foundObs)
           exec(`powershell -Command "Start-Process -FilePath '${foundObs}' -WorkingDirectory '${obsDir}'"`)
           return { success: true, output: `Launched OBS Studio from ${foundObs}` }
-        } else {
-          exec('cmd.exe /c start obs64.exe || start obs.exe')
-          return { success: true, output: 'Launched OBS Studio command.' }
         }
+        return await ToolExecutor.appNotFound('OBS Studio', args)
       }
 
       // Browser Searches & Web Navigation
@@ -736,10 +746,9 @@ export class ToolExecutor {
       // Steam
       if (target.includes('steam')) {
         if (isLinux) {
-          return launchLinuxApp('steam')
-            ? { success: true, output: 'Launched Steam client.' }
-            : { success: false, output: 'Steam is not installed on this PC.' }
+          return launchLinuxApp('steam') ? { success: true, output: 'Launched Steam client.' } : await ToolExecutor.appNotFound('Steam', args)
         }
+        if (!(await protocolIsRegistered('steam'))) return await ToolExecutor.appNotFound('Steam', args)
         exec('cmd.exe /c start steam://', (_err) => {
           if (_err) exec('cmd.exe /c start steam')
         })
@@ -747,7 +756,7 @@ export class ToolExecutor {
       }
 
       // Spotify (with song search, playback, and skip/change controls)
-      if (target.includes('spotify') || target.includes('musica') || target.includes('music') || target.includes('cancion')) {
+      if (target.includes('spotify')) {
         let query = rawQuery || (target.includes('spotify') ? target.replace(/^(?:spotify|abre\s+spotify|open\s+spotify)\s*/i, '').trim() : '')
         // Clean out filler phrases (e.g. "and start playing", "play", "pon", "listen to", "on spotify")
         query = query
@@ -763,7 +772,7 @@ export class ToolExecutor {
 
         // If user intent was purely to change song / next track without a target song:
         if (query === '__NEXT_TRACK__' || /^(?:cambia\s+(?:de\s+|la\s+)?cancion|skip\s+(?:song|track)|next\s+(?:song|track)|skip|next|otra\s+cancion|siguiente\s+cancion|siguiente|otra)$/i.test(query)) {
-          return await ToolExecutor.mediaControl('next')
+          return await ToolExecutor.mediaControl('next', 'spotify')
         }
 
         if (isLinux) return await ToolExecutor.linuxSpotify(query)
@@ -858,7 +867,7 @@ export class ToolExecutor {
       }
 
       // Calculator
-      if (target.includes('calc') || target.includes('calculadora')) {
+      if (/\bcalc/.test(target)) {
         if (isLinux) {
           return launchFirstLinuxApp(LINUX_CALCULATORS)
             ? { success: true, output: 'Opened the calculator.' }
@@ -869,7 +878,7 @@ export class ToolExecutor {
       }
 
       // Notepad
-      if (target.includes('notepad') || target.includes('bloc de notas') || target.includes('notas')) {
+      if (/\b(?:notepad|notas)\b/.test(target)) {
         if (isLinux) {
           return launchFirstLinuxApp(LINUX_EDITORS)
             ? { success: true, output: 'Opened the text editor.' }
@@ -881,7 +890,7 @@ export class ToolExecutor {
 
       // Games & Universal App Discovery (LoL, Cyberpunk, Palworld, Steam, Riot, Shortcuts)
       const gameLaunch = this.resolveGameLaunch(rawTarget)
-      if (gameLaunch) {
+      if (gameLaunch && (!gameLaunch.protocol || (await protocolIsRegistered(gameLaunch.protocol)))) {
         exec(gameLaunch.command)
         return {
           success: true,
@@ -900,7 +909,19 @@ export class ToolExecutor {
           await shell.openExternal(`https://${rawTarget}`)
           return { success: true, output: `Opened website: ${rawTarget}` }
         }
-        return { success: false, output: `"${rawTarget}" is not installed on this PC.` }
+        return await ToolExecutor.appNotFound(rawTarget, args)
+      }
+
+      // Store apps have no shortcut on disk, and "start" would open an error window for a name that doesn't exist
+      if (!rawUrl) {
+        const storeApp = await ToolExecutor.findStoreApp(rawTarget)
+        if (storeApp) {
+          exec(`explorer.exe "shell:AppsFolder\\${storeApp.id}"`)
+          return { success: true, output: `Launched ${storeApp.name} successfully!` }
+        }
+        if (!/[\\/.:]/.test(rawTarget) && !(await ToolExecutor.isOnPath(rawTarget))) {
+          return await ToolExecutor.appNotFound(rawTarget, args)
+        }
       }
 
       const fullCmd = rawUrl ? `cmd.exe /c start "" "${rawTarget}" "${rawUrl}"` : `cmd.exe /c start "" "${rawTarget}"`
@@ -913,6 +934,14 @@ export class ToolExecutor {
     } catch (e: any) {
       return { success: false, output: `Failed to launch ${rawTarget}: ${e.message}` }
     }
+  }
+
+  /** She looked everywhere: asks the user where it is, unless nobody asked her to open it (askIfMissing: false) */
+  private static async appNotFound(name: string, args: Record<string, unknown>): Promise<{ success: boolean; output: string }> {
+    const picked = args.askIfMissing === false ? null : await askWhereAppIs(name)
+    return picked
+      ? { success: true, output: `Launched ${picked} from the location the user chose.` }
+      : { success: false, output: `"${name}" isn't installed where I can find it, and the user didn't show me where it is.` }
   }
 
   private static async closeApplication(args: Record<string, unknown>): Promise<{ success: boolean; output: string }> {
@@ -1087,37 +1116,39 @@ export class ToolExecutor {
   }
 
   public static async mediaControl(
-    action: 'next' | 'prev' | 'play' | 'pause' | 'play_pause' = 'next'
+    action: 'next' | 'prev' | 'play' | 'pause' | 'play_pause' = 'next',
+    platform: PlaybackPlatform = consciousnessService.getMusicPlatform()
   ): Promise<{ success: boolean; output: string }> {
+    const name = musicPlatformName(platform)
     if (isLinux) {
-      return (await linuxMediaControl(action))
-        ? { success: true, output: `Spotify: ${action} done.` }
-        : { success: false, output: 'Spotify is not open, so there is nothing to control.' }
+      return (await linuxMediaControl(action, platform !== 'spotify'))
+        ? { success: true, output: `${name}: ${action} done.` }
+        : { success: false, output: `No active ${name} media player is available.` }
     }
     const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
     const spotifyExe = path.join(appData, 'Spotify', 'Spotify.exe')
     const spotifyDir = path.dirname(spotifyExe)
     const mediaScript = scriptPath('media_controller.ps1')
 
-    if (fs.existsSync(spotifyExe)) {
+    if (platform === 'spotify' && fs.existsSync(spotifyExe)) {
       exec(`powershell -Command "if (-not (Get-Process Spotify -ErrorAction SilentlyContinue)) { Start-Process -FilePath '${spotifyExe}' -WorkingDirectory '${spotifyDir}' }"`)
     }
 
     return new Promise((resolve) => {
-      exec(`powershell -ExecutionPolicy Bypass -File "${mediaScript}" -Action "${action}"`, (err) => {
+      exec(`powershell -ExecutionPolicy Bypass -File "${mediaScript}" -Action "${action}"${platform !== 'spotify' ? ' -SystemMedia' : ''}`, (err) => {
         if (err) {
           resolve({ success: false, output: `Media control error: ${err.message}` })
         } else {
           const desc =
             action === 'next'
-              ? 'Skipped to the next song on Spotify'
+              ? `Skipped to the next song on ${name}`
               : action === 'prev'
-              ? 'Returned to the previous song on Spotify'
+              ? `Returned to the previous song on ${name}`
               : action === 'pause'
-              ? 'Paused Spotify playback'
+              ? `Paused ${name} playback`
               : action === 'play'
-              ? 'Resumed Spotify playback'
-              : 'Toggled playback on Spotify'
+              ? `Resumed ${name} playback`
+              : `Toggled playback on ${name}`
           resolve({ success: true, output: `${desc} successfully!` })
         }
       })
@@ -1175,11 +1206,12 @@ export class ToolExecutor {
   }
 
   // --- game & app resolver helpers ---
-  private static resolveGameLaunch(rawQuery: string): { name: string; command: string } | null {
+  private static resolveGameLaunch(rawQuery: string): { name: string; command: string; protocol?: string } | null {
     const q = rawQuery
       .toLowerCase()
       .replace(/^(?:el|la|los|las|the|a|an)\s+/i, '')
-      .replace(/(?:juego|game|app|aplicacion|programa)\s*/i, '')
+      // Only as a word of its own at the start: "epic games store" keeps its name
+      .replace(/^(?:juego|game|app|aplicacion|programa)\s+/i, '')
       .trim()
 
     // League of Legends / LoL
@@ -1267,16 +1299,16 @@ export class ToolExecutor {
 
     // Generic Protocol Handlers for popular games
     if (q.includes('roblox')) {
-      return { name: 'Roblox', command: startCommand('roblox://') }
+      return { name: 'Roblox', command: startCommand('roblox://'), protocol: 'roblox' }
     }
     if (q.includes('minecraft')) {
-      return { name: 'Minecraft', command: startCommand('minecraft:') }
+      return { name: 'Minecraft', command: startCommand('minecraft:'), protocol: 'minecraft' }
     }
     if (q.includes('fortnite')) {
-      return { name: 'Fortnite', command: startCommand('com.epicgames.launcher://apps/Fortnite?action=launch') }
+      return { name: 'Fortnite', command: startCommand('com.epicgames.launcher://apps/Fortnite?action=launch'), protocol: 'com.epicgames.launcher' }
     }
     if (q.includes('epic')) {
-      return { name: 'Epic Games', command: startCommand('com.epicgames.launcher:') }
+      return { name: 'Epic Games', command: startCommand('com.epicgames.launcher:'), protocol: 'com.epicgames.launcher' }
     }
 
     return null
@@ -1306,14 +1338,43 @@ export class ToolExecutor {
     return games
   }
 
+  private static storeApps: { name: string; id: string }[] | null = null
+
+  /** Everything in the Start menu, Microsoft Store apps included */
+  private static async findStoreApp(query: string): Promise<{ name: string; id: string } | null> {
+    if (!isWindows) return null
+    const q = query.toLowerCase().trim()
+    if (q.length < 3) return null
+    if (!ToolExecutor.storeApps) {
+      ToolExecutor.storeApps = await new Promise((resolve) => {
+        exec('powershell -NoProfile -Command "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress"', { timeout: 8000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+          try {
+            const parsed = JSON.parse(String(stdout || '[]'))
+            resolve((Array.isArray(parsed) ? parsed : [parsed]).map((a: { Name: string; AppID: string }) => ({ name: a.Name, id: a.AppID })))
+          } catch {
+            resolve(err ? null : [])
+          }
+        })
+      })
+    }
+    const apps = ToolExecutor.storeApps || []
+    return apps.find((a) => a.name.toLowerCase() === q) || apps.find((a) => a.name.toLowerCase().startsWith(q)) || apps.find((a) => a.name.toLowerCase().includes(q)) || null
+  }
+
+  private static isOnPath(name: string): Promise<boolean> {
+    return new Promise((resolve) => exec(`where "${name.replace(/"/g, '')}"`, { timeout: 4000 }, (err) => resolve(!err)))
+  }
+
   private static findShortcut(cleanQuery: string): { name: string; path: string } | null {
     if (!isWindows) return null
     const user = process.env.USERNAME || os.userInfo().username
     const candidateDirs = [
+      // The real one: OneDrive and folder moves change it
+      app.getPath('desktop'),
       `C:\\Users\\${user}\\Desktop`,
       'C:\\Users\\Public\\Desktop',
       `C:\\Users\\${user}\\Desktop\\programas`,
-      `C:\\Users\\${user}\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs`,
+      path.join(process.env.APPDATA || `C:\\Users\\${user}\\AppData\\Roaming`, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
       'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs'
     ]
 

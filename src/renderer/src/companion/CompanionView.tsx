@@ -2,15 +2,20 @@ import { personalize } from '../utils/userName'
 import { AlwaysListener } from '../utils/alwaysListening'
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { CapriRenderer, playMultiGlitchSound, playPetChirpSound } from './CapriRenderer'
+import { isCapriHit, isCapriSpriteHit } from './companion-hit-test'
+import { useCompanionHitTest } from './useCompanionHitTest'
 import { SpeechBubble } from './SpeechBubble'
 import { useT } from '../utils/useUiLang'
 import { localizeLine } from '../../../shared/lines'
 import { getLineLanguage, setLineLanguage } from '../utils/lineLanguage'
+import { micErrorKind, micErrorLine, openMicrophone } from '../utils/microphone'
+import { voiceVolume } from '../utils/soundSettings'
 import { useCompanionStore, CompanionEmotionState } from '../stores/useCompanionStore'
 import { useAgentStore } from '../stores/useAgentStore'
 import dialogueBlipAudio from '../assets/dialogue_blip.wav'
 import patPatGif from '../assets/capri/pat-pat-pet-pet.gif'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
+import { acceleratorFromEvent, DEFAULT_HOTKEYS, HOTKEY_ACTIONS } from '../../../shared/hotkeys'
 import {
   X,
   Mic,
@@ -36,6 +41,8 @@ export interface DesktopChatMessage {
 }
 
 const STORAGE_KEY = 'capri_desktop_chat_history'
+/** Loudest level in a recording below which the microphone isn't really sending anything */
+const MIN_MIC_LEVEL = 3
 
 // The view can mount twice (React's StrictMode, a reload of the window); she only says hello once
 let greeted = false
@@ -119,41 +126,22 @@ export const CompanionView: React.FC = () => {
   }, [])
   const [isWindowHovered, setIsWindowHovered] = useState(false)
   const [isGamingMode, setIsGamingMode] = useState<boolean>(false)
+  const [isGameForeground, setIsGameForeground] = useState(false)
+  const [gamingOpacity, setGamingOpacity] = useState(1)
+
+  useEffect(() => {
+    window.api?.companion?.getGamingOpacity?.().then(setGamingOpacity).catch(() => {})
+    return window.api?.companion?.onGamingOpacityChanged?.(setGamingOpacity)
+  }, [])
+
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState<boolean>(false)
   const [isContextMenuOpen, setIsContextMenuOpen] = useState<boolean>(false)
-  const isGamingControlHeldRef = useRef(false)
-
-  // Gaming Mode: Capri is click-through so she never steals clicks from the game.
-  // Hold Ctrl over her to interact / drag her (mouse moves are forwarded even while click-through).
-  useEffect(() => {
-    if (!isGamingMode) {
-      isGamingControlHeldRef.current = false
-      return
-    }
-    if (!window.api?.companion?.setClickThrough) return
-    let ignoring = !(isGamingControlHeldRef.current || isContextMenuOpen || isVoiceSettingsOpen)
-    window.api.companion.setClickThrough(ignoring).catch(() => {})
-    const update = (ctrl: boolean) => {
-      isGamingControlHeldRef.current = ctrl
-      const want = !(ctrl || isContextMenuOpen || isVoiceSettingsOpen)
-      if (want === ignoring) return
-      ignoring = want
-      window.api.companion.setClickThrough(want).catch(() => {})
-    }
-    const onMove = (e: MouseEvent) => update(e.ctrlKey)
-    const onKey = (e: KeyboardEvent) => update(e.ctrlKey)
-    const onLeave = () => update(false)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('keyup', onKey)
-    document.addEventListener('mouseleave', onLeave)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('keyup', onKey)
-      document.removeEventListener('mouseleave', onLeave)
-    }
-  }, [isGamingMode, isContextMenuOpen, isVoiceSettingsOpen])
+  useCompanionHitTest({
+    isGamingMode,
+    isGameForeground,
+    keepCapturing: isContextMenuOpen || isVoiceSettingsOpen || isDesktopChatOpen,
+    onHover: setIsWindowHovered
+  })
   const tr = useT()
 
   // Language state synchronized with consciousnessService (default 'en')
@@ -170,18 +158,21 @@ export const CompanionView: React.FC = () => {
       }).catch(() => {})
     }
     if (window.api?.companion?.getGamingMode) {
-      window.api.companion.getGamingMode().then((g: boolean) => {
-        setIsGamingMode(!!g)
+      window.api.companion.getGamingMode().then((g) => {
+        setIsGamingMode(g.enabled)
+        setIsGameForeground(g.gameForeground)
       }).catch(() => {})
     }
     let unsubGaming: (() => void) | undefined
     if (window.api?.companion?.onGamingModeChanged) {
-      unsubGaming = window.api.companion.onGamingModeChanged((g: boolean) => {
+      unsubGaming = window.api.companion.onGamingModeChanged((g: boolean, foreground: boolean) => {
         setIsGamingMode(!!g)
+        setIsGameForeground(foreground)
       })
     }
-    if (window.api?.companion?.onLanguageChanged) {
-      const unsub = window.api.companion.onLanguageChanged((lang: string) => {
+    if (window.api?.companion?.onLineLanguage) {
+      // Her lines follow the language she's spoken to. Changing the settings also comes through here.
+      const unsub = window.api.companion.onLineLanguage((lang: string) => {
         const effective = lang || 'en'
         setCurrentLang(effective)
         currentLangRef.current = effective
@@ -403,20 +394,26 @@ export const CompanionView: React.FC = () => {
     return undefined
   }, [])
 
-  // In-app window keydown listener for ArrowDown (Flecha abajo)
+  // The same keys while one of her windows has the focus, where the global shortcuts are off
   useEffect(() => {
+    let hotkeys = DEFAULT_HOTKEYS
+    window.api?.voice?.getHotkeys?.().then((saved) => (hotkeys = saved)).catch(() => {})
+    const unsub = window.api?.voice?.onHotkeysChanged?.((saved) => (hotkeys = saved))
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown') {
-        const target = e.target as HTMLElement | null
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-          return
-        }
-        e.preventDefault()
-        toggleVoiceRecordingSafe()
-      }
+      const pressed = acceleratorFromEvent(e)
+      if (!pressed || !HOTKEY_ACTIONS.some((action) => hotkeys[action] === pressed)) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      e.preventDefault()
+      if (pressed === hotkeys.talk) toggleVoiceRecordingSafe()
+      else if (pressed === hotkeys.chat) toggleDesktopChatRef.current()
+      else toggleAlwaysListeningRef.current()
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      unsub?.()
+      window.removeEventListener('keydown', handleKeyDown)
+    }
   }, [])
 
   const toggleVoiceMute = () => {
@@ -517,6 +514,7 @@ export const CompanionView: React.FC = () => {
       return
     }
     const audio = new Audio(line.audioDataUrl)
+    audio.volume = voiceVolume()
     audio.playbackRate = 1.05
     activeAudioRef.current = audio
     audio.onended = finish
@@ -577,7 +575,7 @@ export const CompanionView: React.FC = () => {
       // New Dialogue Blip Voice Mode (@dialogue_blip.wav)
       if (voiceTypeRef.current === 'blip') {
         const audio = new Audio(dialogueBlipAudio)
-        audio.volume = 0.65
+        audio.volume = 0.65 * voiceVolume()
         activeAudioRef.current = audio
 
         currentSpokenTextRef.current = clean
@@ -635,6 +633,7 @@ export const CompanionView: React.FC = () => {
 
       if (res.success && res.audioDataUrl) {
         const audio = new Audio(res.audioDataUrl)
+        audio.volume = voiceVolume()
         audio.playbackRate = 1.05
         activeAudioRef.current = audio
 
@@ -709,14 +708,28 @@ export const CompanionView: React.FC = () => {
 
   // Voice recording & Real-time Speech-to-Text streaming with local Whisper on GPU
 
+  const micOpeningRef = useRef(false)
+  const micPeakRef = useRef(-1)
+
   const startVoiceRecording = async () => {
-    if (isRecordingVoice || isExecuting || isProcessingVoice) return
+    if (isRecordingVoice || isProcessingVoice || micOpeningRef.current) return
+    if (isExecuting) {
+      setSpeech("Hold on, I'm still thinking, choomba.", 2500)
+      return
+    }
     // The user started talking: Capri stops so the mic doesn't pick her up
     if (isScriptPlayingRef.current) window.api.companion.cancelScript()
     interruptSpeech()
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micOpeningRef.current = true
+      let stream: MediaStream
+      try {
+        stream = await openMicrophone()
+      } finally {
+        micOpeningRef.current = false
+      }
+      micPeakRef.current = -1
       audioChunksRef.current = []
       setLiveRecognizedText(null)
       setAudioLevel(0)
@@ -727,6 +740,8 @@ export const CompanionView: React.FC = () => {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
         const ctx = new AudioCtx()
         audioContextRef.current = ctx
+        void ctx.resume().catch(() => {})
+        micPeakRef.current = 0
         const source = ctx.createMediaStreamSource(stream)
         const analyser = ctx.createAnalyser()
         analyser.fftSize = 128
@@ -743,6 +758,7 @@ export const CompanionView: React.FC = () => {
           const avg = sum / pcmData.length
           const level = Math.min(100, Math.round((avg / 120) * 100))
           setAudioLevel(level)
+          micPeakRef.current = Math.max(micPeakRef.current, level)
 
           if (level > 15) {
             lastAudioActivityRef.current = Date.now()
@@ -765,6 +781,7 @@ export const CompanionView: React.FC = () => {
         : 'audio/webm'
 
       const recorder = new MediaRecorder(stream, { mimeType })
+      let lastPartialAt = Date.now()
       mediaRecorderRef.current = recorder
 
       recorder.ondataavailable = async (e) => {
@@ -772,13 +789,15 @@ export const CompanionView: React.FC = () => {
           audioChunksRef.current.push(e.data)
 
           // Incremental transcription so words stream in real-time as the user speaks
-          if (audioChunksRef.current.length >= 2 && !isTranscribingChunkRef.current) {
+          if (recorder.state === 'recording' && Date.now() - lastPartialAt >= 1500 && !isTranscribingChunkRef.current) {
+            lastPartialAt = Date.now()
             isTranscribingChunkRef.current = true
             const currentBlob = new Blob(audioChunksRef.current, { type: mimeType })
             try {
               const arrayBuffer = await currentBlob.arrayBuffer()
-              const partial = await window.api.voice.transcribe(arrayBuffer)
-              if (partial.success && partial.text && partial.text.trim()) {
+              if (recorder.state !== 'recording') return
+              const partial = await window.api.voice.transcribe(arrayBuffer, { partial: true })
+              if (recorder.state === 'recording' && partial.success && partial.text && partial.text.trim()) {
                 setLiveRecognizedText(partial.text.trim())
               }
             } catch {
@@ -828,13 +847,25 @@ export const CompanionView: React.FC = () => {
         setIsProcessingVoice(true)
         try {
           const arrayBuffer = await blob.arrayBuffer()
+          // The first time Whisper is still downloading, and silence would look like a broken mic
+          if ((await window.api.voice.sttState()) === 'loading') {
+            setSpeech("I'm still loading my hearing, choomba. The first time can take a few minutes, hold on.", 0)
+          }
           const res = await window.api.voice.transcribe(arrayBuffer)
+          setSpeech(null)
           const isEs = currentLangRef.current === 'es'
           const finalText = res.success && res.text ? res.text.trim() : liveRecognizedText
           if (finalText) {
             setInputText('')
             setActiveUserPrompt(finalText)
             handleSendMessage(finalText)
+          } else if ((await window.api.voice.sttState()) === 'failed') {
+            setSpeech("My hearing isn't installed properly, choomba. Run the setup again from the model settings.", 6000)
+          } else if (micPeakRef.current >= 0 && micPeakRef.current < MIN_MIC_LEVEL) {
+            setSpeech("Your microphone isn't sending any sound, choomba. Check the one selected in my voice settings.", 6000)
+          } else if (res.error && !/no speech/i.test(res.error)) {
+            console.warn('[VoiceRecord] Transcription failed:', res.error)
+            setSpeech(`Something failed in my hearing, choomba: ${res.error.slice(0, 140)}`, 8000)
           } else {
             setSpeech(
               isEs
@@ -855,13 +886,23 @@ export const CompanionView: React.FC = () => {
         }
       }
 
+      // Unplugged or taken by another app in the middle: finish instead of staying stuck recording
+      recorder.onerror = (e) => {
+        console.warn('[VoiceRecord] Recorder error:', e)
+        if (recorder.state !== 'inactive') recorder.stop()
+      }
+      stream.getAudioTracks().forEach((track) => {
+        track.onended = () => {
+          if (recorder.state !== 'inactive') recorder.stop()
+        }
+      })
+
       recorder.start(700)
       setIsRecordingVoice(true)
       isRecordingVoiceRef.current = true
     } catch (err: any) {
       console.error('[VoiceRecord] getUserMedia error:', err)
-      const isEs = currentLangRef.current === 'es'
-      setSpeech(isEs ? "¡No pude acceder al micrófono, choomba! Revisá los permisos." : "Could not access mic, choomba! Check permissions.", 3500)
+      setSpeech(micErrorLine(micErrorKind(err)), 6000)
     }
   }
 
@@ -922,7 +963,7 @@ export const CompanionView: React.FC = () => {
       )
     } catch (err) {
       console.error('[AlwaysListening] Could not open the microphone:', err)
-      setSpeech(isEs ? '¡No pude abrir el micrófono, choomba! Revisá los permisos.' : "Couldn't open the mic, choomba! Check permissions.", 3500)
+      setSpeech(micErrorLine(micErrorKind(err)), 6000)
     }
   }
   toggleAlwaysListeningRef.current = toggleAlwaysListening
@@ -1314,7 +1355,7 @@ export const CompanionView: React.FC = () => {
       return 'curious'
     }
 
-    // Tab Mode: Capri is perched sitting on window tab or sitting front in center -> 'idle_front' or 'idle'
+    // Tab Mode: Capri is perched sitting on window tab or sitting front in the screen corner -> 'idle_front' or 'idle'
     if (isTabMode) return emotion === 'idle_front' ? 'idle_front' : 'idle'
 
     // Closed or sleep
@@ -1343,8 +1384,8 @@ export const CompanionView: React.FC = () => {
     if (isDesktopChatOpen) return tr('st_listening')
     switch (desktopCompanionState) {
       case 'walking': return tr('st_walking')
-      case 'idle': return tr('st_sitting')
-      case 'idle_front': return tr('st_sittingCenter')
+      case 'idle':
+      case 'idle_front': return tr('st_sitting')
       case 'standing': return tr('st_standing')
       case 'talking': return tr('st_talking')
       case 'curious': return tr('st_curious')
@@ -1427,6 +1468,7 @@ export const CompanionView: React.FC = () => {
 
   // Drag & Click handlers: Left Click = friendly drag / click; Ctrl + Click = Interactive Chat; Shift + Right Click = Petting / Headpat; Right Click = Grab
   const handleCapriMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((isGamingMode && (isGameForeground || !e.ctrlKey)) || !isCapriSpriteHit(e.clientX, e.clientY)) return
     // Shift + Right Click: Headpat / Petting Interaction
     if (e.shiftKey && e.button === 2) {
       e.preventDefault()
@@ -1633,6 +1675,7 @@ export const CompanionView: React.FC = () => {
   }
 
   const handleCapriContextMenu = (e: React.MouseEvent) => {
+    if ((isGamingMode && (isGameForeground || !e.ctrlKey)) || !isCapriHit(e.clientX, e.clientY)) return
     e.preventDefault()
     e.stopPropagation()
     if (dragStartRef.current?.moved || isScaredActiveRef.current) return
@@ -1658,6 +1701,7 @@ export const CompanionView: React.FC = () => {
 
   // Click on Capri: Normal click toggles Dev Deck; Ctrl + Click toggles Interactive HUD Input; Shift + Click moves window
   const handleCapriClick = async (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((isGamingMode && (isGameForeground || !e.ctrlKey)) || !isCapriSpriteHit(e.clientX, e.clientY)) return
     if (isContextMenuOpen) {
       setIsContextMenuOpen(false)
       return
@@ -1824,6 +1868,7 @@ export const CompanionView: React.FC = () => {
       {/* Cyberpunk Quick Actions Menu on Right Click */}
       {isContextMenuOpen && !isDeckOpen && (
         <div
+          data-capri-hit
           className="cp-vars cp-frame absolute z-50 p-1.5 flex flex-col gap-1 min-w-[230px] animate-fade-in"
           style={{
             position: isGamingMode ? 'absolute' : undefined,
@@ -1838,6 +1883,7 @@ export const CompanionView: React.FC = () => {
               <Sliders size={11} /> {tr('cp_menu')}
             </span>
             <button
+              data-capri-hit
               onClick={() => setIsContextMenuOpen(false)}
               className="text-stone-500 hover:text-white cursor-pointer"
             >
@@ -1846,6 +1892,7 @@ export const CompanionView: React.FC = () => {
           </div>
 
           <button
+            data-capri-hit
             onClick={() => {
               setIsContextMenuOpen(false)
               setIsVoiceSettingsOpen(true)
@@ -1860,6 +1907,7 @@ export const CompanionView: React.FC = () => {
           </button>
 
           <button
+            data-capri-hit
             onClick={async () => {
               setIsContextMenuOpen(false)
               if (window.api?.deck) await window.api.deck.show()
@@ -1874,6 +1922,7 @@ export const CompanionView: React.FC = () => {
           </button>
 
           <button
+            data-capri-hit
             onClick={() => {
               setIsContextMenuOpen(false)
               toggleVoiceMute()
@@ -1908,7 +1957,7 @@ export const CompanionView: React.FC = () => {
   if (isGamingMode) {
     return (
       <div
-        onMouseEnter={() => setIsWindowHovered(true)}
+        onMouseEnter={() => setIsWindowHovered(!isGameForeground)}
         onMouseLeave={() => setIsWindowHovered(false)}
         onClick={() => {
           if (isContextMenuOpen) setIsContextMenuOpen(false)
@@ -1917,7 +1966,7 @@ export const CompanionView: React.FC = () => {
           isDeckOpen ? 'invisible opacity-0 pointer-events-none' : ''
         }`}
         style={{
-          WebkitAppRegion: 'drag',
+          WebkitAppRegion: 'no-drag',
           background: 'transparent'
         } as React.CSSProperties}
       >
@@ -1928,11 +1977,14 @@ export const CompanionView: React.FC = () => {
           className="w-full aspect-video flex items-center justify-center relative z-10 cursor-pointer overflow-visible select-none flex-shrink-0"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <div className="w-full h-full flex items-center justify-center overflow-visible">
+          {/* Only her: what she says has to stay readable */}
+          <div className="w-full h-full flex items-center justify-center overflow-visible" style={{ opacity: isGamingMode ? gamingOpacity : 1 }}>
             <CapriRenderer
+              pixelHitTest
               state={desktopCompanionState}
               noShadow={false}
               isGamingMode={isGamingMode}
+              isGameForeground={isGameForeground}
               onClick={handleCapriClick}
             />
           </div>
@@ -1971,6 +2023,7 @@ export const CompanionView: React.FC = () => {
                 {/* Minimal Input Bar: Only opens on Ctrl + Click */}
                 {isDesktopChatOpen && (
                   <form
+                    data-capri-hit
                     onSubmit={(e) => {
                       e.preventDefault()
                       handleSendMessage()
@@ -1980,6 +2033,7 @@ export const CompanionView: React.FC = () => {
                     <span className="text-xs font-bold text-[#fcee0a] select-none font-terminal">&gt;</span>
 
                     <input
+                      data-capri-hit
                       ref={promptInputRef}
                       type="text"
                       value={inputText}
@@ -2001,6 +2055,7 @@ export const CompanionView: React.FC = () => {
                     />
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsVoiceSettingsOpen(true)}
                       className="p-1.5 rounded text-xs font-bold transition-all cursor-pointer bg-black/80 hover:bg-cyan-950/60 text-cyan-400 border border-cyan-500/40 hover:border-cyan-400"
@@ -2010,6 +2065,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       disabled={isExecuting || isProcessingVoice}
                       onClick={toggleVoiceRecordingSafe}
@@ -2030,6 +2086,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsDesktopChatOpen(false)}
                       className="p-1 rounded text-zinc-500 hover:text-white transition-colors cursor-pointer"
@@ -2059,7 +2116,7 @@ export const CompanionView: React.FC = () => {
         isDeckOpen ? 'invisible opacity-0 pointer-events-none' : ''
       }`}
       style={{
-        WebkitAppRegion: 'drag',
+        WebkitAppRegion: 'no-drag',
         background: 'transparent'
       } as React.CSSProperties}
     >
@@ -2100,6 +2157,7 @@ export const CompanionView: React.FC = () => {
                 {/* Minimal Input Bar: Only opens on Ctrl + Click */}
                 {isDesktopChatOpen && (
                   <form
+                    data-capri-hit
                     onSubmit={(e) => {
                       e.preventDefault()
                       handleSendMessage()
@@ -2109,6 +2167,7 @@ export const CompanionView: React.FC = () => {
                     <span className="text-xs font-bold text-[#fcee0a] select-none font-terminal">&gt;</span>
 
                     <input
+                      data-capri-hit
                       ref={promptInputRef}
                       type="text"
                       value={inputText}
@@ -2130,6 +2189,7 @@ export const CompanionView: React.FC = () => {
                     />
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsVoiceSettingsOpen(true)}
                       className="p-1.5 rounded text-xs font-bold transition-all cursor-pointer bg-black/80 hover:bg-cyan-950/60 text-cyan-400 border border-cyan-500/40 hover:border-cyan-400"
@@ -2139,6 +2199,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       disabled={isExecuting || isProcessingVoice}
                       onClick={toggleVoiceRecordingSafe}
@@ -2161,6 +2222,7 @@ export const CompanionView: React.FC = () => {
                     </button>
 
                     <button
+                      data-capri-hit
                       type="button"
                       onClick={() => setIsDesktopChatOpen(false)}
                       className="p-1 rounded text-zinc-500 hover:text-white transition-colors cursor-pointer"
@@ -2179,6 +2241,7 @@ export const CompanionView: React.FC = () => {
                   style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 >
                   <button
+                    data-capri-hit
                     type="button"
                     onClick={() => {
                       const next = !isDesktopChatOpen
@@ -2213,6 +2276,7 @@ export const CompanionView: React.FC = () => {
                   </button>
 
                   <button
+                    data-capri-hit
                     type="button"
                     onClick={toggleVoiceMute}
                     className={`cp-cut cp-font uppercase tracking-wider px-2 py-0.5 rounded-none text-[10px] font-bold flex items-center gap-1 border transition-all cursor-pointer ${
@@ -2237,6 +2301,7 @@ export const CompanionView: React.FC = () => {
 
                   {/* Voice Type Selector: blip / TTS */}
                   <button
+                    data-capri-hit
                     type="button"
                     onClick={() => {
                       setVoiceType((prev) => {
@@ -2262,12 +2327,13 @@ export const CompanionView: React.FC = () => {
         )}
 
         {/* Floating Status & Voice Controls on Hover when Bubble is Hidden */}
-        {!isBubbleVisible && !isTabMode && !isGamingMode && (isWindowHovered || isRecordingVoice) && (
+        {!isBubbleVisible && !isTabMode && !isGamingMode && !isGameForeground && (isWindowHovered || isRecordingVoice) && (
           <div
             className="mb-2 z-40 animate-fade-in flex items-center gap-1.5"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             <button
+              data-capri-hit
               type="button"
               onClick={() => {
                 const next = !isDesktopChatOpen
@@ -2302,6 +2368,7 @@ export const CompanionView: React.FC = () => {
             </button>
 
             <button
+              data-capri-hit
               type="button"
               onClick={toggleVoiceMute}
               className={`cp-cut cp-font uppercase tracking-wider px-2 py-0.5 rounded-none text-[10px] font-bold flex items-center gap-1 border transition-all cursor-pointer ${
@@ -2325,6 +2392,7 @@ export const CompanionView: React.FC = () => {
             </button>
 
             <button
+              data-capri-hit
               type="button"
               onClick={() => {
                 setVoiceType((prev) => {
@@ -2356,6 +2424,7 @@ export const CompanionView: React.FC = () => {
           {/* Always-listening indicator: visible the whole time she's listening (Right arrow toggles) */}
           {isAlwaysListening && (
             <button
+              data-capri-hit
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -2403,6 +2472,7 @@ export const CompanionView: React.FC = () => {
             style={{ transformOrigin: 'bottom center' }}
           >
             <CapriRenderer
+              pixelHitTest
               state={desktopCompanionState}
               noShadow={false}
               onClick={handleCapriClick}

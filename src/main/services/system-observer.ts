@@ -4,6 +4,8 @@ import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
 import { windowManager } from '../windows/window-manager'
 import { cyberpunkAdapter, lolLiveAdapter } from './game'
+import { wutheringWavesAdapter } from './game/adapters/wuthering-waves/wuthering-waves-adapter'
+import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
 
 interface TriggerConfig {
   lastTriggered: number
@@ -181,6 +183,7 @@ export class SystemObserver {
         // Check for proactive media comment (YouTube, TikTok, Reels, Twitch, Netflix, Spotify)
         if (
           detectedMedia &&
+          !windowManager.isGamingModeActive() &&
           (detectedMedia.title !== this.lastCommentedMediaTitle || Date.now() - this.triggers.media_watching.lastTriggered > 4 * 60 * 1000) &&
           this.canTrigger('media_watching')
         ) {
@@ -336,7 +339,7 @@ export class SystemObserver {
         if (!isAnyGameNow && wasAnyGameBefore) {
           let hasActiveTelemetry = false
           try {
-            if (cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning()) {
+            if (cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()) {
               hasActiveTelemetry = true
             }
           } catch {}
@@ -569,7 +572,7 @@ export class SystemObserver {
             const lowerTitle = rawTitle.toLowerCase()
 
             // YouTube Video
-            if (lowerTitle.includes('youtube') && !freshRegistry.youtube) {
+            if (lowerTitle.includes('youtube') && !lowerTitle.includes('youtube music') && !freshRegistry.youtube) {
               let cleanTitle = rawTitle
                 .replace(/\s*-\s*YouTube.*$/i, '')
                 .replace(/\s*-\s*(?:Google Chrome|Microsoft Edge|Brave|Mozilla Firefox|Opera(?:\s+GX)?).*$/i, '')

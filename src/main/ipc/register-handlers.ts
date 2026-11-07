@@ -1,6 +1,7 @@
+import { getStorageRoot } from '../services/storage-location'
 import { scriptPlayer } from '../services/script/script-player'
 import { isClaudeCodeInstalled } from '../services/claude-code-runner'
-import { confirmClaudeBypassPermissions, testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
+import { confirmClaudeBypassPermissions, testCodexConnection, testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
 import { setupService, SetupStep } from '../services/setup-service'
 import * as os from 'os'
 import { getUserName } from '../services/user-profile'
@@ -17,6 +18,7 @@ import { checkAddressed } from '../services/wake-word'
 import { consciousnessService } from '../services/consciousness-service'
 import { localizeLine } from '../../shared/lines'
 import { ToolExecutor } from '../agents/tools/tool-executor'
+import type { HotkeyAction } from '../../shared/hotkeys'
 import { scannerService } from '../services/scanner-service'
 import { boredomService } from '../services/boredom-service'
 import { cyberpunkAdapter } from '../services/game'
@@ -159,7 +161,7 @@ export function registerIpcHandlers(): void {
   )
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_GAMING_MODE, () => {
-    return windowManager.isGamingModeActive()
+    return { enabled: windowManager.isGamingModeActive(), gameForeground: windowManager.isGameForeground() }
   })
 
   // Windows scaling drifts the size by a pixel on every move, so keep the size from before the drift
@@ -207,13 +209,17 @@ export function registerIpcHandlers(): void {
 
   // Preferred Language management
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE, () => {
-    return consciousnessService.getPreferredLanguage()
+    return consciousnessService.getUiLanguage()
   })
+  consciousnessService.onSpokenLanguageChanged((lang) => windowManager.broadcast(IPC_CHANNELS.COMPANION_LINE_LANGUAGE, lang))
 
   // Spoken language already configured from a previous session: warm the translator in the background
   if (consciousnessService.getLanguageSettings().speechLang !== 'auto') {
     setTimeout(() => voiceService.warmTranslator(), 5000)
   }
+
+  ipcMain.handle(IPC_CHANNELS.COMPANION_GET_MUSIC_PLATFORM, () => consciousnessService.getMusicPlatform())
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SET_MUSIC_PLATFORM, (_event, platform) => consciousnessService.setMusicPlatform(platform))
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS, () => consciousnessService.getLanguageSettings())
 
@@ -223,6 +229,28 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETUP_RUN, async (_event, step: SetupStep) => {
     const ok = await setupService.run(step, (s, line) => windowManager.broadcast(IPC_CHANNELS.SETUP_LOG, { step: s, line }))
     return { ok, status: await setupService.getStatus() }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DISPLAYS_LIST, () => windowManager.listDisplays())
+  ipcMain.handle(IPC_CHANNELS.DISPLAYS_MOVE, (_event, id: number) => windowManager.moveCompanionToDisplay(id))
+  ipcMain.handle(IPC_CHANNELS.BOREDOM_GET_ENABLED, () => consciousnessService.isBoredomEnabled())
+  ipcMain.handle(IPC_CHANNELS.BOREDOM_SET_ENABLED, (_event, enabled: boolean) => {
+    consciousnessService.setBoredomEnabled(!!enabled)
+    return !!enabled
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SETUP_GET_STORAGE, () => getStorageRoot())
+  // What moving there would take. Null if no folder was picked; nothing changes until it's confirmed
+  ipcMain.handle(IPC_CHANNELS.SETUP_CHOOSE_STORAGE, async (_event, reset?: boolean) => {
+    if (reset) return setupService.planStorageMove(null)
+    const picked = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    if (picked.canceled || !picked.filePaths[0]) return null
+    const folder = picked.filePaths[0]
+    return setupService.planStorageMove(path.basename(folder).toLowerCase() === 'capridata' ? folder : path.join(folder, 'CapriData'))
+  })
+  ipcMain.handle(IPC_CHANNELS.SETUP_MOVE_STORAGE, async (_event, root: string | null) => {
+    const ok = await setupService.moveStorage(root, (s, line) => windowManager.broadcast(IPC_CHANNELS.SETUP_LOG, { step: s, line }))
+    return { ok, root: getStorageRoot(), status: await setupService.getStatus() }
   })
 
   ipcMain.handle(IPC_CHANNELS.ONBOARDING_OPEN, () => {
@@ -265,7 +293,7 @@ export function registerIpcHandlers(): void {
     const saved = consciousnessService.setLanguageSettings(next || {})
     // Spoken language differs from the text: load the translation model now, not on the first line
     if (saved.speechLang && saved.speechLang !== 'auto') voiceService.warmTranslator()
-    windowManager.broadcast(IPC_CHANNELS.COMPANION_LANGUAGE_CHANGED, consciousnessService.getPreferredLanguage())
+    windowManager.broadcast(IPC_CHANNELS.COMPANION_LANGUAGE_CHANGED, consciousnessService.getUiLanguage())
     return saved
   })
 
@@ -305,6 +333,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))
   ipcMain.handle(IPC_CHANNELS.LLM_CLAUDE_INSTALLED, () => isClaudeCodeInstalled())
+  ipcMain.handle(IPC_CHANNELS.LLM_TEST_CODEX, (_event, model: string) =>
+    testCodexConnection(typeof model === 'string' ? model : '')
+  )
   ipcMain.handle(IPC_CHANNELS.LLM_TEST_CLAUDE, (_event, model: 'haiku' | 'sonnet' | 'opus') =>
     testClaudeConnection(['haiku', 'sonnet', 'opus'].includes(model) ? model : 'haiku')
   )
@@ -471,14 +502,31 @@ export function registerIpcHandlers(): void {
   })
 
   // Voice Core (Speech-to-Text and Text-to-Speech)
-  ipcMain.handle(IPC_CHANNELS.VOICE_TRANSCRIBE, async (_event, audioData: ArrayBuffer | Uint8Array) => {
+  ipcMain.handle(IPC_CHANNELS.VOICE_STT_STATE, () => voiceService.getSttState())
+  ipcMain.handle(IPC_CHANNELS.ARROW_KEYS_GET, () => consciousnessService.getArrowKeysEnabled())
+  ipcMain.handle(IPC_CHANNELS.ARROW_KEYS_SET, (_event, enabled: boolean) => {
+    windowManager.setArrowKeysEnabled(!!enabled)
+    return !!enabled
+  })
+  ipcMain.handle(IPC_CHANNELS.HOTKEYS_GET, () => consciousnessService.getHotkeys())
+  ipcMain.handle(IPC_CHANNELS.HOTKEYS_SET, (_event, action: HotkeyAction, accelerator: string) => windowManager.setHotkey(action, String(accelerator)))
+  ipcMain.handle(IPC_CHANNELS.HOTKEYS_RESET, () => windowManager.resetHotkeys())
+  ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_GET, () => consciousnessService.getGamingOpacity())
+  ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_SET, (_event, value: number) => {
+    consciousnessService.setGamingOpacity(value)
+    const saved = consciousnessService.getGamingOpacity()
+    windowManager.broadcast(IPC_CHANNELS.GAMING_OPACITY_CHANGED, saved)
+    return saved
+  })
+
+  ipcMain.handle(IPC_CHANNELS.VOICE_TRANSCRIBE, async (_event, audioData: ArrayBuffer | Uint8Array, options?: { partial?: boolean } | boolean) => {
     try {
       const buffer = Buffer.isBuffer(audioData)
         ? audioData
         : audioData instanceof ArrayBuffer
         ? Buffer.from(audioData)
         : Buffer.from(audioData.buffer, audioData.byteOffset, audioData.byteLength)
-      return await voiceService.transcribe(buffer)
+      return await voiceService.transcribe(buffer, options)
     } catch (err: any) {
       return { success: false, error: err?.message || String(err) }
     }

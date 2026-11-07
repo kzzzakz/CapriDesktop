@@ -1,8 +1,10 @@
 import { createOnboardingWindow } from './onboarding-window'
 import { BrowserWindow, app, screen, globalShortcut } from 'electron'
+import { DEFAULT_HOTKEYS, hotkeyProblem, type HotkeyAction, type HotkeyProblem, type Hotkeys } from '../../shared/hotkeys'
 import { createCompanionWindow } from './companion-window'
 import { createDeckWindow } from './deck-window'
 import { createScannerWindow } from './scanner-window'
+import { createTray, destroyTray } from './tray'
 import { IPC_CHANNELS, ScannerBounds } from '../ipc/channels'
 import { roamingManager } from '../roaming/roaming-manager'
 import { ollamaService } from '../services/ollama-service'
@@ -11,14 +13,13 @@ import { consciousnessService } from '../services/consciousness-service'
 import { scannerService } from '../services/scanner-service'
 import { isLinux, linuxCursorPosition } from '../services/platform'
 
-const GAMING_OPACITY = 0.15
-
 export class WindowManager {
   private companionWin: BrowserWindow | null = null
   private onboardingWin: BrowserWindow | null = null
   private deckWin: BrowserWindow | null = null
   private scannerWin: BrowserWindow | null = null
   private isGamingMode = false
+  private gameForeground = true
   private savedGamingPosition: { x: number; y: number } | null = null
   private gamingKeepAliveInterval: NodeJS.Timeout | null = null
   private gamingModeListeners: Array<(enabled: boolean) => void> = []
@@ -29,16 +30,17 @@ export class WindowManager {
    * stops receiving mouse moves and could never tell that the cursor came back to one of its buttons,
    * so on Linux the moves are read from the screen and handed to the page (see the preload). They
    * don't go through sendInputEvent because it drops them while the window has no focus, which in a
-   * game is always.
+   * game is always. Windows and macOS forward moves but never tell the page the mouse left, so
+   * there only the leaving is sent.
    */
-  private forwardMouseOnLinux(win: BrowserWindow, active: boolean): void {
-    if (!isLinux) return
+  private forwardMouse(win: BrowserWindow, active: boolean): void {
     const running = this.mouseForwardTimers.get(win)
     if (running) clearInterval(running)
     this.mouseForwardTimers.delete(win)
     if (!active) return
 
-    // Only real changes are told: starting outside isn't the mouse leaving
+    // Linux tells only real changes. Elsewhere native moves can enter and leave between two polls,
+    // so every poll outside is told.
     let last = 'outside'
     let asking = false
     const timer = setInterval(async () => {
@@ -50,7 +52,7 @@ export class WindowManager {
       }
       // screen.getCursorScreenPoint() stays frozen on X11 while the app gets no mouse events
       asking = true
-      const raw = await linuxCursorPosition()
+      const raw = isLinux ? await linuxCursorPosition() : null
       asking = false
       if (this.mouseForwardTimers.get(win) !== timer || win.isDestroyed()) return
       const bounds = win.getBounds()
@@ -60,6 +62,10 @@ export class WindowManager {
       const y = Math.round(cursor.y - bounds.y)
       const inside = x >= 0 && y >= 0 && x < bounds.width && y < bounds.height
       const position = inside ? `${x},${y}` : 'outside'
+      if (!isLinux) {
+        if (!inside) win.webContents.send(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, { x, y, inside })
+        return
+      }
       if (position === last) return
       last = position
       win.webContents.send(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, { x, y, inside })
@@ -76,7 +82,12 @@ export class WindowManager {
 
   public init(): void {
     this.companionWin = createCompanionWindow()
+    this.setCompanionClickThrough(true)
     this.deckWin = createDeckWindow()
+    createTray(this)
+    // If that monitor isn't connected now she stays on the main one, and it's kept for when it's back
+    const savedDisplay = consciousnessService.getCompanionDisplayId()
+    if (savedDisplay !== null) this.moveCompanionToDisplay(savedDisplay, false)
 
     // First launch after installing: ask the user's name, language and set up dependencies
     if (!consciousnessService.isOnboardingDone()) {
@@ -133,27 +144,8 @@ export class WindowManager {
       console.warn('[WindowManager] Failed to register global shortcut Ctrl+Alt+V:', err)
     }
 
-    // Down Arrow (Flecha hacia abajo) - dedicated push/toggle hotkey to speak with Capri
-    try {
-      globalShortcut.register('Down', () => {
-        this.broadcast(IPC_CHANNELS.VOICE_TOGGLE_RECORDING)
-      })
-      console.log('[WindowManager] Registered global shortcut "Down" (Flecha abajo) for voice command')
-    } catch (err) {
-      console.warn('[WindowManager] Failed to register global shortcut Down:', err)
-    }
-
     // Escape cancels a push-to-talk recording. Registered only while recording
     // (see setVoiceRecordingActive) so Esc keeps working normally in every other app.
-
-    // Right Arrow (Flecha derecha) - toggle Always Listening mode
-    try {
-      globalShortcut.register('Right', () => {
-        this.broadcast(IPC_CHANNELS.VOICE_TOGGLE_ALWAYS_LISTENING)
-      })
-    } catch (err) {
-      console.warn('[WindowManager] Failed to register global shortcut Right:', err)
-    }
 
     // Linux can't report Ctrl while Capri is click-through, so this replaces Ctrl + hover in Gaming Mode
     if (isLinux) {
@@ -167,14 +159,11 @@ export class WindowManager {
       }
     }
 
-    // Left Arrow (Flecha izquierda) - open/close Capri's chat (same as Ctrl + Click on her)
-    try {
-      globalShortcut.register('Left', () => {
-        this.broadcast(IPC_CHANNELS.COMPANION_TOGGLE_CHAT)
-      })
-    } catch (err) {
-      console.warn('[WindowManager] Failed to register global shortcut Left:', err)
-    }
+    // The arrows are global only while another app has the focus: in her own windows they belong to
+    // the text fields, and those windows handle them on their own
+    this.syncArrowKeys()
+    app.on('browser-window-focus', () => this.syncArrowKeys())
+    app.on('browser-window-blur', () => setTimeout(() => this.syncArrowKeys(), 50))
 
     // Listen for language changes and broadcast to all windows
     consciousnessService.onLanguageChanged((lang) => {
@@ -196,6 +185,80 @@ export class WindowManager {
     this.onboardingWin.on('closed', () => {
       this.onboardingWin = null
     })
+  }
+
+  private registeredHotkeys: string[] = []
+
+  private releaseHotkeys(): void {
+    for (const key of this.registeredHotkeys) {
+      try {
+        globalShortcut.unregister(key)
+      } catch (err) {
+        console.warn(`[WindowManager] Could not release the shortcut ${key}:`, err)
+      }
+    }
+    this.registeredHotkeys = []
+  }
+
+  private syncArrowKeys(): void {
+    const wanted = consciousnessService.getArrowKeysEnabled() && !BrowserWindow.getFocusedWindow()
+    if (wanted === this.registeredHotkeys.length > 0) return
+    if (!wanted) return this.releaseHotkeys()
+    const hotkeys = consciousnessService.getHotkeys()
+    const keys: [string, string][] = [
+      [hotkeys.talk, IPC_CHANNELS.VOICE_TOGGLE_RECORDING],
+      [hotkeys.listen, IPC_CHANNELS.VOICE_TOGGLE_ALWAYS_LISTENING],
+      [hotkeys.chat, IPC_CHANNELS.COMPANION_TOGGLE_CHAT]
+    ]
+    for (const [key, channel] of keys) {
+      try {
+        if (globalShortcut.register(key, () => this.broadcast(channel))) this.registeredHotkeys.push(key)
+        else console.warn(`[WindowManager] The shortcut ${key} belongs to another app`)
+      } catch (err) {
+        console.warn(`[WindowManager] Could not register the shortcut ${key}:`, err)
+      }
+    }
+  }
+
+  public setArrowKeysEnabled(enabled: boolean): void {
+    consciousnessService.setArrowKeysEnabled(enabled)
+    this.syncArrowKeys()
+  }
+
+  /** Changes one of her keys. It stays as it was if the new one can't be used, and says why */
+  public setHotkey(action: HotkeyAction, accelerator: string): { hotkeys: Hotkeys; problem: HotkeyProblem | null } {
+    const current = consciousnessService.getHotkeys()
+    if (current[action] === accelerator) return { hotkeys: current, problem: null }
+    let problem = hotkeyProblem(accelerator, action, current)
+    if (!problem) {
+      this.releaseHotkeys()
+      problem = this.canRegister(accelerator) ? null : 'taken'
+    }
+    if (!problem) {
+      consciousnessService.setHotkeys({ ...current, [action]: accelerator })
+      this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, consciousnessService.getHotkeys())
+    }
+    this.syncArrowKeys()
+    return { hotkeys: consciousnessService.getHotkeys(), problem }
+  }
+
+  public resetHotkeys(): Hotkeys {
+    this.releaseHotkeys()
+    consciousnessService.setHotkeys(DEFAULT_HOTKEYS)
+    this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, DEFAULT_HOTKEYS)
+    this.syncArrowKeys()
+    return DEFAULT_HOTKEYS
+  }
+
+  /** Whether the system would give her this key: another app may already hold it */
+  private canRegister(accelerator: string): boolean {
+    try {
+      if (!globalShortcut.register(accelerator, () => {})) return false
+      globalShortcut.unregister(accelerator)
+      return true
+    } catch {
+      return false
+    }
   }
 
   public finishOnboarding(): void {
@@ -266,7 +329,7 @@ export class WindowManager {
 
     // Restore companion floating/walking on desktop
     if (this.companionWin && !this.companionWin.isDestroyed()) {
-      this.companionWin.show()
+      this.companionWin.showInactive()
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.companionWin.moveTop()
     }
@@ -288,7 +351,7 @@ export class WindowManager {
   ): boolean {
     if (!this.companionWin || this.companionWin.isDestroyed()) return false
 
-    const primaryDisplay = screen.getPrimaryDisplay()
+    const primaryDisplay = this.currentDisplay()
     const { workArea } = primaryDisplay
 
     if (enabled) {
@@ -298,11 +361,7 @@ export class WindowManager {
       let x = workArea.x + workArea.width - width - 25
       let y = workArea.y + 40
 
-      if (sittingPose === 'front') {
-        // En el medio de la pantalla (Screen Center: horizontal & vertical)
-        x = workArea.x + Math.round((workArea.width - width) / 2)
-        y = workArea.y + Math.round((workArea.height - height) / 2)
-      } else if (windowRect) {
+      if (sittingPose === 'perch' && windowRect) {
         // Horizontal: Top-right corner of the target window (offset slightly to the left of window control buttons)
         const targetRight = windowRect.left + windowRect.width
         const idealX = targetRight - 320
@@ -317,10 +376,10 @@ export class WindowManager {
 
       this.companionWin.setBounds({ x, y, width, height }, false)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver')
-      this.companionWin.show()
+      this.companionWin.showInactive()
 
       this.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE, true)
-      // Broadcast appropriate sitting state: 'idle_front' for center pose, 'idle' for tab perch
+      // Broadcast appropriate sitting state: 'idle_front' for front pose, 'idle' for tab perch
       const targetState = sittingPose === 'front' ? 'idle_front' : 'idle'
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, targetState)
       return true
@@ -353,7 +412,7 @@ export class WindowManager {
     sittingPose: 'perch' | 'front' = 'perch'
   ): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
-    const primaryDisplay = screen.getPrimaryDisplay()
+    const primaryDisplay = this.currentDisplay()
     const { workArea } = primaryDisplay
     const width = 360
     const height = 360
@@ -361,10 +420,7 @@ export class WindowManager {
     let x = workArea.x + workArea.width - width - 25
     let y = workArea.y + 40
 
-    if (sittingPose === 'front') {
-      x = workArea.x + Math.round((workArea.width - width) / 2)
-      y = workArea.y + Math.round((workArea.height - height) / 2)
-    } else {
+    if (sittingPose === 'perch') {
       const targetRight = windowRect.left + windowRect.width
       const idealX = targetRight - 320
       const minX = workArea.x + 10
@@ -378,26 +434,68 @@ export class WindowManager {
     this.companionWin.setBounds({ x, y, width, height }, false)
   }
 
-    public isGamingModeActive(): boolean {
+  public isGamingModeActive(): boolean {
     return this.isGamingMode
   }
 
+  public isGameForeground(): boolean {
+    return this.isGamingMode && this.gameForeground
+  }
+
+  public setGameForeground(foreground: boolean): void {
+    if (this.gameForeground === foreground) return
+    this.gameForeground = foreground
+    if (!this.isGamingMode) return
+    this.setCompanionClickThrough(true)
+    this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true, foreground)
+  }
+
   /**
-   * In Gaming Mode Capri is click-through so she never eats clicks meant for the game
-   * (mouse events are still forwarded so the renderer can re-enable clicks while Ctrl is held).
+   * Outside her body clicks go to whatever is behind her window. In Gaming Mode she never eats
+   * clicks meant for the foreground game; elsewhere forwarded mouse events let Ctrl re-enable clicks.
    */
   public setCompanionClickThrough(ignore: boolean): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
-    const effective = ignore && this.isGamingMode
-    if (this.isGamingMode) {
-      this.companionWin.setOpacity(effective ? GAMING_OPACITY : 1)
-    }
+    const blocked = this.isGameForeground()
+    const effective = ignore || blocked
+    this.companionWin.setFocusable(!blocked)
+    this.companionWin.setSkipTaskbar(true)
     if (effective) {
-      this.companionWin.setIgnoreMouseEvents(true, { forward: true })
+      this.companionWin.setIgnoreMouseEvents(true, { forward: !blocked })
     } else {
       this.companionWin.setIgnoreMouseEvents(false)
     }
-    this.forwardMouseOnLinux(this.companionWin, effective)
+    this.forwardMouse(this.companionWin, !blocked && (effective || !isLinux))
+  }
+
+  public listDisplays(): { id: number; label: string; width: number; height: number; primary: boolean; current: boolean }[] {
+    const primary = screen.getPrimaryDisplay().id
+    const current = this.currentDisplay().id
+    return screen.getAllDisplays().map((d) => ({
+      id: d.id,
+      label: d.label || '',
+      width: d.size.width,
+      height: d.size.height,
+      primary: d.id === primary,
+      current: d.id === current
+    }))
+  }
+
+  /** Puts her in the corner of a monitor and remembers it for the next start */
+  public moveCompanionToDisplay(id: number, remember = true): boolean {
+    const display = screen.getAllDisplays().find((d) => d.id === id)
+    if (!display || !this.companionWin || this.companionWin.isDestroyed()) return false
+    const { width, height } = this.companionWin.getBounds()
+    const { workArea } = display
+    this.companionWin.setBounds({ x: workArea.x + workArea.width - width - 20, y: workArea.y + workArea.height - height - 20, width, height }, false)
+    if (remember) consciousnessService.setCompanionDisplayId(id)
+    return true
+  }
+
+  /** The screen she's on, so moving her to another monitor keeps her there */
+  private currentDisplay(): Electron.Display {
+    if (this.companionWin && !this.companionWin.isDestroyed()) return screen.getDisplayMatching(this.companionWin.getBounds())
+    return screen.getPrimaryDisplay()
   }
 
   public setSavedGamingPosition(pos: { x: number; y: number } | null): void {
@@ -412,6 +510,7 @@ export class WindowManager {
     enabled: boolean,
     corner: 'bottom-right' | 'top-right' | 'bottom-left' | 'top-left' = 'top-left'
   ): void {
+    if (enabled && !this.isGamingMode) this.gameForeground = true
     this.isGamingMode = enabled
 
     if (!this.companionWin || this.companionWin.isDestroyed()) return
@@ -433,7 +532,7 @@ export class WindowManager {
 
       // Dock to position with ample vertical room for downward speech bubble
       // If the user already moved Capri in Gaming Mode, prioritize her saved position
-      const primaryDisplay = screen.getPrimaryDisplay()
+      const primaryDisplay = this.currentDisplay()
       const workArea = primaryDisplay.workArea
       const width = 360
       const height = 540
@@ -458,7 +557,7 @@ export class WindowManager {
       }
 
       this.companionWin.setBounds({ x, y, width, height }, false)
-      this.companionWin.setOpacity(GAMING_OPACITY)
+      this.companionWin.setOpacity(1)
       this.companionWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.companionWin.moveTop()
@@ -477,7 +576,7 @@ export class WindowManager {
       }, 700)
 
       this.setCompanionClickThrough(true)
-      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true)
+      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true, this.gameForeground)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, true)
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, 'ojos')
       console.log(`[WindowManager] Gaming Mode ACTIVATED (corner: ${corner}, screen-saver priority)`)
@@ -489,7 +588,7 @@ export class WindowManager {
         } catch {}
       })
 
-      const primaryDisplay = screen.getPrimaryDisplay()
+      const primaryDisplay = this.currentDisplay()
       const workArea = primaryDisplay.workArea
       const width = 420
       const height = 520
@@ -499,9 +598,9 @@ export class WindowManager {
       this.companionWin.setBounds({ x, y, width, height }, false)
       this.companionWin.setOpacity(1)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
-      this.setCompanionClickThrough(false)
+      this.setCompanionClickThrough(true)
 
-      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, false)
+      this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, false, false)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, false)
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, 'standing')
       console.log('[WindowManager] Gaming Mode DEACTIVATED')
@@ -600,7 +699,7 @@ export class WindowManager {
   public setScannerIgnoreMouse(ignore: boolean): void {
     if (this.scannerWin && !this.scannerWin.isDestroyed()) {
       this.scannerWin.setIgnoreMouseEvents(ignore, { forward: true })
-      this.forwardMouseOnLinux(this.scannerWin, ignore)
+      this.forwardMouse(this.scannerWin, ignore)
       // Crucial on Windows: toggling ignoreMouseEvents can alter DWM z-order flags; reassert topmost level
       this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.scannerWin.moveTop()
@@ -609,6 +708,7 @@ export class WindowManager {
 
   public quitApp(): void {
     ;(app as unknown as { isQuitting?: boolean }).isQuitting = true
+    destroyTray()
     try {
       globalShortcut.unregisterAll()
     } catch {}

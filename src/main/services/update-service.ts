@@ -2,20 +2,22 @@
  * Self-update and patch scripts.
  *
  * - "Capri, actualizate": checks the latest GitHub Release; if it's newer, downloads the
- *   installer, runs it silently and the app restarts on the new version. On Linux an AppImage replaces
- *   itself the same way; a .deb can't without the password, so she opens the release page instead.
+ *   installer, runs it silently and the app restarts on the new version. On Linux she does the same
+ *   with the package she was installed from (see linux-update.ts), and the release page is the fallback.
  * - First run of a new version: Capri reads the patch scripts in scripts-capri/ for every
  *   version she skipped (one file per version and language, e.g. 0.2.0.es.txt).
  */
 
+import { createHash } from 'crypto'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { spawn } from 'child_process'
+import { spawn } from './hidden-process'
 import { app, shell } from 'electron'
 import { resourceRoot } from './app-paths'
 import { isLinux } from './platform'
-import { windowsUpdateScript } from './windows-update'
+import { installDeb, linuxInstallKind, restartAfterUpdate, unpackNextToApp } from './linux-update'
+import { startIndependently, windowsUpdateScript } from './windows-update'
 import { localizeLine } from '../../shared/lines'
 import { consciousnessService } from './consciousness-service'
 import { personalize } from './user-profile'
@@ -68,13 +70,13 @@ export function readPatchScript(version: string, lang: Lang): string | null {
   return null
 }
 
-function speechLang(): Lang {
+export function speechLang(): Lang {
   const s = consciousnessService.getLanguageSettings()
   return s.speechLang && s.speechLang !== 'auto' ? s.speechLang : consciousnessService.getPreferredLanguage()
 }
 
 /** Speaks a line through the companion (bubble + voice) */
-function speak(text: string): void {
+export function speak(text: string): void {
   const durationMs = Math.min(60000, Math.max(5000, text.length * 75))
   windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: personalize(localizeLine(text, speechLang())), durationMs, speakVoice: true })
 }
@@ -91,10 +93,11 @@ class UpdateService {
   public async announcePatchNotesIfUpdated(): Promise<void> {
     const current = app.getVersion()
     const last = consciousnessService.getLastRunVersion()
-    consciousnessService.setLastRunVersion(current)
     // Fresh install (or the setup wizard is still pending): nothing to compare against
-    if (!last || !consciousnessService.isOnboardingDone()) return
-    if (compareVersions(current, last) <= 0) return
+    if (!last || !consciousnessService.isOnboardingDone() || compareVersions(current, last) <= 0) {
+      consciousnessService.setLastRunVersion(current)
+      return
+    }
 
     const lang = speechLang()
     const skipped = scriptVersions().filter((v) => compareVersions(v, last) > 0 && compareVersions(v, current) <= 0)
@@ -105,6 +108,14 @@ class UpdateService {
       speak(script)
       await wait(speakTime(script))
     }
+    // Only now: closing her in the middle shouldn't lose the notes for good
+    consciousnessService.setLastRunVersion(current)
+  }
+
+  /** "¿En qué versión estás?" */
+  public versionLine(lang: Lang): string {
+    const current = app.getVersion()
+    return lang === 'es' ? `[happy] Estoy en la versión ${current}, choomba.` : `[happy] I'm on version ${current}, choomba.`
   }
 
   /** "¿Qué hay de nuevo?": the script of the version that's running */
@@ -129,6 +140,7 @@ class UpdateService {
       if (left > 0) await wait(left)
       speak(text)
     }
+    let tempDir: string | null = null
 
     try {
       const current = app.getVersion()
@@ -147,7 +159,7 @@ class UpdateService {
       const release = (await res.json()) as {
         tag_name?: string
         html_url?: string
-        assets?: { name: string; size: number; browser_download_url: string }[]
+        assets?: { name: string; size: number; browser_download_url: string; digest?: string | null }[]
       }
       const latest = String(release.tag_name || '').replace(/^v/i, '')
 
@@ -170,19 +182,28 @@ class UpdateService {
       }
 
       const assets = release.assets || []
-      // Installed from a .deb or another package: updating it needs the user's password
-      if (isLinux && !process.env.APPIMAGE) {
+      const appImage = isLinux && !!process.env.APPIMAGE
+      const linuxInstall = isLinux && !appImage ? await linuxInstallKind(process.execPath) : null
+      const linuxAsset = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))
+      const asset = !isLinux
+        ? assets.find((a) => /setup.*\.exe$/i.test(a.name)) || assets.find((a) => /\.exe$/i.test(a.name))
+        : appImage
+          ? linuxAsset(/\.AppImage$/i)
+          : linuxInstall === 'deb'
+            ? linuxAsset(/\.deb$/i)
+            : linuxInstall === 'folder'
+              ? linuxAsset(/\.tar\.gz$/i)
+              : undefined
+      // She can't replace this install by herself: the release page is what's left
+      if (isLinux && !appImage && !asset) {
         await sayAfterIntro(
           es
-            ? `[excited] ¡Salió la versión ${latest}! [curious] Te abro la página para que bajes el paquete, porque instalarlo necesita tu contraseña.`
-            : `[excited] Version ${latest} is out! [curious] I'm opening the page so you can grab the package, since installing it needs your password.`
+            ? `[excited] ¡Salió la versión ${latest}! [curious] No puedo instalarla sola en este sistema, así que te abro la página para que bajes el paquete.`
+            : `[excited] Version ${latest} is out! [curious] I can't install it by myself on this system, so I'm opening the page for you to grab the package.`
         )
         if (release.html_url) await shell.openExternal(release.html_url)
         return
       }
-      const asset = isLinux
-        ? assets.find((a) => /\.AppImage$/i.test(a.name))
-        : assets.find((a) => /setup.*\.exe$/i.test(a.name)) || assets.find((a) => /\.exe$/i.test(a.name))
       if (!asset) {
         await sayAfterIntro(
           es
@@ -199,10 +220,46 @@ class UpdateService {
       )
 
       // Next to the running AppImage: a rename only replaces it in place within the same disk
-      const exe = isLinux ? `${process.env.APPIMAGE}.new` : path.join(os.tmpdir(), asset.name)
+      // A private folder for the Linux packages: the .deb gets installed as root
+      if (linuxInstall) tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-update-'))
+      const exe = appImage ? `${process.env.APPIMAGE}.new` : path.join(tempDir ?? os.tmpdir(), asset.name)
       await download(asset.browser_download_url, exe)
       const size = fs.statSync(exe).size
       if (asset.size && size !== asset.size) throw new Error(`descarga incompleta (${size} de ${asset.size} bytes)`)
+      const digest = asset.digest?.match(/^sha256:([0-9a-f]{64})$/i)?.[1]?.toLowerCase()
+      if (digest && (await sha256File(exe)) !== digest) throw new Error('la descarga no coincide con la publicada')
+
+      if (linuxInstall === 'deb') {
+        const ask = es
+          ? `[happy] ¡Ya la tengo! [curious] Tu sistema te va a pedir la contraseña para instalarla. [playful] La ponés y vuelvo en un toque.`
+          : `[happy] Got it! [curious] Your system will ask for your password to install it. [playful] Type it in and I'll be right back.`
+        speak(ask)
+        await wait(speakTime(ask))
+        const result = await installDeb(exe)
+        if (result.status === 'cancelled') {
+          speak(
+            es
+              ? `[curious] Sin contraseña no la puedo instalar, así que sigo en la ${current}. Pedímelo de nuevo cuando quieras.`
+              : `[curious] I can't install it without the password, so I'm staying on ${current}. Ask me again whenever you want.`
+          )
+          return
+        }
+        if (result.status === 'failed') {
+          speak(
+            es
+              ? `[worried] No pude instalarla: ${result.reason}. Te abro la página para que lo hagas a mano.`
+              : `[worried] I couldn't install it: ${result.reason}. I'm opening the page so you can do it by hand.`
+          )
+          if (release.html_url) await shell.openExternal(release.html_url)
+          return
+        }
+        // Nothing more to say: the files her voice needs were just replaced
+        restartAfterUpdate(process.execPath)
+        setTimeout(() => app.quit(), 500)
+        return
+      }
+
+      const newFolder = linuxInstall === 'folder' ? await unpackNextToApp(exe, process.execPath) : ''
 
       const bye = es
         ? `[happy] ¡Listo, ya la tengo! [playful] Me reinicio y vuelvo en un toque. [giggles] No me extrañes.`
@@ -210,18 +267,15 @@ class UpdateService {
       speak(bye)
       await wait(speakTime(bye))
 
-      if (isLinux) {
+      if (linuxInstall === 'folder') {
+        restartAfterUpdate(process.execPath, newFolder)
+      } else if (appImage) {
         const current = process.env.APPIMAGE as string
         fs.chmodSync(exe, 0o755)
         fs.renameSync(exe, current)
         spawn(current, ['--updated'], { detached: true, stdio: 'ignore' }).unref()
       } else {
-        // Silent NSIS install over the current one; --force-run reopens the app when it finishes
-        spawn(
-          'powershell.exe',
-          ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', windowsUpdateScript(exe, process.execPath)],
-          { detached: true, stdio: 'ignore', windowsHide: true }
-        ).unref()
+        await startWindowsUpdate(exe)
       }
       setTimeout(() => app.quit(), 1500)
     } catch (err: any) {
@@ -232,9 +286,37 @@ class UpdateService {
           : `[worried] I couldn't update: ${err?.message || err}. Try again in a bit.`
       )
     } finally {
+      if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true })
       this.busy = false
     }
   }
+}
+
+/** Silent NSIS install over the current one. She only closes once something is really installing. */
+async function startWindowsUpdate(installer: string): Promise<void> {
+  const script = path.join(os.tmpdir(), 'capri-update.ps1')
+  const marker = path.join(os.tmpdir(), 'capri-update-started.txt')
+  fs.rmSync(marker, { force: true })
+  // With a BOM, or Windows PowerShell misreads any path that isn't plain ASCII
+  fs.writeFileSync(script, `\uFEFF${windowsUpdateScript(installer, process.execPath, marker)}`, 'utf-8')
+
+  const launch = (command: string) => {
+    const { file, args } = startIndependently(command)
+    spawn(file, args, { stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref()
+  }
+  launch(`powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "${script}"`)
+
+  for (let waited = 0; waited < 8000 && !fs.existsSync(marker); waited += 250) await wait(250)
+  if (fs.existsSync(marker)) return
+  // No script running: the installer directly, which loses the retries but still updates her
+  console.warn('[UpdateService] The update script did not start, running the installer directly')
+  launch(`"" "${installer}" /S --updated --force-run`)
+}
+
+async function sha256File(file: string): Promise<string> {
+  const hash = createHash('sha256')
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk)
+  return hash.digest('hex')
 }
 
 async function download(url: string, dest: string): Promise<void> {

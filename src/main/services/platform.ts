@@ -5,7 +5,7 @@
  * answer "nothing" and the features that need them stay quiet instead of failing.
  */
 
-import { exec, execFile, spawn } from 'child_process'
+import { exec, execFile, spawn } from './hidden-process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -376,7 +376,7 @@ export function pickWindowedApps(windows: LinuxWindow[], names: Map<number, stri
       top: w.top,
       width: w.width,
       height: w.height,
-      isBrowser: BROWSER.test(lower) || BROWSER.test(names.get(w.pid) || '')
+      isBrowser: BROWSER.test(lower)
     })
   }
   return apps.sort((a, b) => Number(b.isBrowser) - Number(a.isBrowser))
@@ -475,7 +475,8 @@ function mprisCall(method: string, ...args: string[]): Promise<boolean> {
 }
 
 /** Sends a play/pause/next command to Spotify. dbus-send is there even without playerctl */
-export async function linuxMediaControl(action: MediaAction): Promise<boolean> {
+export async function linuxMediaControl(action: MediaAction, systemMedia = false): Promise<boolean> {
+  if (systemMedia) return (await run('playerctl', ['--ignore-player=spotify', PLAYERCTL_ACTION[action]])) !== null
   if ((await run('playerctl', ['-p', 'spotify', PLAYERCTL_ACTION[action]])) !== null) return true
   return mprisCall(MPRIS_METHOD[action])
 }

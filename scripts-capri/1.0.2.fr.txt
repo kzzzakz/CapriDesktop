@@ -1,0 +1,2 @@
+[excited] Je viens de me mettre à jour, {name} !
+[happy] Sous Windows, avant, je disais au revoir et je me fermais sans rien installer. [giggles] Maintenant je me mets à jour, je reviens toute seule et je te le raconte.

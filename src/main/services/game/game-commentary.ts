@@ -26,13 +26,21 @@ const KNOWN_GAME_PROCESS = /^(?:cs2|csgo|dota2|palworld(?:-win64-shipping)?|robl
 const NOT_A_GAME = /wallpaper\s*engine|soundpad|steamvr|steamworks|redistributable|proton|launcher|crash\s*report|anticheat|easyanticheat|unins\d*|setup|rpg\s*maker|blender|riot client|install/i
 
 /** These already have their own in-match commentary */
-const HAS_OWN_ADAPTER = /league of legends|cyberpunk\s*2077/i
+const HAS_OWN_ADAPTER = /league of legends|cyberpunk\s*2077|valorant|wuthering waves/i
 
 export interface ForegroundApp {
+  windowId?: string
   title: string
   process: string
   path: string
   pid: number
+}
+
+export function isGameForeground(app: ForegroundApp): boolean {
+  const process = app.process.replace(/\.exe$/i, '')
+  return /^(?:valorant-win64-shipping|league of legends|cyberpunk2077)$/i.test(process) ||
+    (/^client-win64-shipping$/i.test(process) && /wuthering waves/i.test(app.path)) ||
+    detectGameName(app) !== null
 }
 
 export function detectGameName(app: ForegroundApp): string | null {

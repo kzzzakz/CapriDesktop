@@ -7,6 +7,8 @@ export const it: Messages = {
   llm_bypassWarning: "Claude potrà eseguire qualsiasi comando su questo PC senza controllare i permessi, anche tramite richieste vocali.",
   llm_bypassDetail: "Questo può modificare o eliminare file, installare programmi e accedere a dati privati. Attiva questa modalità solo se accetti questi rischi. Annulla mantiene i controlli dei permessi.",
   llm_bypassConfirm: "Attiva modalità senza permessi",
+  music_platformTitle: 'Piattaforma musicale',
+  music_platformHelp: 'Usata quando chiedi a Capri di riprodurre musica. Puoi anche indicare una piattaforma per nome.',
   close: 'Chiudi',
   done: 'Fatto',
   saved: 'Salvato',
@@ -178,6 +180,10 @@ export const it: Messages = {
   llm_title: 'Capri // Cervello',
   llm_local: 'Su questo PC',
   llm_localDesc: 'Gratis e privato, con Ollama. Richiede un PC potente e circa 6 GB.',
+  llm_codex: 'Codex',
+  llm_codexDesc: "Usa la connessione di Codex CLI senza una chiave API aggiuntiva.",
+  llm_codexDefault: "Modello predefinito di Codex",
+  llm_codexHelp: "Installa Codex CLI ed esegui codex login. Lascia il modello vuoto per usare quello di Codex. I comandi nativi sono in sola lettura, senza richieste di permesso. Messaggi e immagini vanno al servizio configurato.",
   llm_claudeCode: 'Claude Code',
   llm_claudeCodeDesc: 'Usa la connessione di Claude CLI senza una chiave API aggiuntiva. Haiku è il più veloce.',
   llm_cloud: 'Modello cloud (API)',
@@ -258,6 +264,68 @@ export const it: Messages = {
   vs_dspHolo: 'ologramma spaziale',
   vs_dspRobot: 'vocoder robotico',
   vs_dspGlitch: 'meccanico con tremolo',
+  vs_mic: 'Microfono',
+  vs_micDefault: 'Predefinito di sistema',
+  vs_micTest: 'Prova',
+  vs_micSpeak: 'Parla ora...',
+  vs_micHeard: 'Ti sento.',
+  vs_micSilent: 'Non arriva nessun suono. Prova un altro microfono o controlla che non sia disattivato.',
+  vs_micError: 'Impossibile aprirlo. Controlla la privacy del sistema o provane un altro.',
+  vs_micUnderstood: 'Ho capito:',
+  vs_micNoWords: 'Il suono arriva, ma non ho distinto parole.',
+  vs_arrowKeys: 'Usa questi tasti come scorciatoie nelle altre app (Ctrl+Alt+V funziona sempre)',
+  vs_hotkeys: 'Tasti',
+  vs_hotkeyTalk: 'Parlarle',
+  vs_hotkeyListen: 'Ascolto continuo',
+  vs_hotkeyChat: 'Aprire la sua chat',
+  vs_hotkeyPress: 'Premi un tasto...',
+  vs_hotkeyReset: 'Torna alle frecce',
+  vs_hotkeyNeedsModifier: 'Una lettera, un numero o Invio da soli smetterebbero di funzionare altrove: combinali con Ctrl o Alt.',
+  vs_hotkeyReserved: 'Questo tasto è riservato ad altro.',
+  vs_hotkeyInUse: 'Un\'altra azione usa già questo tasto.',
+  vs_hotkeyTaken: 'Un\'altra app usa già questo tasto.',
+  vs_gamingOpacity: 'La sua opacità in modalità gaming',
+  vs_sound: 'Suono',
+  vs_voiceVolume: 'Volume della voce',
+  vs_effectsVolume: 'Volume degli effetti',
+  vs_glitchSound: 'Suono di clic e glitch quando cambia animazione',
+  ob_storageTitle: 'Dove installare',
+  ob_storageDefault: 'Cartelle predefinite sul disco di sistema',
+  ob_storageChange: 'Cambia',
+  ob_storageReset: 'Usa predefinito',
+
+  ob_moveTitle: "Spostare ciò che è già installato?",
+
+  ob_moveModels: "I suoi modelli",
+
+  ob_moveWhisper: "Il suo udito (Whisper)",
+
+  ob_moveVoiceEnv: "Il suo ambiente vocale",
+
+  ob_moveTools: "FFmpeg e strumenti",
+
+  ob_moveOllamaProgram: "Programma Ollama (verrà riscaricato)",
+
+  ob_moveTotal: "Totale",
+
+  ob_moveFree: "Libero lì",
+
+  ob_moveNote: "Prima viene copiato e i vecchi file vengono eliminati solo alla fine. Python resta dov'è. Per spostare Capri stessa, riesegui il suo programma di installazione e scegli un'altra cartella.",
+
+  ob_moveNoSpace: "Non c'è abbastanza spazio libero su quel disco.",
+
+  ob_moveBadFolder: "Quella cartella è dentro ciò che verrà spostato. Scegline un'altra.",
+
+  ob_moveCancel: "Annulla",
+
+  ob_moveConfirm: "Sposta",
+
+  ob_moveDone: "Fatto. Ora usa la nuova posizione.",
+
+  ob_moveFailed: "Non è stato possibile spostare. Ciò che non è stato completato resta dov'era.",
+  vs_monitor: 'Monitor',
+  vs_monitorMain: 'principale',
+  vs_boredom: 'Può annoiarsi: apre schede e musica da sola quando non le parli',
   vs_pitch: 'Tono:',
   vs_low: 'Grave (-20Hz)',
   vs_normal: 'Normale (0Hz)',

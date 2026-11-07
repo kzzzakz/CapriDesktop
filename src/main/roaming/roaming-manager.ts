@@ -2,7 +2,7 @@ import { scriptPath } from '../services/app-paths'
 import { screen } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
-import { exec, spawn, ChildProcess } from 'child_process'
+import { exec, spawn, ChildProcess } from '../services/hidden-process'
 import { windowManager } from '../windows/window-manager'
 import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from '../services/consciousness-service'
@@ -78,6 +78,8 @@ export class RoamingManager {
   private isPaused = false
   private direction: 'left' | 'right' = 'right'
   private speed = 2.2 // pixels per tick
+  // Windows scaling grows the window a pixel on every setPosition, so walking keeps the size she started with
+  private walkSize: { width: number; height: number } | null = null
   private loopTimer: NodeJS.Timeout | null = null
   private autonomousTimer: NodeJS.Timeout | null = null
   private userDragPauseTimer: NodeJS.Timeout | null = null
@@ -93,6 +95,9 @@ export class RoamingManager {
   private isTabMode = false
   private isEyeMode = false
   private isSelfMoving = false
+  /** She was told to stay where she is: nothing moves her until the user does, or tells her she can */
+  private holdingStill = false
+  private heldAt: { x: number; y: number } | null = null
   private tabTrackTimer: NodeJS.Timeout | null = null
   private trackProcess: ChildProcess | null = null
   private linuxTrackTimer: NodeJS.Timeout | null = null
@@ -151,9 +156,30 @@ export class RoamingManager {
     return this.isEyeMode
   }
 
+  public holdStill(): void {
+    this.clearTimers()
+    if (this.isTabMode || this.currentBehavior === 'tab') {
+      windowManager.setTabMode(false, undefined, true)
+      windowManager.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE, false)
+      this.isTabMode = false
+    }
+    this.holdingStill = true
+    this.heldAt = windowManager.getCompanionWindow()?.getBounds() ?? null
+    this.isRoaming = false
+    this.isPaused = false
+    this.currentBehavior = 'still'
+    if (!this.isEyeMode && !windowManager.isGamingModeActive()) agentManager.setCompanionState('standing')
+    this.broadcastStatus()
+  }
+
+  public releaseHold(): void {
+    this.holdingStill = false
+    this.startAutonomousCycle()
+  }
+
   // --- Autonomous Behavior Cycle (Desktop Mode) ---
   public startAutonomousCycle(): void {
-    if (this.isEyeMode || this.isCatchGameActive || windowManager.isGamingModeActive()) return
+    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive || windowManager.isGamingModeActive()) return
     this.clearTimers()
     this.isPaused = false
 
@@ -167,7 +193,7 @@ export class RoamingManager {
   }
 
   private scheduleNextAutonomousBehavior(delayMs?: number): void {
-    if (this.isEyeMode || this.isCatchGameActive || this.isPaused || windowManager.isGamingModeActive()) return
+    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive || this.isPaused || windowManager.isGamingModeActive()) return
     if (this.autonomousTimer) clearTimeout(this.autonomousTimer)
 
     // Weighted random selection of next autonomous behavior
@@ -201,7 +227,7 @@ export class RoamingManager {
   }
 
   public transitionToBehavior(behavior: 'walking' | 'still' | 'tab'): void {
-    if (this.isEyeMode || this.isCatchGameActive) return
+    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive) return
 
     if (behavior !== 'tab') {
       this.stopTabTracking()
@@ -217,7 +243,7 @@ export class RoamingManager {
         this.loopTimer = null
       }
 
-      // User requirement: 50% probability of sitting in front pose (center of screen) or perch pose (on window tab)
+      // User requirement: 50% probability of sitting in front pose (screen corner) or perch pose (on window tab)
       this.currentSittingPose = Math.random() < 0.5 ? 'front' : 'perch'
 
       this.findWindowedApp().then((app) => {
@@ -275,6 +301,7 @@ export class RoamingManager {
   }
 
   public async sitOnWindowedTab(): Promise<WindowedAppInfo | null> {
+    this.holdingStill = false
     this.isEyeMode = false
     this.isPaused = false
     this.clearTimers()
@@ -282,7 +309,7 @@ export class RoamingManager {
     this.currentBehavior = 'tab'
     this.isTabMode = true
 
-    // 50% probability between front-facing (center screen) and perch (tab corner)
+    // 50% probability between front-facing (screen corner) and perch (tab corner)
     this.currentSittingPose = Math.random() < 0.5 ? 'front' : 'perch'
 
     const app = await this.findWindowedApp()
@@ -353,7 +380,7 @@ export class RoamingManager {
     this.stopTabTracking()
 
     if (this.currentSittingPose === 'front') {
-      // Front sitting pose stays stable in the middle of the screen
+      // Front sitting pose stays stable in the screen corner
       return
     }
 
@@ -486,6 +513,7 @@ export class RoamingManager {
 
   public toggle(): boolean {
     if (this.isEyeMode) return false
+    this.holdingStill = false
     if (this.isRoaming) {
       this.transitionToBehavior('still')
       return false
@@ -499,6 +527,7 @@ export class RoamingManager {
     if (this.isTabMode || this.currentBehavior === 'tab') {
       return
     }
+    this.holdingStill = false
     this.isEyeMode = false
     this.isPaused = false
     this.transitionToBehavior('walking')
@@ -525,12 +554,15 @@ export class RoamingManager {
     }
     this.isEyeMode = false
     this.isPaused = false
+    if (this.holdingStill) return this.broadcastStatus()
     this.transitionToBehavior('walking')
     this.startAutonomousCycle()
     this.broadcastStatus()
   }
 
-  public notifyUserDrag(_x?: number, _y?: number): void {
+  public notifyUserDrag(x?: number, y?: number): void {
+    // A click that shakes a pixel isn't moving her: same distance the window uses to call it a drag
+    if (this.holdingStill && this.heldAt && x !== undefined && y !== undefined && Math.hypot(x - this.heldAt.x, y - this.heldAt.y) <= 10) return
     this.stopTabTracking()
     if (this.isTabMode || this.currentBehavior === 'tab') {
       this.isTabMode = false
@@ -545,6 +577,7 @@ export class RoamingManager {
 
   public handleUserDrag(): void {
     if (this.isEyeMode || windowManager.isGamingModeActive()) return
+    this.holdingStill = false // "until you move me": this is that
     this.stopTabTracking()
     // If user dragged window, pause autonomous transitions for 10 seconds
     if (this.autonomousTimer) clearTimeout(this.autonomousTimer)
@@ -582,6 +615,7 @@ export class RoamingManager {
     windowManager.hideDeck()
     this.clearTimers()
 
+    this.holdingStill = false
     this.isRoaming = true
     this.isPaused = false
     this.isCatchGameActive = true
@@ -661,6 +695,7 @@ export class RoamingManager {
   // --- Main Walking Loop (Smooth Movement along Desktop) ---
   private startLoop(): void {
     if (this.loopTimer) clearInterval(this.loopTimer)
+    this.walkSize = null
 
     this.loopTimer = setInterval(() => {
       if (this.isEyeMode || !this.isRoaming || this.isPaused || this.currentBehavior !== 'walking' || this.isTabMode) {
@@ -676,11 +711,13 @@ export class RoamingManager {
 
       try {
         const bounds = companionWin.getBounds()
-        const primaryDisplay = screen.getPrimaryDisplay()
+        this.walkSize ??= { width: bounds.width, height: bounds.height }
+        // The screen she's on, not always the main one
+        const primaryDisplay = screen.getDisplayMatching(bounds)
         const { workArea } = primaryDisplay
 
         const minX = workArea.x + 10
-        const maxX = workArea.x + workArea.width - bounds.width - 10
+        const maxX = workArea.x + workArea.width - this.walkSize.width - 10
 
         let newX = bounds.x + (this.direction === 'right' ? this.speed : -this.speed)
 
@@ -698,7 +735,7 @@ export class RoamingManager {
         // Smooth horizontal roaming, preserving current Y height (walks in the air or floor as placed by user)
         const currentY = bounds.y
         this.isSelfMoving = true
-        companionWin.setPosition(Math.round(newX), currentY)
+        companionWin.setBounds({ x: Math.round(newX), y: currentY, ...this.walkSize })
         setImmediate(() => {
           this.isSelfMoving = false
         })

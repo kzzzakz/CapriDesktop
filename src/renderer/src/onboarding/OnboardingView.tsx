@@ -41,6 +41,8 @@ function isReady(step: StepId, s: SetupStatus | null): boolean {
 }
 
 const pad = (n: number): string => String(n).padStart(2, '0')
+const gb = (bytes: number): string => `${(bytes / 1073741824).toFixed(bytes < 1073741824 ? 2 : 1)} GB`
+const MOVE_TEXT = { models: 'ob_moveModels', whisper: 'ob_moveWhisper', voiceEnv: 'ob_moveVoiceEnv', tools: 'ob_moveTools' } as const
 
 /** Small mono tag + big condensed title used at the top of every page */
 const PageHead: React.FC<{ index: number; tag: string; title: string; sub?: string }> = ({ index, tag, title, sub }) => (
@@ -59,14 +61,21 @@ export const OnboardingView: React.FC = () => {
   const [langChoice, setLangChoice] = useState<string>(initialLang)
   const [page, setPage] = useState(0)
   const [name, setName] = useState('')
+  const [storage, setStorage] = useState<string | null>(null)
+  useEffect(() => {
+    window.api.setup.getStorage().then(setStorage).catch(() => {})
+  }, [])
   useEffect(() => {
     window.api.companion.getUserProfile().then((p) => {
       if (p.hasName) setName((typed) => typed || p.name)
     }).catch(() => {})
   }, [])
-  const [provider, setProvider] = useState<'local' | 'cloud' | 'claude-code'>('local')
+  const [provider, setProvider] = useState<'local' | 'cloud' | 'claude-code' | 'codex'>('local')
   const [status, setStatus] = useState<SetupStatus | null>(null)
   const [running, setRunning] = useState<StepId | null>(null)
+  const [moving, setMoving] = useState(false)
+  const [movePlan, setMovePlan] = useState<Awaited<ReturnType<typeof window.api.setup.chooseStorage>>>(null)
+  const busy = !!running || moving
   const [failed, setFailed] = useState<Set<StepId>>(new Set())
   const [log, setLog] = useState<string[]>([])
   const logRef = useRef<HTMLDivElement>(null)
@@ -118,6 +127,28 @@ export const OnboardingView: React.FC = () => {
     } finally {
       setRunning(null)
     }
+  }
+
+  const moveTo = async (root: string | null) => {
+    setMovePlan(null)
+    setMoving(true)
+    setLog((prev) => [...prev, `── ${t('ob_storageTitle')} ──`])
+    try {
+      const res = await window.api.setup.moveStorage(root)
+      setStorage(res.root)
+      setStatus(res.status)
+      setLog((prev) => [...prev, t(res.ok ? 'ob_moveDone' : 'ob_moveFailed')])
+    } finally {
+      setMoving(false)
+    }
+  }
+
+  const chooseLocation = async (reset?: boolean) => {
+    const plan = await window.api.setup.chooseStorage(reset)
+    if (!plan || plan.root === storage) return
+    // Nothing installed yet: there's nothing to confirm
+    if (!plan.items.length && !plan.ollamaProgram && !plan.invalid && plan.enoughSpace) await moveTo(plan.root)
+    else setMovePlan(plan)
   }
 
   const installAll = async () => {
@@ -219,6 +250,43 @@ export const OnboardingView: React.FC = () => {
 
         {page === 3 && (
           <div className="space-y-5">
+            <div className="cp-frame px-3.5 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-bold">{t('ob_storageTitle')}</div>
+                <div className="text-[13px] text-[var(--cp-muted)] truncate">{storage || t('ob_storageDefault')}</div>
+              </div>
+              {storage && (
+                <button type="button" disabled={busy} onClick={() => chooseLocation(true)} className="cp-frame cp-btn-ghost px-3 py-1.5 text-[13px]">
+                  {t('ob_storageReset')}
+                </button>
+              )}
+              <button type="button" disabled={busy} onClick={() => chooseLocation()} className="cp-frame cp-btn-ghost px-3 py-1.5 text-[13px]">
+                {t('ob_storageChange')}
+              </button>
+            </div>
+            {movePlan && (
+              <div className="cp-frame is-warn px-4 py-3 space-y-2">
+                <div className="text-[14px] font-bold">{t('ob_moveTitle')}</div>
+                <div className="text-[13px] text-[var(--cp-muted)] break-all">{movePlan.root || t('ob_storageDefault')}</div>
+                <ul className="cp-mono text-[12px] space-y-0.5">
+                  {movePlan.items.map((item) => (
+                    <li key={item.from}>{t(MOVE_TEXT[item.kind])}: {gb(item.bytes)}</li>
+                  ))}
+                  {movePlan.ollamaProgram && <li>{t('ob_moveOllamaProgram')}: {gb(movePlan.ollamaProgram.bytes)}</li>}
+                </ul>
+                <p className="text-[13px] text-[var(--cp-muted)]">
+                  {t('ob_moveTotal')}: {gb(movePlan.neededBytes)}{movePlan.freeBytes !== null ? ` · ${t('ob_moveFree')}: ${gb(movePlan.freeBytes)}` : ''}
+                </p>
+                <p className="text-[13px] text-[var(--cp-muted)]">{t('ob_moveNote')}</p>
+                {(movePlan.invalid || !movePlan.enoughSpace) && (
+                  <p className="text-[13px] font-bold text-[var(--cp-red)]">{t(movePlan.invalid ? 'ob_moveBadFolder' : 'ob_moveNoSpace')}</p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setMovePlan(null)} className="cp-frame cp-btn-ghost px-3 py-1.5 text-[13px]">{t('ob_moveCancel')}</button>
+                  <button type="button" disabled={movePlan.invalid || !movePlan.enoughSpace} onClick={() => moveTo(movePlan.root)} className="cp-btn px-4 py-1.5 text-[13px]">{t('ob_moveConfirm')}</button>
+                </div>
+              </div>
+            )}
             <PageHead index={3} tag={t(PAGE_TAGS[3])} title={t('ob_setupTitle')} sub={provider !== 'local' ? t('ob_setupSubCloud') : t('ob_setupSub')} />
 
             <div className="flex items-center gap-3">
@@ -258,7 +326,7 @@ export const OnboardingView: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => runStep(step)}
-                          disabled={!!running}
+                          disabled={busy}
                           className={`cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-1 text-[12px] ${hasFailed ? 'is-active' : ''}`}
                           style={{ ['--c' as string]: '6px' }}
                         >
@@ -273,8 +341,8 @@ export const OnboardingView: React.FC = () => {
             </div>
 
             {!allReady && (
-              <button onClick={installAll} disabled={!!running} className="cp-btn w-full py-3 text-[15px]">
-                {running ? `${t('ob_working')}...` : t('ob_installAll')}
+              <button onClick={installAll} disabled={busy} className="cp-btn w-full py-3 text-[15px]">
+                {busy ? `${t('ob_working')}...` : t('ob_installAll')}
               </button>
             )}
 
@@ -286,7 +354,7 @@ export const OnboardingView: React.FC = () => {
                       {l}
                     </div>
                   ))}
-                  {running && <span className="cp-blink">_</span>}
+                  {busy && <span className="cp-blink">_</span>}
                 </div>
               </div>
             )}
@@ -334,11 +402,11 @@ export const OnboardingView: React.FC = () => {
         )}
         {page === 3 &&
           (allReady ? (
-            <button onClick={() => setPage(4)} disabled={!!running} className="cp-btn flex items-center gap-1 px-6 py-2.5 text-[14px]">
+            <button onClick={() => setPage(4)} disabled={busy} className="cp-btn flex items-center gap-1 px-6 py-2.5 text-[14px]">
               {t('next')} <ChevronRight size={16} />
             </button>
           ) : (
-            <button onClick={() => setPage(4)} disabled={!!running} className="cp-frame cp-btn-ghost flex items-center gap-1 px-5 py-2.5 text-[14px]">
+            <button onClick={() => setPage(4)} disabled={busy} className="cp-frame cp-btn-ghost flex items-center gap-1 px-5 py-2.5 text-[14px]">
               {t('ob_skip')} <ChevronRight size={16} />
             </button>
           ))}

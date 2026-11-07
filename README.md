@@ -37,7 +37,9 @@ Capri is a netrunner companion inspired by *Cyberpunk: Edgerunners*: playful, mi
 
 ### LLM providers
 
-Choose local Ollama, an OpenAI-compatible cloud API, or **Claude Code** in the LLM settings. The Claude Code option only appears when Claude Code is installed or already saved as your provider. Claude Code uses the installed `claude` CLI and its existing connection: your signed-in subscription or the connection variables in `~/.claude/settings.json` (respecting `CLAUDE_CONFIG_DIR`), including a CLIProxy endpoint and token. Choose Haiku (the default for live commentary), Sonnet or Opus, and use **Test** to check the connection. Requests use Claude Code tools and your user skills/plugins, with hooks and MCP disabled and no saved sessions. They run from your home directory so created files remain available, with a ten-minute timeout. Permission mode is auto by default; bypass mode requires explicit confirmation in the settings and allows any command, including voice requests. Capri supplies the system prompt; global CLAUDE.md and auto-memory may still be loaded by the CLI. Conversations and images go to the configured service.
+Choose local Ollama, an OpenAI-compatible cloud API, or **Claude Code** / **Codex** in the LLM settings. The Claude Code option only appears when Claude Code is installed or already saved as your provider. Claude Code uses the installed `claude` CLI and its existing connection: your signed-in subscription or the connection variables in `~/.claude/settings.json` (respecting `CLAUDE_CONFIG_DIR`), including a CLIProxy endpoint and token. Choose Haiku (the default for live commentary), Sonnet or Opus, and use **Test** to check the connection. Requests use Claude Code tools and your user skills/plugins, with hooks and MCP disabled and no saved sessions. They run from your home directory so created files remain available, with a ten-minute timeout. Permission mode is auto by default; bypass mode requires explicit confirmation in the settings and allows any command, including voice requests. Capri supplies the system prompt; global CLAUDE.md and auto-memory may still be loaded by the CLI. Conversations and images go to the configured service.
+
+**Codex** uses the installed `codex` CLI and its existing login and configuration (including `CODEX_HOME` and custom providers). Install it and run `codex login` first. Leave the model empty to use your Codex default, or enter a model name, then use **Test connection**. Requests run from your home directory with native commands in a read-only sandbox, no approval prompts, no saved sessions, and a ten-minute timeout. Application tools still run through Capri as usual. Your Codex user instructions, skills, plugins and MCP configuration may apply. Capri supplies its persona and conversation; messages and images go to the service configured in Codex. Temporary image files are deleted after each request.
 
 ### A. Voice providers (Edge-TTS / Fish Audio / ElevenLabs)
 The provider is picked in **TTS CONFIG** in the Dev Deck:
@@ -200,7 +202,7 @@ Capri understands commands in both English and Spanish.
 | Hold `Ctrl` in Game Mode | In Game Mode Capri lets clicks pass through to the game; hold `Ctrl` over her to move or touch her. |
 | `Ctrl+Alt+G` in Game Mode (Linux) | Same as holding `Ctrl`, which Linux can't detect in that mode. |
 
-> **Note:** arrow hotkeys are global: while Capri is running, those arrows are reserved for her in every application.
+> **Note:** while another app has the focus, those arrows are reserved for her. You can change those keys or turn them off in the voice settings; `Ctrl+Alt+V` always works. In her own windows the arrows work normally in text fields.
 
 ### Mouse
 | Action | What it does |
@@ -216,7 +218,8 @@ Capri understands commands in both English and Spanish.
 | `show me your red eye` / `mostrame tu ojo rojo` | Changes her look. Also `your eye` / `tu ojo` and `your big eyes` / `tus ojos`. |
 | `why did you pick that?` / `¿por qué elegiste eso?` | She answers about what she just said or did on her own. |
 | `what's new?` / `¿qué hay de nuevo?` | Reads the notes of this version. |
-| `update yourself` / `actualizate` | Looks for a new version. |
+| `what version are you on?` / `¿en qué versión estás?` | Tells you her version. |
+| `update yourself` / `actualizate` | Looks for a new version and installs it. A `.deb` asks for your password. |
 | `clip that` / `clipeá eso` | Saves the last moments of your game with ShadowPlay (`F8`). |
 | `are you bored?` / `¿estás aburrida?` | She finds something to do: music, a video or a search. |
 
@@ -261,6 +264,7 @@ The drawing, League of Legends and Cyberpunk 2077 commands are in [section 8](#8
 | `open league of legends` / `abrí el lol` | Starts the Riot client / League of Legends. |
 | `open cyberpunk` | Launches Cyberpunk 2077 through Steam or GOG. |
 | `open steam` / `open discord` / `open obs` | Launches Steam, Discord or OBS Studio. |
+| `open blender` / `abrí la epic games store` | Opens any installed app. If she can't find it, she asks you where it is and remembers it. |
 | `close league` / `close chrome` / `cerrá discord` | Closes the process. |
 
 ### Desktop interaction
@@ -268,6 +272,8 @@ The drawing, League of Legends and Cyberpunk 2077 commands are in [section 8](#8
 | :--- | :--- |
 | `sit on tabs` / `sentate en la pestaña` | Capri perches on your browser tabs. |
 | `sit on the desktop` / `sentate en el escritorio` | She goes back to the desktop. |
+| `stay still` / `quedate quieta` | She stays where she is until you move her. |
+| `you can move` / `podés moverte` | She goes back to wandering around. |
 | `what are you doing?` | She tells you how she feels and what she's up to. |
 
 ---
@@ -320,7 +326,7 @@ The LLM describes the drawing on a normalized grid from `0` to `100` (`(0,0)` to
 
 ---
 
-## 9. Live game integrations (LoL & Cyberpunk 2077)
+## 9. Live game integrations
 
 ### A. League of Legends (LCU & Live Client Data API)
 
@@ -356,6 +362,20 @@ Capri polls Riot's official local API (`https://127.0.0.1:2999/liveclientdata/al
 
 ---
 
+### C. Valorant (read-only Riot APIs)
+
+- Detects `VALORANT-Win64-Shipping.exe`. Reads `%LOCALAPPDATA%\Riot Games\Riot Client\Config\lockfile` for local HTTPS authentication and `VALORANT\Saved\Logs\ShooterGame.log` for region/shard routing.
+- Own presence (`/chat/v4/presences`) supplies session, queue, map and team scores. Riot GLZ pregame/coregame endpoints supply the locked agent and allied agents. Completed match details from Riot PD supply the verified final score and result; leaving a match never implies defeat.
+- Capri comments on agent picks, rounds, streaks, match point, overtime and score-confirmed results; foreground-only CPU screen analysis detects spectator HUD death transitions once per round (some deaths are missed; no kill detection). Bundled agent/map labels need no runtime lookup.
+
+### D. Wuthering Waves (window capture and optional logs)
+
+- Detects `Client-Win64-Shipping.exe` only when its executable path contains `Wuthering Waves`. Resolves `Client\Saved\Logs\Client.log` from that path and tails new data with bounded reads. Plain-text UE `LogLoad: LoadMap:` / `LogWorld: Bringing World` markers can produce area changes; opaque logs are ignored. The installed log inspected on this Windows machine is opaque, so area changes are currently unavailable here.
+- Announces opening/closing. While foreground, samples only the game's window for an occasional local Ollama vision pass, at least 60 seconds apart (one small frame per pass). Uses the scanner's selected installed vision model; never downloads a model or sends game captures to a cloud provider. Alt-tab, game exit and silence mode cancel or suppress the work. Captures stay in memory.
+- High-confidence visual observations may produce low-health (only legible numeric HP or percentage), death (explicit defeat/revive text), combat/boss context and scene comments. These are model observations, not telemetry; they can be missed or mistaken. No uncalibrated HP-bar/death pixel heuristic is enabled. Without a local vision model, opening/closing and readable log markers still work.
+- Both integrations use the existing reaction cooldowns, silence mode, language selection, in-character LLM commentary and English/Spanish fallback lines, and activate corner-docked, click-through Game Mode. No game memory access, injection, hooks, input automation or game-file changes.
+- Offline derivation checks: `npm run test:game-reactions` (no games or Ollama required).
+
 ## 10. Permissions and system access
 
 | Feature | Privileges | APIs / resources | Binaries | Network | Safety |
@@ -364,6 +384,8 @@ Capri polls Riot's official local API (`https://127.0.0.1:2999/liveclientdata/al
 | **Paint drawing** | Standard user | Win32 `SetCursorPos`, `mouse_event`, `EnumWindows`, `GetWindowRect`, `GetAsyncKeyState` | `powershell.exe`, `mspaint.exe` | Loopback (Ollama) | **`Escape` panic key**; only draws while Paint is focused. |
 | **LoL champion select** | Standard user | Reads `LeagueClientUx.exe` command line for the local token and port | `LeagueClientUx.exe` | Local HTTPS to the LCU port | Standard champion-select actions only. |
 | **LoL in-game** | Standard user | Riot's official Live Client Data API | `League of Legends.exe` | Local HTTPS `127.0.0.1:2999` | Read-only official API, no memory access. |
+| **Valorant reactions** | Standard user | Process detection, Riot lockfile and ShooterGame log; own presence, GLZ pregame/coregame and foreground game-window pixels | `powershell.exe`, Electron | Local authenticated HTTPS; HTTPS to Riot `*.a.pvp.net` | GET requests and window capture only; tokens stay in the main process; no Vanguard interaction. |
+| **Wuthering Waves reactions** | Standard user | Process name/path and foreground window handle; read-only Client log; game-window `desktopCapturer` thumbnails | `powershell.exe`, Electron, installed Ollama | Loopback `127.0.0.1:11434` for vision; configured LLM for text commentary | Foreground-only captures, at least 60 seconds apart; no saved images or ACE interaction; no input or game-file writes. |
 | **Cyberpunk telemetry** | Standard user | Local TCP listener | Capri + CET Lua mod | `127.0.0.1:2077` | Listens on localhost only. |
 | **Spotify control** | Standard user | Win32 `PostMessage` with `WM_APPCOMMAND` | `Spotify.exe`, `powershell.exe` | None | No code injection; standard media commands. |
 | **Speech recognition** | Microphone permission | WebAudio / `MediaRecorder` | `python.exe` (`faster-whisper`) | None (100% local) | Revocable in Windows privacy settings. |
@@ -393,6 +415,7 @@ Components can be installed later; features that depend on them (voice, local AI
 
 1. Download the `.deb` from **Releases**. It works on Debian-based distros (Debian, Ubuntu, Mint, Kali).
 2. Install it with its helpers: `sudo apt install ./CapriDesktop-x.y.z.deb python3-venv zstd xdotool wmctrl playerctl`.
+   On other distributions, extract the `.tar.gz` and run `capridesktop`, with the same helpers from your package manager.
 3. Open Capri and follow the same first-run wizard. Use an X11 session.
 
 Paint drawing isn't available on Linux. Everything that differs from Windows is listed in [REQUIREMENTS.md](REQUIREMENTS.md#13-linux).
@@ -405,6 +428,20 @@ Paint drawing isn't available on Linux. Everything that differs from Windows is 
 - **Spotify Desktop (optional)**: native media control.
 - **Cyber Engine Tweaks (optional)**: live Cyberpunk 2077 telemetry, together with Capri's mod. See [Installing the Cyberpunk 2077 mod](#installing-the-cyberpunk-2077-mod).
 - **Fish Audio / ElevenLabs (optional)**: API key in `voice_config.local.json` (see `voice_config.example.json`).
+
+### Choosing a disk
+
+If you install her on a disk other than the system's, her requirements go there too, in a `CapriData` folder: Python, the voice environment, Whisper, FFmpeg, Ollama and its models. Models you already have stay where they are. You can pick another folder in the first-run setup, under **Where to install**.
+
+If she's already installed, the same option moves everything to the new folder: it shows what's moving and how much it weighs, copies it, and only deletes the old files at the end. Python stays where it is, and the Ollama program is downloaded again by its own installer. To move Capri herself, run her installer again and pick another folder.
+
+### If she doesn't hear you
+
+Open the voice settings and press **Test** next to the microphone: it records a few seconds and shows what she understood.
+
+- **No sound coming in:** pick another microphone in the same place, or check that the system isn't blocking it.
+- **Sound, but no words:** run the setup again from the model settings. Her hearing may be incomplete.
+- **The first time** she also downloads her hearing, about 500 MB, and tells you while it's loading.
 
 ### Uninstalling
 

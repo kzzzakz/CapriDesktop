@@ -154,6 +154,7 @@ export class AgentManager extends EventEmitter {
       // Any finished result (e.g. the new landing page) is still unopened at this point,
       // so the phrase names what the user was really doing.
       const activeApp = await activeWindowService.getActiveOrTopWindow()
+      if (windowManager.isGamingModeActive()) return
       const hasResult = hasPendingResult()
       const wakeupPhrase = activeWindowService.generateWakeupPhrase(activeApp, hasResult)
 
@@ -222,7 +223,7 @@ export class AgentManager extends EventEmitter {
   public async detectOllama(): Promise<{ running: boolean; models: string[] }> {
     if (isRemoteMode()) {
       const settings = getLlmSettings()
-      return { running: true, models: [settings.provider === 'claude-code' ? settings.claudeModel : settings.model] }
+      return { running: true, models: [settings.provider === 'claude-code' ? settings.claudeModel : settings.provider === 'codex' ? settings.codexModel || 'Codex' : settings.model] }
     }
     return await ollamaService.ensureRunning()
   }

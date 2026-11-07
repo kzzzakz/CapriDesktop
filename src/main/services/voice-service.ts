@@ -1,3 +1,5 @@
+import { storageDir } from './storage-location'
+import { clearLanguageOf, detectLanguage } from './language-detect'
 import { isRemoteMode, llmFetch } from './llm-gateway'
 import { envFilePath, localFfmpegPath, pythonPath, scriptPath, voiceDataDir } from './app-paths'
 import { spawn, ChildProcess } from 'child_process'
@@ -51,12 +53,19 @@ export interface SynthesizeResult {
 export class VoiceService {
   private static instance: VoiceService
   private sttWorker: ChildProcess | null = null
+  /** The worker loads Whisper before it answers, and the first time it also downloads it */
+  private sttState: 'off' | 'loading' | 'ready' | 'failed' = 'off'
+  private lastTranscript: { text: string; lang: string; at: number } | null = null
   private pendingRequests: Map<string, {
     resolve: (res: TranscribeResult) => void
-    reject: (err: any) => void
     tempIn: string
-    timer: NodeJS.Timeout
+    timer?: NodeJS.Timeout
+    partial: boolean
+    lang: string
+    hint: string
+    waitMs: number
   }> = new Map()
+  private activeRequestId: string | null = null
   private requestCounter = 0
   private workerLineBuffer = ''
   private audioCache: Map<string, string> = new Map()
@@ -80,9 +89,12 @@ export class VoiceService {
 
   /** Tells capri_voice.py where the (writable) voice config, keys and audio cache live */
   private pythonEnv(): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env, CAPRI_VOICE_DIR: voiceDataDir(), CAPRI_ENV_FILE: envFilePath(), PYTHONIOENCODING: 'utf-8' }
+    const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUTF8: '1', CAPRI_VOICE_DIR: voiceDataDir(), CAPRI_ENV_FILE: envFilePath(), PYTHONIOENCODING: 'utf-8' }
     const ffmpeg = localFfmpegPath()
     if (ffmpeg && !env.CAPRI_FFMPEG) env.CAPRI_FFMPEG = ffmpeg
+    // Whisper's model weighs about 500 MB
+    const whisper = storageDir('whisper')
+    if (whisper) env.HF_HOME = whisper
     return env
   }
 
@@ -100,17 +112,21 @@ export class VoiceService {
   public ensureWorker(): void {
     if (this.sttWorker && !this.sttWorker.killed) return
 
+    this.sttState = 'loading'
     const scriptPath = this.findScriptPath()
     const pythonPath = this.findPythonPath()
 
     try {
-      this.sttWorker = spawn(pythonPath, [scriptPath, 'stt-worker'], {
+      const worker = spawn(pythonPath, [scriptPath, 'stt-worker'], {
         windowsHide: true,
         env: this.pythonEnv(),
         stdio: ['pipe', 'pipe', 'pipe']
       })
+      this.sttWorker = worker
+      this.workerLineBuffer = ''
 
-      this.sttWorker.stdout?.on('data', (chunk) => {
+      worker.stdout?.on('data', (chunk) => {
+        if (this.sttWorker !== worker) return
         this.workerLineBuffer += chunk.toString()
         const lines = this.workerLineBuffer.split('\n')
         this.workerLineBuffer = lines.pop() || ''
@@ -122,28 +138,14 @@ export class VoiceService {
             const parsed = JSON.parse(trimmed)
             if (parsed.ready !== undefined) {
               console.log('[VoiceService] Local STT Whisper worker is ready:', parsed)
+              if (this.sttWorker === worker) this.sttState = parsed.ready ? 'ready' : 'failed'
               continue
             }
 
-            if (parsed.id && this.pendingRequests.has(parsed.id)) {
-              const req = this.pendingRequests.get(parsed.id)!
-              this.pendingRequests.delete(parsed.id)
-              clearTimeout(req.timer)
-              try {
-                if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
-              } catch {}
-              req.resolve(parsed)
-            } else if (this.pendingRequests.size === 1) {
-              const entry = this.pendingRequests.entries().next().value
-              if (entry) {
-                const [singleId, req] = entry
-                this.pendingRequests.delete(singleId)
-                clearTimeout(req.timer)
-                try {
-                  if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
-                } catch {}
-                req.resolve(parsed)
-              }
+            if (parsed.id === this.activeRequestId) {
+              this.finishRequest(parsed.id, parsed)
+              this.activeRequestId = null
+              this.dispatchNextRequest()
             }
           } catch (e) {
             console.warn('[VoiceService Worker] Unparseable line from python STT:', trimmed)
@@ -151,7 +153,7 @@ export class VoiceService {
         }
       })
 
-      this.sttWorker.stderr?.on('data', (data) => {
+      worker.stderr?.on('data', (data) => {
         const str = data.toString()
         // Only log non-empty non-progress messages
         if (str.trim() && !str.includes('Processing') && !str.includes('%')) {
@@ -159,37 +161,117 @@ export class VoiceService {
         }
       })
 
-      this.sttWorker.on('error', (err) => {
+      worker.on('error', (err) => {
         console.error('[VoiceService Worker Error]', err)
+        // Restarted on purpose: the new one is already running and this says nothing about it
+        if (this.sttWorker !== worker) return
         this.drainQueueWithError(err.message)
       })
 
-      this.sttWorker.on('close', (code) => {
+      worker.on('close', (code) => {
         console.warn(`[VoiceService Worker] Process closed with code ${code}`)
+        if (this.sttWorker !== worker) return
         this.drainQueueWithError(`Worker closed with code ${code}`)
         this.sttWorker = null
+        this.sttState = 'failed'
       })
     } catch (err: any) {
       console.error('[VoiceService Worker Spawn Failed]', err)
       this.sttWorker = null
+      this.sttState = 'failed'
     }
   }
 
   private drainQueueWithError(errorMsg: string): void {
-    for (const [id, req] of this.pendingRequests.entries()) {
-      clearTimeout(req.timer)
-      try {
-        if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
-      } catch {}
-      req.resolve({ success: false, error: errorMsg })
+    for (const id of this.pendingRequests.keys()) {
+      this.finishRequest(id, { success: false, error: errorMsg })
     }
-    this.pendingRequests.clear()
+    this.activeRequestId = null
+  }
+
+  private restartHungWorker(): void {
+    const hung = this.sttWorker
+    this.sttWorker = null
+    this.activeRequestId = null
+    hung?.kill()
+    this.ensureWorker()
+    if (this.sttWorker) this.dispatchNextRequest()
+    else this.drainQueueWithError('STT worker could not restart')
+  }
+
+  private finishRequest(id: string, result: TranscribeResult): void {
+    const req = this.pendingRequests.get(id)
+    if (!req) return
+    this.pendingRequests.delete(id)
+    clearTimeout(req.timer)
+    try {
+      if (fs.existsSync(req.tempIn)) fs.unlinkSync(req.tempIn)
+    } catch {}
+    req.resolve(result)
+  }
+
+  private dispatchNextRequest(): void {
+    if (this.activeRequestId || !this.sttWorker?.stdin || this.sttWorker.killed) return
+    const entries = [...this.pendingRequests.entries()]
+    const next = entries.find(([, req]) => !req.partial) || entries[0]
+    if (!next) return
+    const [id, req] = next
+    this.activeRequestId = id
+    req.timer = setTimeout(() => {
+      this.finishRequest(id, { success: false, error: `STT Worker timeout (${req.waitMs}ms)` })
+      // A worker that never answers would also swallow every later request
+      this.restartHungWorker()
+    }, req.waitMs)
+    const payload = JSON.stringify({ id, file: req.tempIn, lang: req.lang, partial: req.partial, hint: req.hint }) + '\n'
+    this.sttWorker.stdin.write(payload, (error) => {
+      if (error) this.drainQueueWithError(error.message)
+    })
   }
 
   /**
    * Transcribes an audio Buffer into text using local faster-whisper on GPU
    */
-  public async transcribe(audioBuffer: Buffer): Promise<TranscribeResult> {
+  /** Starts over with whatever Python is installed now: the one it started with may not have had Whisper */
+  public restartWorker(): void {
+    if (this.sttWorker) {
+      try {
+        this.sttWorker.kill()
+      } catch {}
+      this.sttWorker = null
+    }
+    this.drainQueueWithError('STT worker restarted')
+    this.sttState = 'off'
+    this.ensureWorker()
+  }
+
+  public getSttState(): 'off' | 'loading' | 'ready' | 'failed' {
+    return this.sttState
+  }
+
+  /** The language Whisper heard, if this text is what it just transcribed */
+  public languageOfTranscript(text: string): string | null {
+    const last = this.lastTranscript
+    if (!last || Date.now() - last.at > 15000 || !text.trim()) return null
+    const clean = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+    // A wake word may have been taken off the start
+    return clean(last.text).includes(clean(text)) ? last.lang : null
+  }
+
+  public async transcribe(audioBuffer: Buffer, options: { partial?: boolean } | boolean = {}): Promise<TranscribeResult> {
+    const partial = typeof options === 'boolean' ? options : options.partial === true
+    // Words on screen while talking are a nicety: they never make the real request wait in line
+    if (partial && (this.sttState !== 'ready' || this.pendingRequests.size > 0)) {
+      return { success: false, error: 'busy' }
+    }
+    // A worker that failed gets another try: Python may have been installed since
+    if (this.sttState === 'failed') this.restartWorker()
+    if (!partial) {
+      for (const [queuedId, req] of this.pendingRequests) {
+        if (req.partial && queuedId !== this.activeRequestId) {
+          this.finishRequest(queuedId, { success: false })
+        }
+      }
+    }
     const id = `req_${++this.requestCounter}_${Date.now()}`
     const tempIn = path.join(os.tmpdir(), `capri_stt_${id}.webm`)
     fs.writeFileSync(tempIn, audioBuffer)
@@ -197,24 +279,26 @@ export class VoiceService {
     try {
       this.ensureWorker()
       if (!this.sttWorker || this.sttWorker.killed || !this.sttWorker.stdin) {
+        if (partial) {
+          fs.unlinkSync(tempIn)
+          return { success: false }
+        }
         return await this.transcribeFallback(tempIn)
       }
 
       const prefLang = consciousnessService.getLanguageSettings().micLang || 'auto'
+      const hint = consciousnessService.getPreferredLanguage()
+      // Downloading Whisper or running on a slow CPU takes far longer than 18 seconds
+      const waitMs = partial ? 15000 : this.sttState === 'ready' ? 90000 : 600000
 
-      return await new Promise<TranscribeResult>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          this.pendingRequests.delete(id)
-          try {
-            if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn)
-          } catch {}
-          resolve({ success: false, error: 'STT Worker timeout (18000ms)' })
-        }, 18000)
-
-        this.pendingRequests.set(id, { resolve, reject, tempIn, timer })
-        const payload = JSON.stringify({ id, file: tempIn, lang: prefLang }) + '\n'
-        this.sttWorker!.stdin!.write(payload)
+      const result = await new Promise<TranscribeResult>((resolve) => {
+        this.pendingRequests.set(id, { resolve, tempIn, partial, lang: prefLang, hint, waitMs })
+        this.dispatchNextRequest()
       })
+      if (!partial && result.success && result.text && (result as { language?: string }).language) {
+        this.lastTranscript = { text: result.text, lang: (result as { language?: string }).language as string, at: Date.now() }
+      }
+      return result
     } catch (err: any) {
       try {
         if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn)
@@ -315,6 +399,11 @@ export class VoiceService {
 
     const prefLang = consciousnessService.getPreferredLanguage()
     let targetLang = langOverride
+    // Her own detector first: the checks below lean Spanish on words shared with other languages
+    if (!targetLang) {
+      const found = detectLanguage(cleanText)
+      if (found !== 'unknown') targetLang = found
+    }
     if (!targetLang) {
       if (isJapanese) targetLang = 'ja'
       else if (isChinese) targetLang = 'zh'
@@ -335,11 +424,12 @@ export class VoiceService {
     let spokenText = cleanText
     const speechLang = consciousnessService.getLanguageSettings().speechLang
     if (!langOverride && speechLang && speechLang !== 'auto' && targetLang !== speechLang) {
-      const translated = await this.translateForSpeech(cleanText, speechLang)
-      if (translated) {
-        spokenText = translated
-        targetLang = speechLang
+      const translated = await this.translateForSpeech(cleanText, speechLang, 45000)
+      if (!translated) {
+        return { success: false, error: `Could not translate speech to ${speechLang}` }
       }
+      spokenText = translated
+      targetLang = speechLang
     }
 
     const cacheKey = `${targetLang || 'auto'}:${spokenText}`
@@ -458,6 +548,14 @@ export class VoiceService {
     return this.translatorModel
   }
 
+  /**
+   * A command in any language, in English, for the part of her that recognizes commands. Waits
+   * at most 8s; without an answer the text goes as it came.
+   */
+  public async translateCommand(text: string, lang = 'en'): Promise<string | null> {
+    return this.translateForSpeech(text, lang)
+  }
+
   /** Loads the translation model into VRAM ahead of time (a cold load can take ~40s on this PC). */
   public warmTranslator(): void {
     if (this.translatorWarm || isRemoteMode()) return
@@ -479,10 +577,10 @@ export class VoiceService {
 
   /**
    * Translates a line to the chosen speech language with the local LLM, keeping [emotion] tags.
-   * Waits at most 8s: if the model is still loading, the original text is spoken this time and
-   * the translation keeps going in the background so it's cached for the next time.
+   * Waits up to the caller's timeout; the translation keeps going in the background so a valid
+   * result is cached for the next time.
    */
-  private async translateForSpeech(text: string, lang: string): Promise<string | null> {
+  private async translateForSpeech(text: string, lang: string, timeoutMs = 8000): Promise<string | null> {
     const key = `${lang}:${text}`
     const hit = this.translationCache.get(key)
     if (hit) return hit
@@ -490,7 +588,7 @@ export class VoiceService {
 
     const names: Record<string, string> = {
       es: 'Rioplatense Spanish', en: 'English', pt: 'Brazilian Portuguese', fr: 'French', de: 'German',
-      it: 'Italian', ja: 'Japanese', ko: 'Korean', zh: 'Simplified Chinese', ru: 'Russian'
+      it: 'Italian', ja: 'Japanese', ko: 'Korean', zh: 'Simplified Chinese', ru: 'Russian', pl: 'Polish'
     }
 
     const job = (async (): Promise<string | null> => {
@@ -517,6 +615,8 @@ export class VoiceService {
       const data = (await res.json()) as { message?: { content?: string } }
       const out = (data.message?.content || '').trim().replace(/^["“]|["”]$/g, '')
       if (!out) return null
+      const translatedLang = clearLanguageOf(stripLookTags(out))
+      if (translatedLang && translatedLang !== lang) return null
       if (this.translationCache.size > 300) this.translationCache.clear()
       this.translationCache.set(key, out)
       console.log(`[VoiceService] Spoken translation (${lang}): "${out}"`)
@@ -526,9 +626,11 @@ export class VoiceService {
       return null
     })
 
-    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000))
+    let timer: NodeJS.Timeout | undefined
+    const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs) })
     const result = await Promise.race([job, timeout])
-    if (!result) console.warn('[VoiceService] Translator not ready yet, speaking the original text this time')
+    clearTimeout(timer)
+    if (!result) console.warn('[VoiceService] Translation unavailable or in the wrong language')
     return result
   }
 

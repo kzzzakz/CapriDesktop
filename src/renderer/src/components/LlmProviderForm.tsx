@@ -34,15 +34,16 @@ export interface LlmProviderFormHandle {
   save: () => Promise<boolean>
 }
 
-export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderChange?: (provider: 'local' | 'cloud' | 'claude-code') => void }>(
+export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderChange?: (provider: 'local' | 'cloud' | 'claude-code' | 'codex') => void }>(
   ({ onProviderChange }, ref) => {
     const t = useT()
-    const [provider, setProvider] = useState<'local' | 'cloud' | 'claude-code'>('local')
+    const [provider, setProvider] = useState<'local' | 'cloud' | 'claude-code' | 'codex'>('local')
     const [claudeInstalled, setClaudeInstalled] = useState(false)
     const [savedClaudeProvider, setSavedClaudeProvider] = useState(false)
     const [preset, setPreset] = useState('openai')
     const [baseUrl, setBaseUrl] = useState(PRESETS[0].baseUrl)
     const [model, setModel] = useState('')
+    const [codexModel, setCodexModel] = useState('')
     const [claudeModel, setClaudeModel] = useState<'haiku' | 'sonnet' | 'opus'>('haiku')
     const [claudeBypassPermissions, setClaudeBypassPermissions] = useState(false)
     const [confirmingBypass, setConfirmingBypass] = useState(false)
@@ -61,6 +62,7 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
         if (s.preset) setPreset(s.preset)
         if (s.baseUrl) setBaseUrl(s.baseUrl)
         setModel(s.model)
+        setCodexModel(s.codexModel)
         setClaudeModel(s.claudeModel)
         setClaudeBypassPermissions(s.claudeBypassPermissions)
         setHasKey(s.hasKey)
@@ -68,7 +70,7 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
       })
     }, [])
 
-    const choose = (next: 'local' | 'cloud' | 'claude-code') => {
+    const choose = (next: 'local' | 'cloud' | 'claude-code' | 'codex') => {
       setProvider(next)
       setNotice(null)
       onProviderChange?.(next)
@@ -100,6 +102,7 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
       setNotice(null)
       const res = provider === 'claude-code'
         ? await window.api.agent.testClaude(claudeModel)
+        : provider === 'codex' ? await window.api.agent.testCodex(codexModel.trim())
         : await window.api.agent.testLlm(baseUrl, model.trim(), apiKey || undefined)
       setBusy(null)
       if (res.ok) setNotice({ ok: true, text: t('llm_testOk') })
@@ -134,6 +137,7 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
           provider === 'local'
             ? { provider: 'local' }
             : provider === 'claude-code' ? { provider, claudeModel }
+            : provider === 'codex' ? { provider, codexModel: codexModel.trim() }
             : { provider: 'cloud', preset, baseUrl, model: model.trim(), apiKey: apiKey || undefined }
         )
         if (!res.success) {
@@ -151,12 +155,13 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
 
     return (
       <div className="space-y-4">
-        <div className={`grid ${showClaude ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'} gap-2.5`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {(
             [
               ['local', 'llm_local', 'llm_localDesc', <Cpu size={16} key="i" />],
               ['cloud', 'llm_cloud', 'llm_cloudDesc', <Cloud size={16} key="i" />],
-              ['claude-code', 'llm_claudeCode', 'llm_claudeCodeDesc', <Terminal size={16} key="i" />]
+              ['claude-code', 'llm_claudeCode', 'llm_claudeCodeDesc', <Terminal size={16} key="i" />],
+              ['codex', 'llm_codex', 'llm_codexDesc', <Terminal size={16} key="i" />]
             ] as const
           ).filter(([id]) => id !== 'claude-code' || showClaude).map(([id, title, desc, icon]) => {
             const active = provider === id
@@ -177,6 +182,21 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
           })}
         </div>
 
+        {provider === 'codex' && (
+          <div className="space-y-3">
+            <label className="block">
+              <span className="cp-label block mb-1.5">{t('llm_model')}</span>
+              <div className="cp-frame">
+                <input value={codexModel} onChange={(e) => { setCodexModel(e.target.value); setNotice(null) }} placeholder={t('llm_codexDefault')} spellCheck={false} className={field} />
+              </div>
+            </label>
+            <p className="text-[13px] text-[var(--cp-muted)]">{t('llm_codexHelp')}</p>
+            <button type="button" onClick={test} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px]">
+              {busy === 'test' && <Loader2 size={13} className="animate-spin" />} {busy === 'test' ? t('llm_testing') : t('llm_test')}
+            </button>
+            {notice && <p role="status" className={notice.ok ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}>{notice.text}</p>}
+          </div>
+        )}
         {provider === 'claude-code' && (
           <div className="space-y-3">
             <label className="block">
