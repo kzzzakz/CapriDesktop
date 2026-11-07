@@ -150,12 +150,13 @@ test('main rejects unlocks over a game and restores Ctrl interaction after alt-t
   let ignoring = false
   let forwarding = false
   let focusable = true
+  const opacities = []
   const events = []
   manager.companionWin = {
     isDestroyed: () => false,
     setFocusable: (value) => { focusable = value },
     setSkipTaskbar: () => {},
-    setOpacity: () => {},
+    setOpacity: (value) => opacities.push(value),
     setIgnoreMouseEvents: (value, options) => {
       ignoring = value
       forwarding = options?.forward === true
@@ -191,5 +192,40 @@ test('main rejects unlocks over a game and restores Ctrl interaction after alt-t
   manager.setCompanionClickThrough(false)
   assert.equal(ignoring, false)
   assert.equal(focusable, true)
+  assert.deepEqual(opacities, [], 'mouse and foreground changes must not override the configured opacity')
   for (const timer of manager.mouseForwardTimers.values()) clearInterval(timer)
+})
+
+test('entering gaming mode leaves window opacity at full strength for the configured sprite opacity', () => {
+  const { WindowManager } = load('windows/window-manager.ts', {
+    '../ipc/channels': { IPC_CHANNELS: {} },
+    '../roaming/roaming-manager': { roamingManager: { setEyeMode() {}, stop() {} } }
+  })
+  const manager = new WindowManager()
+  const opacities = []
+  manager.currentDisplay = () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })
+  manager.broadcast = () => {}
+  manager.forwardMouse = () => {}
+  manager.companionWin = {
+    isDestroyed: () => false,
+    isVisible: () => false,
+    setBounds() {},
+    setOpacity: (value) => opacities.push(value),
+    setVisibleOnAllWorkspaces() {},
+    setAlwaysOnTop() {},
+    moveTop() {},
+    setFocusable() {},
+    setSkipTaskbar() {},
+    setIgnoreMouseEvents() {}
+  }
+  try {
+    manager.setGamingMode(true)
+    assert.deepEqual(opacities, [1], 'a native opacity multiplier would dim both Capri and speech')
+    manager.setGameForeground(false)
+    manager.setCompanionClickThrough(false)
+    manager.setCompanionClickThrough(true)
+    assert.deepEqual(opacities, [1], 'hovering or alt-tabbing must preserve the chosen opacity')
+  } finally {
+    clearInterval(manager.gamingKeepAliveInterval)
+  }
 })
