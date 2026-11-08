@@ -1,6 +1,6 @@
 import { createOnboardingWindow } from './onboarding-window'
 import { BrowserWindow, app, screen, globalShortcut } from 'electron'
-import { DEFAULT_HOTKEYS, hotkeyProblem, type HotkeyAction, type HotkeyProblem, type Hotkeys } from '../../shared/hotkeys'
+import { ALWAYS_ON_ACTIONS, DEFAULT_HOTKEYS, hotkeyProblem, type HotkeyAction, type HotkeyProblem, type Hotkeys } from '../../shared/hotkeys'
 import { createCompanionWindow } from './companion-window'
 import { createDeckWindow } from './deck-window'
 import { createScannerWindow } from './scanner-window'
@@ -177,6 +177,12 @@ export class WindowManager {
     // Initialize desktop roaming listener and start autonomous behavior cycle
     roamingManager.init()
     roamingManager.startAutonomousCycle()
+    // Sent away last time and never called back: she stays hidden
+    if (this.isAway()) {
+      this.companionWin.once('show', this.keepHiddenAtStart)
+      this.companionWin.hide()
+      roamingManager.pause()
+    }
   }
 
   /** The setup again, for whoever skipped a step or had one fail */
@@ -192,26 +198,74 @@ export class WindowManager {
   }
 
   private registeredHotkeys: string[] = []
-  /** The Gaming Mode key: registered all the time, the arrows only while another app has the focus */
-  private gamingHotkey: string | null = null
+  /** The Gaming Mode and away keys: registered all the time, the arrows only while another app has the focus */
+  private alwaysHotkeys: string[] = []
 
   private registerGamingHotkey(): void {
     this.releaseGamingHotkey()
-    const key = consciousnessService.getHotkeys().gaming
-    try {
-      if (globalShortcut.register(key, () => this.setGamingMode(!this.isGamingMode))) this.gamingHotkey = key
-      else console.warn(`[WindowManager] The Gaming Mode shortcut ${key} belongs to another app`)
-    } catch (err) {
-      console.warn(`[WindowManager] Could not register the Gaming Mode shortcut ${key}:`, err)
+    const keys = consciousnessService.getHotkeys()
+    const actions: [string, () => void][] = [
+      [keys.gaming, () => this.setGamingMode(!this.isGamingMode)],
+      [keys.away, () => this.toggleAway()]
+    ]
+    for (const [key, run] of actions) {
+      try {
+        if (globalShortcut.register(key, run)) this.alwaysHotkeys.push(key)
+        else console.warn(`[WindowManager] The shortcut ${key} belongs to another app`)
+      } catch (err) {
+        console.warn(`[WindowManager] Could not register the shortcut ${key}:`, err)
+      }
     }
   }
 
   private releaseGamingHotkey(): void {
-    if (!this.gamingHotkey) return
-    try {
-      globalShortcut.unregister(this.gamingHotkey)
-    } catch {}
-    this.gamingHotkey = null
+    for (const key of this.alwaysHotkeys) {
+      try {
+        globalShortcut.unregister(key)
+      } catch {}
+    }
+    this.alwaysHotkeys = []
+  }
+
+  /** Sent away with her key: hidden and quiet until it is pressed again (or Show Capri in the tray) */
+  public isAway(): boolean {
+    return consciousnessService.isAway()
+  }
+
+  public toggleAway(): boolean {
+    this.setAway(!this.isAway())
+    return this.isAway()
+  }
+
+  /** Started while away: the first time something shows her window it goes back to hidden */
+  private keepHiddenAtStart = (): void => {
+    if (this.isAway()) this.companionWin?.hide()
+  }
+
+  public setAway(away: boolean): void {
+    consciousnessService.setAway(away)
+    const win = this.companionWin
+    if (win && !win.isDestroyed()) {
+      win.removeListener('show', this.keepHiddenAtStart)
+      if (away) {
+        win.hide()
+        roamingManager.pause()
+      } else {
+        win.showInactive()
+        win.setAlwaysOnTop(true, 'screen-saver', 1)
+        roamingManager.resume()
+      }
+    }
+    this.awayListeners.forEach((fn) => fn(away))
+    console.log(`[WindowManager] Capri ${away ? 'sent away' : 'is back'}`)
+  }
+
+  private awayListeners: Array<(away: boolean) => void> = []
+  public onAwayChanged(cb: (away: boolean) => void): () => void {
+    this.awayListeners.push(cb)
+    return () => {
+      this.awayListeners = this.awayListeners.filter((fn) => fn !== cb)
+    }
   }
 
   private releaseHotkeys(): void {
@@ -257,7 +311,7 @@ export class WindowManager {
     let problem = hotkeyProblem(accelerator, action, current)
     if (!problem) {
       this.releaseHotkeys()
-      if (action === 'gaming') this.releaseGamingHotkey()
+      if (ALWAYS_ON_ACTIONS.includes(action)) this.releaseGamingHotkey()
       problem = this.canRegister(accelerator) ? null : 'taken'
     }
     if (!problem) {
@@ -265,7 +319,7 @@ export class WindowManager {
       this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, consciousnessService.getHotkeys())
     }
     this.syncArrowKeys()
-    if (action === 'gaming') this.registerGamingHotkey()
+    if (ALWAYS_ON_ACTIONS.includes(action)) this.registerGamingHotkey()
     return { hotkeys: consciousnessService.getHotkeys(), problem }
   }
 
@@ -351,8 +405,8 @@ export class WindowManager {
       this.deckWin.hide()
     }
 
-    // Restore companion floating/walking on desktop
-    if (this.companionWin && !this.companionWin.isDestroyed()) {
+    // Restore companion floating/walking on desktop (not while she was sent away)
+    if (this.companionWin && !this.companionWin.isDestroyed() && !this.isAway()) {
       this.companionWin.show()
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.companionWin.moveTop()
@@ -481,7 +535,7 @@ export class WindowManager {
       if (sittingPose === 'perch' && windowRect) this.glideCompanionTo({ x, y, width, height })
       else this.companionWin.setBounds({ x, y, width, height }, false)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver')
-      this.companionWin.show()
+      if (!this.isAway()) this.companionWin.show()
 
       this.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE, true)
       // Broadcast appropriate sitting state: 'idle_front' for center pose, 'idle' for tab perch

@@ -267,6 +267,7 @@ export const ru: Messages = {
   vs_hotkeyListen: 'Постоянное прослушивание',
   vs_hotkeyChat: 'Открыть её чат',
   vs_hotkeyGaming: 'Игровой режим вкл/выкл (работает в играх)',
+  vs_hotkeyAway: 'Спрятать / вернуть',
   vs_hotkeyPress: 'Нажми клавишу...',
   vs_hotkeyReset: 'Вернуть стрелки',
   vs_hotkeyNeedsModifier: 'Буква, цифра или Enter без модификатора перестанут работать везде: добавь Ctrl или Alt.',

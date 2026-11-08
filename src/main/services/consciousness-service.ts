@@ -42,6 +42,8 @@ export interface ConsciousnessData {
   holdingStill?: boolean
   /** Her size on the desktop and in Gaming Mode, 1 = normal */
   companionScale?: number
+  /** Sent away with her key: she stays hidden, even after a restart, until it's pressed again */
+  away?: boolean
   gamingScale?: number
   hotkeys?: Hotkeys
   gamingOpacity?: number
@@ -332,6 +334,15 @@ class ConsciousnessService {
   public setCompanionScale(kind: 'desktop' | 'gaming', value: number): void {
     if (kind === 'gaming') this.data.gamingScale = clampCompanionScale(value)
     else this.data.companionScale = clampCompanionScale(value)
+    this.save()
+  }
+
+  public isAway(): boolean {
+    return !!this.data.away
+  }
+
+  public setAway(away: boolean): void {
+    this.data.away = away
     this.save()
   }
 

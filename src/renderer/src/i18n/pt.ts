@@ -267,6 +267,7 @@ export const pt: Messages = {
   vs_hotkeyListen: 'Escuta contínua',
   vs_hotkeyChat: 'Abrir o chat dela',
   vs_hotkeyGaming: 'Modo jogo liga/desliga (funciona dentro dos jogos)',
+  vs_hotkeyAway: 'Esconder / trazer de volta',
   vs_hotkeyPress: 'Aperte uma tecla...',
   vs_hotkeyReset: 'Voltar para as setas',
   vs_hotkeyNeedsModifier: 'Uma letra, um número ou Enter sozinhos parariam de funcionar em todo lugar: combine com Ctrl ou Alt.',

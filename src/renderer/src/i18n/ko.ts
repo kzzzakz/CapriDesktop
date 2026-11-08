@@ -267,6 +267,7 @@ export const ko: Messages = {
   vs_hotkeyListen: '항상 듣기',
   vs_hotkeyChat: '채팅 열기',
   vs_hotkeyGaming: '게임 모드 켜기/끄기 (게임 중에도 작동)',
+  vs_hotkeyAway: '숨기기 / 다시 부르기',
   vs_hotkeyPress: '키를 누르세요...',
   vs_hotkeyReset: '화살표 키로 되돌리기',
   vs_hotkeyNeedsModifier: '문자, 숫자, Enter를 단독으로 쓰면 다른 곳에서 작동하지 않게 돼요. Ctrl이나 Alt와 함께 쓰세요.',

@@ -26,6 +26,7 @@ export function useHotkeyLabels(): Record<keyof Hotkeys, string> {
     talk: formatHotkey(hotkeys.talk),
     listen: formatHotkey(hotkeys.listen),
     chat: formatHotkey(hotkeys.chat),
-    gaming: formatHotkey(hotkeys.gaming)
+    gaming: formatHotkey(hotkeys.gaming),
+    away: formatHotkey(hotkeys.away)
   }
 }
