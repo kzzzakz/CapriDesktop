@@ -274,6 +274,8 @@ export const pt: Messages = {
   vs_hotkeyInUse: 'Outra ação já usa essa tecla.',
   vs_hotkeyTaken: 'Outro app já está usando essa tecla.',
   vs_gamingOpacity: 'A opacidade dela no modo gaming',
+  vs_size: 'Tamanho da Capri',
+  vs_gamingSize: 'Tamanho no modo jogo',
   vs_sound: 'Som',
   vs_voiceVolume: 'Volume da voz',
   vs_effectsVolume: 'Volume dos efeitos',

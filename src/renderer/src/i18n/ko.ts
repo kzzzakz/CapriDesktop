@@ -274,6 +274,8 @@ export const ko: Messages = {
   vs_hotkeyInUse: '다른 동작이 이미 그 키를 쓰고 있어요.',
   vs_hotkeyTaken: '다른 앱이 이미 그 키를 쓰고 있어요.',
   vs_gamingOpacity: '게이밍 모드에서의 불투명도',
+  vs_size: 'Capri 크기',
+  vs_gamingSize: '게임 모드 크기',
   vs_sound: '소리',
   vs_voiceVolume: '음성 볼륨',
   vs_effectsVolume: '효과음 볼륨',

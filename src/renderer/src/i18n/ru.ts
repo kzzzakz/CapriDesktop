@@ -274,6 +274,8 @@ export const ru: Messages = {
   vs_hotkeyInUse: 'Эту клавишу уже использует другое действие.',
   vs_hotkeyTaken: 'Эту клавишу уже использует другое приложение.',
   vs_gamingOpacity: 'Её непрозрачность в игровом режиме',
+  vs_size: 'Размер Capri',
+  vs_gamingSize: 'Размер в игровом режиме',
   vs_sound: 'Звук',
   vs_voiceVolume: 'Громкость голоса',
   vs_effectsVolume: 'Громкость эффектов',

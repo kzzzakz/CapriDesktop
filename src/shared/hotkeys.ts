@@ -97,6 +97,14 @@ export function formatHotkey(accelerator: string): string {
 
 export const GAMING_OPACITY_MIN = 0.2
 
+/** How big she is, normal and in Gaming Mode: 60% to 160% */
+export const COMPANION_SCALE_MIN = 0.6
+export const COMPANION_SCALE_MAX = 1.6
+export function clampCompanionScale(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : 1
+  return Math.round(Math.min(COMPANION_SCALE_MAX, Math.max(COMPANION_SCALE_MIN, n)) * 100) / 100
+}
+
 export function clampGamingOpacity(value: unknown): number {
   const n = typeof value === 'number' && Number.isFinite(value) ? value : 1
   return Math.min(1, Math.max(GAMING_OPACITY_MIN, n))

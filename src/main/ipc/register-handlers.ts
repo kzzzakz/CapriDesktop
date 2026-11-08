@@ -178,7 +178,8 @@ export function registerIpcHandlers(): void {
         const bounds = win.getBounds()
         const newX = bounds.x + payload.dx
         const newY = bounds.y + payload.dy
-        win.setPosition(newX, newY)
+        // With the size given too: setPosition alone grows the window on scaled screens
+        win.setBounds({ x: newX, y: newY, width: bounds.width, height: bounds.height }, false)
         if (windowManager.isGamingModeActive()) {
           windowManager.setSavedGamingPosition({ x: newX, y: newY })
         } else {
@@ -566,6 +567,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_SET, (_event, action: HotkeyAction, accelerator: string) => windowManager.setHotkey(action, String(accelerator)))
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_RESET, () => windowManager.resetHotkeys())
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_GET, () => consciousnessService.getGamingOpacity())
+  // Her size, normal and in Gaming Mode
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_GET, () => ({ desktop: consciousnessService.getCompanionScale('desktop'), gaming: consciousnessService.getCompanionScale('gaming') }))
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_SET, (_event, kind: string, value: number) => windowManager.setCompanionScale(kind === 'gaming' ? 'gaming' : 'desktop', Number(value)))
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_SET, (_event, value: number) => {
     consciousnessService.setGamingOpacity(value)
     const saved = consciousnessService.getGamingOpacity()

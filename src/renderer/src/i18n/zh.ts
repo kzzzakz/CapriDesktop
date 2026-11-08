@@ -274,6 +274,8 @@ export const zh: Messages = {
   vs_hotkeyInUse: '另一个操作已在使用该键。',
   vs_hotkeyTaken: '另一个应用已在使用该键。',
   vs_gamingOpacity: '她在游戏模式下的不透明度',
+  vs_size: 'Capri 的大小',
+  vs_gamingSize: '游戏模式下的大小',
   vs_sound: '声音',
   vs_voiceVolume: '语音音量',
   vs_effectsVolume: '音效音量',

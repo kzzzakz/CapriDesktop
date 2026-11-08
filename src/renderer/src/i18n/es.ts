@@ -274,6 +274,8 @@ export const es: Messages = {
   vs_hotkeyInUse: 'Otra acción ya usa esa tecla.',
   vs_hotkeyTaken: 'Otra app ya está usando esa tecla.',
   vs_gamingOpacity: 'Su opacidad en el modo gaming',
+  vs_size: 'Tamaño de Capri',
+  vs_gamingSize: 'Tamaño en modo gaming',
   vs_sound: 'Sonido',
   vs_voiceVolume: 'Volumen de la voz',
   vs_effectsVolume: 'Volumen de los efectos',

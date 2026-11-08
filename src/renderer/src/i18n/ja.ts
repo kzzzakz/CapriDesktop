@@ -274,6 +274,8 @@ export const ja: Messages = {
   vs_hotkeyInUse: 'そのキーは別の操作で使われています。',
   vs_hotkeyTaken: 'そのキーは別のアプリが使っています。',
   vs_gamingOpacity: 'ゲーミングモードでの不透明度',
+  vs_size: 'Capriのサイズ',
+  vs_gamingSize: 'ゲームモードでのサイズ',
   vs_sound: 'サウンド',
   vs_voiceVolume: '音声の音量',
   vs_effectsVolume: '効果音の音量',

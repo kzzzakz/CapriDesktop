@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Monitor } from 'lucide-react'
 import { useT } from '../utils/useUiLang'
-import { GAMING_OPACITY_MIN } from '../../../shared/hotkeys'
+import { COMPANION_SCALE_MAX, COMPANION_SCALE_MIN, GAMING_OPACITY_MIN } from '../../../shared/hotkeys'
 
 interface DisplayInfo {
   id: number
@@ -18,6 +18,7 @@ export const BehaviorSettings: React.FC = () => {
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
   const [boredom, setBoredom] = useState(true)
   const [gamingOpacity, setGamingOpacity] = useState(1)
+  const [scale, setScale] = useState({ desktop: 1, gaming: 1 })
 
   const load = () => window.api.companion.listDisplays().then(setDisplays).catch(() => {})
 
@@ -25,6 +26,7 @@ export const BehaviorSettings: React.FC = () => {
     void load()
     window.api.boredom.getEnabled().then(setBoredom).catch(() => {})
     window.api.companion.getGamingOpacity().then(setGamingOpacity).catch(() => {})
+    window.api.companion.getScale().then(setScale).catch(() => {})
   }, [])
 
   const current = displays.find((d) => d.current)
@@ -61,6 +63,28 @@ export const BehaviorSettings: React.FC = () => {
         />
         {t('vs_boredom')}
       </label>
+      {/* Her size, on the desktop and docked in Gaming Mode: the window and everything in it scale together */}
+      {(['desktop', 'gaming'] as const).map((kind) => (
+        <label key={kind} className="block text-[13px] text-stone-300">
+          <span className="flex justify-between mb-1">
+            <span>{t(kind === 'gaming' ? 'vs_gamingSize' : 'vs_size')}</span>
+            <span className="text-stone-400">{Math.round(scale[kind] * 100)}%</span>
+          </span>
+          <input
+            type="range"
+            min={COMPANION_SCALE_MIN * 100}
+            max={COMPANION_SCALE_MAX * 100}
+            step="10"
+            value={Math.round(scale[kind] * 100)}
+            onChange={(e) => {
+              const value = parseInt(e.target.value, 10) / 100
+              setScale((prev) => ({ ...prev, [kind]: value }))
+              void window.api.companion.setScale(kind, value)
+            }}
+            className="w-full"
+          />
+        </label>
+      ))}
       <label className="block text-[13px] text-stone-300">
         <span className="flex justify-between mb-1">
           <span>{t('vs_gamingOpacity')}</span>

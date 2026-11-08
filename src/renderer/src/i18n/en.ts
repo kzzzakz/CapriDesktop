@@ -272,6 +272,8 @@ export const en = {
   vs_hotkeyInUse: 'Another action already uses that key.',
   vs_hotkeyTaken: 'Another app is already using that key.',
   vs_gamingOpacity: 'Her opacity in Gaming Mode',
+  vs_size: "Capri's size",
+  vs_gamingSize: 'Size in Gaming Mode',
   vs_sound: 'Sound',
   vs_voiceVolume: 'Voice volume',
   vs_effectsVolume: 'Effects volume',

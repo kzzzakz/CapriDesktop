@@ -82,6 +82,8 @@ export interface IElectronAPI {
     setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string }) => Promise<{ textLang: string; speechLang: string; micLang: string }>
     onGamingModeChanged: (callback: (enabled: boolean) => void) => () => void
     getGamingOpacity: () => Promise<number>
+    getScale: () => Promise<{ desktop: number; gaming: number }>
+    setScale: (kind: 'desktop' | 'gaming', value: number) => Promise<number>
     setGamingOpacity: (value: number) => Promise<number>
     onGamingOpacityChanged: (callback: (value: number) => void) => () => void
     moveBy: (dx: number, dy: number) => Promise<{ x: number; y: number } | null>

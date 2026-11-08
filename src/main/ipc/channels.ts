@@ -100,6 +100,8 @@ export const IPC_CHANNELS = {
   APPS_CHANGED: 'apps:changed',
   // Downloading local models (Capri // Brain)
   OLLAMA_PULL: 'ollama:pull',
+  COMPANION_SCALE_GET: 'companion:getScale',
+  COMPANION_SCALE_SET: 'companion:setScale',
   // Where Cyberpunk 2077 and Capri's mod are (Apps window)
   CYBERPUNK_FOLDERS_GET: 'cyberpunk:getFolders',
   CYBERPUNK_FOLDER_PICK: 'cyberpunk:pickFolder',

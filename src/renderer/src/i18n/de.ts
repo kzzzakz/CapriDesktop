@@ -274,6 +274,8 @@ export const de: Messages = {
   vs_hotkeyInUse: 'Eine andere Aktion nutzt diese Taste bereits.',
   vs_hotkeyTaken: 'Eine andere App nutzt diese Taste bereits.',
   vs_gamingOpacity: 'Ihre Deckkraft im Gaming-Modus',
+  vs_size: 'Capris Größe',
+  vs_gamingSize: 'Größe im Spielmodus',
   vs_sound: 'Ton',
   vs_voiceVolume: 'Stimmlautstärke',
   vs_effectsVolume: 'Effektlautstärke',

@@ -153,6 +153,10 @@ const api = {
 
     getGamingOpacity: (): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.GAMING_OPACITY_GET),
 
+    getScale: (): Promise<{ desktop: number; gaming: number }> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SCALE_GET),
+
+    setScale: (kind: 'desktop' | 'gaming', value: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SCALE_SET, kind, value),
+
     setGamingOpacity: (value: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.GAMING_OPACITY_SET, value),
 
     onGamingOpacityChanged: (callback: (value: number) => void): (() => void) => {
