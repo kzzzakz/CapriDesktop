@@ -36,7 +36,7 @@ import { commandInEnglish } from './command-translations'
 import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
 import { memoryService } from '../services/memory-service'
 import { listKnownApps } from '../services/known-apps'
-import { appRequestInEnglish, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
+import { appRequestInEnglish, fixedCommandLanguage, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
  * Deleting is only allowed when the user asked to delete and named that file or folder
@@ -341,7 +341,9 @@ export class CapriLocalAgent extends EventEmitter {
     const heardLang = voiceService.languageOfTranscript(prompt.trim())
     // A fixed command needs no model and no guessing: the phrase itself says which language it's in
     const fixedCommand = commandInEnglish(prompt)
-    const detectedLang = heardLang || fixedCommand?.lang || CapriLocalAgent.detectLanguage(prompt.trim())
+    // Her own short commands in any language ("quedate quieta") say which language they are in
+    const spokenCommandLang = fixedCommandLanguage(prompt)
+    const detectedLang = heardLang || fixedCommand?.lang || spokenCommandLang || CapriLocalAgent.detectLanguage(prompt.trim())
     if (detectedLang !== 'unknown') consciousnessService.setSpokenLanguage(detectedLang)
     const conversationLang = consciousnessService.getSpokenLanguage()
 
@@ -350,7 +352,7 @@ export class CapriLocalAgent extends EventEmitter {
     if (fixedCommand) {
       console.log(`[Capri Agent] Command in ${fixedCommand.lang}, read as: "${fixedCommand.text}"`)
       prompt = fixedCommand.text
-    } else if (conversationLang && !['en', 'es'].includes(conversationLang) && prompt.length < 300) {
+    } else if (!spokenCommandLang && conversationLang && !['en', 'es'].includes(conversationLang) && prompt.length < 300) {
       const english = await voiceService.translateCommand(prompt.trim())
       // Sometimes the model answers instead of translating: an answer is not the command
       if (english && !/[\r\n]/.test(english) && english.length <= prompt.length * 2 + 20) {
