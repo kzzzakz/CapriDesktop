@@ -1,5 +1,5 @@
 import { assetPath } from '../services/app-paths'
-import { BrowserWindow, app } from 'electron'
+import { BrowserWindow, app, screen } from 'electron'
 import { join } from 'path'
 import { windowManager } from './window-manager'
 
@@ -7,11 +7,17 @@ export function createDeckWindow(): BrowserWindow {
   const preloadPath = join(__dirname, '../preload/index.mjs')
   const iconPath = assetPath('icon.png')
 
+  // Wide enough for the whole top bar, minimize and close included, in every language; never bigger
+  // than the screen it opens on
+  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
+  const width = Math.min(1280, screenWidth - 40)
+  const height = Math.min(800, screenHeight - 40)
+
   const deckWindow = new BrowserWindow({
     title: 'Capricorn // Dev Deck',
     icon: iconPath,
-    width: 1040,
-    height: 720,
+    width,
+    height,
     minWidth: 840,
     minHeight: 580,
     show: false,
