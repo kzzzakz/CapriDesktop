@@ -1223,28 +1223,38 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // Direct Media Control Interceptor (Change Song / Next / Prev / Play / Pause)
+    // Only when the message IS the command ("pasá el tema", "next song", "pausa la música"). These words
+    // also show up in questions ("what's next in AI", "qué pasa con este error", "pasa el código a TS",
+    // "un script para spotify"), and matching them anywhere skipped the user's song mid-conversation
+    const mediaCommand = trimmed
+      .replace(/^(?:(?:hey|oye|che|ok|okay|ahora|now|bueno)[,\s]+)*(?:capri[,:\s]+)?(?:(?:please|por\s+favor|porfa|dale)[,\s]+)?/i, '')
+      .replace(/[,\s]+(?:please|pls|por\s+favor|porfa|capri|choomba|dale)$/i, '')
+      .replace(/[\s.!¡?¿]+$/u, '')
+      .trim()
+    const isShortCommand = mediaCommand.split(/\s+/).length <= 6
+    const SONG = String.raw`(?:cancion|canción|tema|musica|música|pista|track|song|music)`
+    const PLATFORM = String.raw`(?:spotify|youtube(?:[ _]+music)?)`
+    const isMedia = (pattern: string) => isShortCommand && new RegExp(pattern, 'iu').test(mediaCommand)
+
     const isChangeSongIntent =
-      /(?:cambia|cambiar|cambie|cambiate|pasa|pasar|salta|saltar|skip|next)\s+(?:de\s+|la\s+|el\s+)?(?:cancion|canción|tema|musica|música|pista|track|song)?/i.test(trimmed) ||
-      /(?:siguiente|otra|next)\s+(?:cancion|canción|tema|musica|música|pista|track|song)/i.test(trimmed) ||
-      /(?:pon|pone|play)\s+(?:otra|siguiente)\s+(?:cancion|canción|tema|musica|música|track|song)/i.test(trimmed) ||
-      /^(?:skip|next)\s*(?:song|track)?$/i.test(trimmed) ||
-      /^(?:cambia\s+de\s+cancion|cambia\s+la\s+cancion|pasa\s+de\s+cancion|pasa\s+la\s+cancion|salta\s+la\s+cancion)$/i.test(trimmed) ||
-      /(?:spotify|youtube(?:[ _]+music)?).*(?:cambia|pasa|salta|skip|next|otra|siguiente)/i.test(trimmed) ||
-      /(?:cambia|pasa|salta|skip|next).*(?:spotify|youtube(?:[ _]+music)?)/i.test(trimmed)
+      /^(?:skip|next|siguiente|otra|pasala|pasá(?:la)?|saltala|saltá(?:la)?)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:cambi[aá]|cambiar|cambie|cambiate|pas[aá]|pasar|pasame|salt[aá]|saltar|skip|next)\s+(?:(?:de|la|el|esta|este|the|this)\s+)?${SONG}(?:\s+(?:en|on|de)\s+${PLATFORM})?$`) ||
+      isMedia(String.raw`^(?:(?:pon[eé]?|play|pasame|dame)\s+)?(?:la\s+|el\s+|the\s+)?(?:siguiente|otra|next|another)\s+${SONG}(?:\s+(?:en|on|de)\s+${PLATFORM})?$`) ||
+      isMedia(String.raw`^${PLATFORM}\s+(?:skip|next|siguiente|otra)$`) ||
+      isMedia(String.raw`^(?:skip|next|siguiente|cambi[aá]|pas[aá]|salt[aá])\s+(?:en|on|de|in)\s+${PLATFORM}$`)
 
     const isPrevSongIntent =
-      /(?:anterior|previa|prev)\s+(?:cancion|canción|tema|track|song)/i.test(trimmed) ||
-      /(?:vuelve|volver|retrocede)\s+(?:a\s+la\s+)?(?:cancion|canción|tema|track|song)/i.test(trimmed) ||
-      /^(?:prev|previous)\s*(?:song|track)?$/i.test(trimmed)
+      /^(?:prev|previous|anterior)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:(?:pon[eé]?|play|volv[eé]\s+a)\s+)?(?:la\s+|el\s+|the\s+)?(?:anterior|previa|previous|prev|last)\s+${SONG}$`) ||
+      isMedia(String.raw`^(?:vuelve|volv[eé]|volver|retrocede|retroced[eé])\s+(?:a\s+)?(?:la\s+|el\s+)?${SONG}(?:\s+anterior)?$`)
 
     const isPauseIntent =
-      /^(?:pausa|pausar|pause|mute|deten|detener|para|parar|frena|frenar|stop)(?:\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|track))?$/i.test(trimmed) ||
-      /(?:pausa|pausar|pause|mute|deten|detener|para|parar|frena|frenar|stop)\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|track)/i.test(trimmed)
+      /^(?:pausa|pausar|pausá|pause|mute|stop|frena|frená)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:pausa|pausar|pausá|pause|mute|deten[eé]?|detener|para|par[aá]|parar|frena|frená|frenar|stop)\s+(?:la\s+|el\s+|the\s+)?(?:${SONG}|${PLATFORM})$`)
 
     const isPlayMusicOnlyIntent =
-      /^(?:pon|pone|reproduce|reproducir|play|reanuda|reanudar|despausa|despausar|continua|continuar|sigue|seguir|resume)(?:\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|playback))?$/i.test(trimmed) ||
-      /(?:reanuda|reanudar|despausa|despausar|continua|continuar|resume)\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|playback)/i.test(trimmed) ||
-      /^(?:play|resume|pon\s+musica|pone\s+musica|reproduce\s+musica|play\s+music|reanuda\s+musica|reanudar\s+musica|despausa\s+musica|despausar\s+musica)$/i.test(trimmed)
+      /^(?:play|resume|reanuda|reanudá|despausa|despausá)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:pon[eé]?|reproduc[ei]|reproducir|play|reanud[aá]|reanudar|despaus[aá]|despausar|continu[aá]|continuar|segu[ií]|seguir|resume)\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|music|${PLATFORM}|playback)$`)
 
     if (isChangeSongIntent || isPrevSongIntent || isPauseIntent || isPlayMusicOnlyIntent) {
       // If user specified an explicit target song, e.g. "now change the song to Bohemian Rhapsody", route directly to the requested platform
@@ -1472,7 +1482,7 @@ export class CapriLocalAgent extends EventEmitter {
     const desktopPath = path.join(process.env.USERPROFILE || os.homedir(), 'Desktop')
     const activeMedia = systemObserver.getActiveMedia()
     const activeMediaContext = activeMedia
-      ? `\nACTIVE SCREEN CONTEXT: The user currently has open ${activeMedia.type.toUpperCase()}: "${activeMedia.title}"${activeMedia.creator ? ` (Creator/Youtuber: ${activeMedia.creator})` : ''} on ${activeMedia.appName}. When asked about what they are watching, listening to, browsing, or looking at, comment on this exact content enthusiastically in-character!`
+      ? `\nACTIVE SCREEN CONTEXT: The user currently has open ${activeMedia.type.toUpperCase()}: "${activeMedia.title}"${activeMedia.creator ? ` (Creator/Youtuber: ${activeMedia.creator})` : ''} on ${activeMedia.appName}. Only bring this up when {name} asks what they're watching, listening to or looking at; for anything else (code, bugs, questions, chat) ignore it completely, and never touch their music unless they ask you to.`
       : `\nACTIVE SCREEN CONTEXT: No active video, music, or browser page detected on screen.`
 
     const lastScan = consciousnessService.getLastScannedContext()
@@ -3673,7 +3683,10 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     const changeSongMatch = cleanText.match(
       /^(?:change|switch|cambia|cambiar|cambie|pasa|pasar)\s+(?:the\s+|la\s+|el\s+|de\s+)?(?:cancion|canción|tema|musica|música|pista|track|song)?\s*(?:to|a|por)\s+(.+)/i
     )
-    if (changeSongMatch && changeSongMatch[1].trim()) {
+    // Without "song"/"canción" it's only music when a platform is named: "switch to typescript strict
+    // mode" or "cambiá a modo oscuro" aren't songs
+    const namesSong = /(?<!\p{L})(?:cancion|canción|tema|musica|música|pista|track|song)(?!\p{L})/iu.test(cleanText)
+    if (changeSongMatch && changeSongMatch[1].trim() && (namesSong || isSpotify || isYouTube)) {
       let target = changeSongMatch[1].trim()
       const plat = resolveMusicPlatform(text)
       if (/(?:on|en|in)\s+youtube/i.test(target)) {
