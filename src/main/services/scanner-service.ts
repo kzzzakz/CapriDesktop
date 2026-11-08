@@ -283,6 +283,11 @@ export class ScannerService {
       const data = (await resp.json()) as any
       const models: string[] = (data.models || []).map((m: any) => String(m.name))
 
+      // Her reaction is Capri talking, so it uses the model chosen for her when it's installed
+      const chosen = agentManager.getConfig().model
+      const chosenMatch = chosen && (models.find((m) => m === chosen) || models.find((m) => m.startsWith(`${chosen}:`)))
+      if (chosenMatch) return chosenMatch
+
       const capri = models.find((m: string) => m.toLowerCase().includes('capri'))
       if (capri) return capri
 
