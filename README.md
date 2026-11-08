@@ -266,7 +266,7 @@ The drawing, League of Legends and Cyberpunk 2077 commands are in [section 8](#8
 | :--- | :--- |
 | `sit on tabs` / `sentate en la pestaña` | Capri perches on your browser tabs. |
 | `sit on the desktop` / `sentate en el escritorio` | She goes back to the desktop. |
-| `stay still` / `quedate quieta` | She stays where she is until you move her. |
+| `stay still` / `quedate quieta` | She stays where she is until you tell her she can move, even after a restart. Dragging her only changes where she stays. |
 | `you can move` / `podés moverte` | She goes back to wandering around. |
 | `what are you doing?` | She tells you how she feels and what she's up to. |
 

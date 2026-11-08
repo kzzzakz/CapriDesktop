@@ -30,6 +30,8 @@ export interface ConsciousnessData {
   companionDisplayId?: number
   /** The arrow keys work as shortcuts while another app has the focus */
   arrowKeysEnabled?: boolean
+  /** "Quedate quieta": kept until she is told she can move, even across restarts */
+  holdingStill?: boolean
   hotkeys?: Hotkeys
   gamingOpacity?: number
   /** Hash of the Modelfile the installed persona was built from */
@@ -303,6 +305,16 @@ class ConsciousnessService {
 
   public setGamingOpacity(value: number): void {
     this.data.gamingOpacity = clampGamingOpacity(value)
+    this.save()
+  }
+
+  public getHoldingStill(): boolean {
+    return !!this.data.holdingStill
+  }
+
+  public setHoldingStill(holding: boolean): void {
+    if (!!this.data.holdingStill === holding) return
+    this.data.holdingStill = holding
     this.save()
   }
 

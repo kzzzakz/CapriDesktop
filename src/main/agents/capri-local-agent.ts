@@ -427,8 +427,8 @@ export class CapriLocalAgent extends EventEmitter {
       roamingManager.holdStill()
       this.emitAssistant(
         isSpanish
-          ? '[happy] Listo, me quedo acá. [playful] No me muevo hasta que me muevas vos.'
-          : "[happy] Okay, I'm staying right here. [playful] I won't move until you move me."
+          ? '[happy] Listo, me quedo acá. [playful] No me muevo hasta que me digas que me puedo mover.'
+          : "[happy] Okay, I'm staying right here. [playful] I won't move until you tell me I can."
       )
       this.finishSession()
       return
