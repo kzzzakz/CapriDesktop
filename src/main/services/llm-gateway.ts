@@ -216,6 +216,12 @@ function relaxBody(body: Body, errorText: string): Body | null {
     delete next.max_tokens
     return next
   }
+  // Gemini says "Penalty is not enabled for models/..." without naming the parameter: both go
+  if ((next.presence_penalty !== undefined || next.frequency_penalty !== undefined) && /penalty/.test(text)) {
+    delete next.presence_penalty
+    delete next.frequency_penalty
+    return next
+  }
   for (const param of ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'stop', 'response_format']) {
     if (next[param] !== undefined && text.includes(param)) {
       delete next[param]
@@ -231,8 +237,14 @@ function relaxBody(body: Body, errorText: string): Body | null {
   return null
 }
 
+/** Parameters a provider and model turned down once: not sent again, so each message is one request */
+const refusedParams = new Map<string, Set<string>>()
+
 async function postChat(baseUrl: string, key: string, payload: Body, signal?: AbortSignal | null): Promise<Response> {
-  let body = payload
+  const route = `${baseUrl}|${String(payload.model ?? '')}`
+  const refused = refusedParams.get(route)
+  let body: Body = { ...payload }
+  if (refused) for (const param of refused) delete body[param]
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -243,6 +255,9 @@ async function postChat(baseUrl: string, key: string, payload: Body, signal?: Ab
     if (res.ok || attempt >= 4 || ![400, 404, 422].includes(res.status)) return res
     const relaxed = relaxBody(body, await res.clone().text())
     if (!relaxed) return res
+    // Remembered only for plain parameters: tools also change the messages, so they're asked again each time
+    const dropped = Object.keys(body).filter((k) => !(k in relaxed) && k !== 'tools' && k !== 'tool_choice')
+    if (dropped.length) refusedParams.set(route, new Set([...(refusedParams.get(route) ?? []), ...dropped]))
     body = relaxed
   }
 }

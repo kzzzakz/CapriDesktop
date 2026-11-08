@@ -97,6 +97,14 @@ const ASK_VERSION = phrases([
   '什么版本', '哪个版本', '哪一个版本', '你的版本', '什麼版本', '哪個版本'
 ])
 
+/** Whole sentences only: "check the version of node" is not about her */
+const CHECK_VERSION = phrases([
+  'check version', 'check your version', 'check the version', 'version check', 'version', 'current version', 'check what version you are on',
+  'checkea la version', 'chequea la version', 'checkea tu version', 'chequea tu version', 'fijate la version', 'fijate tu version', 'version actual', 'que version', 'version',
+  'verifica a versao', 'verifique a versao', 'versao atual', 'verifie la version', 'version actuelle', 'version prufen', 'aktuelle version', 'controlla la versione', 'versione attuale',
+  'проверь версию', 'текущая версия', 'バージョン確認', 'バージョンを確認して', '버전 확인', '버전 확인해줘', '检查版本', '查看版本', '当前版本'
+])
+
 const UPDATE = phrases([
   'mettre a jour', 'mets toi a jour', 'mise a jour', 'cherche les mises a jour',
   'aktualisiere dich', 'update dich', 'nach updates suchen', 'suche nach updates',
@@ -127,7 +135,7 @@ const mentions = (text: string, set: Set<string>) => containsPhrase(commandKey(t
 
 export const isHoldStillRequest = (text: string) => isExactly(text, HOLD_STILL)
 export const isMoveAgainRequest = (text: string) => isExactly(text, MOVE_AGAIN)
-export const isVersionRequest = (text: string) => mentions(text, ASK_VERSION)
+export const isVersionRequest = (text: string) => mentions(text, ASK_VERSION) || isExactly(text, CHECK_VERSION)
 export const isUpdateInOtherLanguage = (text: string) => mentions(text, UPDATE)
 export const isWhatsNewInOtherLanguage = (text: string) => mentions(text, WHATS_NEW)
 
