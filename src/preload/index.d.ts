@@ -1,3 +1,6 @@
+import type { ScreenCommentStatus } from '../shared/mac-types'
+import type { DesktopPreferences } from '../shared/mac-types'
+import type { PlacementCommand } from '../shared/placement'
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
@@ -23,9 +26,37 @@ export interface SetupStatus {
   ollama: { installed: boolean; running: boolean; models: string[] }
   model: boolean
   persona: boolean
+  recommendedModel: string
 }
 
+import type { PlatformStatus, MacPermission } from '../shared/mac-types'
+import type { SpotifySettings, SpotifyMethod, SpotifyDevice } from '../main/services/spotify-service'
 export interface IElectronAPI {
+  desktop: {
+    commentStatus: () => Promise<ScreenCommentStatus>
+    openSettings: (voice?:boolean) => Promise<void>
+    onOpenVoiceSettings: (callback:()=>void) => ()=>void
+    onOpenSettings: (callback:()=>void) => ()=>void
+    configure: (update:{screenCommentMinutes?:number;gameCommentMinutes?:number;speechModel?:'base'|'small'}) => Promise<DesktopPreferences>
+    preferences: () => Promise<DesktopPreferences>
+    setOpenAtLogin: (enabled:boolean) => Promise<DesktopPreferences>
+    place: (target:PlacementCommand) => Promise<DesktopPreferences>
+  }
+
+  platform: {
+    status: () => Promise<PlatformStatus>
+    requestPermission: (permission: MacPermission) => Promise<PlatformStatus>
+    openPermission: (permission: MacPermission) => Promise<void>
+  }
+  spotify: {
+    settings: () => Promise<SpotifySettings>
+    configure: (settings: {method?: SpotifyMethod; clientId?: string; deviceId?: string}) => Promise<SpotifySettings>
+    connect: () => Promise<{success: boolean; output: string}>
+    disconnect: () => Promise<SpotifySettings>
+    devices: () => Promise<SpotifyDevice[]>
+    play: (query: string) => Promise<{success: boolean; output: string}>
+  }
+
   deck: {
     toggle: () => Promise<boolean>
     show: () => Promise<void>
@@ -52,6 +83,8 @@ export interface IElectronAPI {
     openExternal: (url: string) => Promise<boolean>
   }
   companion: {
+    setChatActive: (active:boolean) => Promise<void>
+    showMenu: () => Promise<void>
     setState: (state: CompanionEmotionState) => Promise<string>
     setTabMode: (enabled: boolean, keepPosition?: boolean) => Promise<boolean>
     setEyeMode: (enabled: boolean) => Promise<boolean>
@@ -155,7 +188,7 @@ export interface IElectronAPI {
   }
   setup: {
     getStatus: () => Promise<SetupStatus>
-    run: (step: 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona') => Promise<{ ok: boolean; status: SetupStatus }>
+    run: (step: 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona' | 'whisper') => Promise<{ ok: boolean; status: SetupStatus }>
     onLog: (callback: (entry: { step: string; line: string }) => void) => () => void
     finish: () => Promise<boolean>
     open: () => Promise<boolean>
@@ -208,6 +241,8 @@ export interface IElectronAPI {
   }
   triggerClip: () => Promise<{ success: boolean; message?: string }>
   scanner: {
+    fitScreen: () => Promise<ScannerBounds | null>
+    setLocalAIEnabled: (enabled:boolean) => Promise<boolean>
     open: () => Promise<boolean>
     close: () => Promise<boolean>
     toggle: () => Promise<boolean>

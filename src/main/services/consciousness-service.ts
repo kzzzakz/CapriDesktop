@@ -287,7 +287,7 @@ class ConsciousnessService {
   }
 
   public isBoredomEnabled(): boolean {
-    return this.data.boredomEnabled !== false
+    return this.data.boredomEnabled ?? (process.platform !== 'darwin')
   }
 
   public setBoredomEnabled(enabled: boolean): void {

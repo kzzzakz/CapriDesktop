@@ -1,4 +1,5 @@
 import { assetPath } from '../services/app-paths'
+import { isMac } from '../services/platform'
 import { BrowserWindow, app, screen } from 'electron'
 import { join } from 'path'
 import { windowManager } from './window-manager'
@@ -21,8 +22,9 @@ export function createDeckWindow(): BrowserWindow {
     minWidth: 840,
     minHeight: 580,
     show: false,
-    frame: false,
-    titleBarStyle: 'hidden',
+    frame: isMac,
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    ...(isMac ? {trafficLightPosition:{x:14,y:13}} : {}),
     backgroundColor: '#07080e',
     webPreferences: {
       preload: preloadPath,
@@ -31,6 +33,8 @@ export function createDeckWindow(): BrowserWindow {
       nodeIntegration: false
     }
   })
+
+  if (isMac) deckWindow.on('minimize',()=>windowManager.hideDeck())
 
   // Hash route for dev deck view
   const devUrl = process.env['ELECTRON_RENDERER_URL']

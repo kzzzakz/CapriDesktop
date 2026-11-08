@@ -1,5 +1,6 @@
 import { youtubeMusicTitle, windowsYoutubeMusic } from './youtube-music'
-import { isWindows, listProcessNames, mediaWindowTitles } from './platform'
+import { isMac, isWindows, listProcessNames, mediaWindowTitles } from './platform'
+import { macMemoryPressure } from './mac-usage'
 import os from 'os'
 import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
@@ -127,6 +128,15 @@ export class SystemObserver {
   }
 
   private async checkRam(): Promise<void> {
+    if (isMac) {
+      // macOS uses spare RAM for reclaimable caches; os.freemem() is not memory pressure.
+      const pressure = await macMemoryPressure()
+      if (pressure !== null && pressure >= 2 && this.canTrigger('ram')) {
+        this.markTriggered('ram')
+        this.triggerCapriReaction('macOS reports elevated memory pressure. Ask me what is using memory for a breakdown.', 'talking')
+      }
+      return
+    }
     const totalBytes = os.totalmem()
     const freeBytes = os.freemem()
     const usedBytes = totalBytes - freeBytes
@@ -155,6 +165,7 @@ export class SystemObserver {
   }
 
   private async checkProcesses(): Promise<void> {
+    if (isMac) return // Mac media context is refreshed on demand by getActiveMediaAsync.
     const detectedMedia = await this.detectActiveMedia()
 
     return new Promise((resolve) => {

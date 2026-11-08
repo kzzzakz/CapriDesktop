@@ -90,6 +90,7 @@ export class AgentManager extends EventEmitter {
     switch (event.type) {
       case 'session.started':
         this.isRunning = true
+        if (process.platform === 'darwin') this.setCompanionState('thinking')
         break
 
       case 'tool.started':
@@ -260,6 +261,8 @@ export class AgentManager extends EventEmitter {
         apiKey: this.config.apiKey
       })
     } finally {
+      // A completed prompt must release the activity latch even if its path emitted no finish event.
+      if (isDevTask || !this.devTaskRunning) this.isRunning = false
       // Desktop prompts never wake the user up: only the end of a prompt sent from Dev Mode,
       // decided here when that very prompt returns (some agent paths emit no session.finished)
       if (isDevTask) {

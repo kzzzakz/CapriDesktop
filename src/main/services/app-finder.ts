@@ -1,3 +1,4 @@
+import { cleanLaunchTarget } from '../../shared/app-requests'
 /**
  * Matching a spoken app name against the names of installed apps. Only text in, text out: looking
  * them up on the system and starting them is in app-launcher.ts.
@@ -26,7 +27,7 @@ export function appNameTokens(name: string): string[] {
 
 /** What's left of a request once the polite words around the app's name are gone */
 export function cleanAppRequest(request: string): string {
-  return request
+  return cleanLaunchTarget(request)
     .trim()
     .replace(/[?!.,;¡¿]+$/g, '')
     .replace(/[,\s]+(?:por\s+favor|porfa|please|plis|pls|capri|choomba|che|dale)$/i, '')

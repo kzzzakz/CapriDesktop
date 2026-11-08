@@ -8,11 +8,17 @@ export type Hotkeys = Record<HotkeyAction, string>
 export type HotkeyProblem = 'needsModifier' | 'reserved' | 'inUse' | 'taken'
 
 /** Gaming Mode has a modifier: it works inside games, so it can't take a key games use */
-export const DEFAULT_HOTKEYS: Hotkeys = { talk: 'Down', listen: 'Right', chat: 'Left', gaming: 'Control+Alt+M' }
+export function defaultHotkeys(platform: string): Hotkeys {
+  return platform === 'darwin'
+    ? { talk: 'Alt+Super+V', listen: 'Alt+Super+L', chat: 'Alt+Super+C', gaming: 'Alt+Super+M' }
+    : { talk: 'Down', listen: 'Right', chat: 'Left', gaming: 'Control+Alt+M' }
+}
+const macPlatform = (typeof process !== 'undefined' && process.platform === 'darwin') || (typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform))
+export const DEFAULT_HOTKEYS: Hotkeys = defaultHotkeys(macPlatform ? 'darwin' : 'other')
 export const HOTKEY_ACTIONS: HotkeyAction[] = ['talk', 'listen', 'chat', 'gaming']
 
 /** Her fixed shortcuts, and Escape, which cancels a recording and a key being chosen */
-const RESERVED = new Set(['Control+Alt+V', 'Control+Alt+S', 'Control+Alt+G', 'Escape'])
+const RESERVED = new Set(['Control+Alt+V', 'Control+Alt+S', 'Control+Alt+G', 'Alt+Super+V', 'Alt+Super+S', 'Alt+Super+G', 'Escape'])
 
 const NAMED_KEYS: Record<string, string> = {
   ArrowUp: 'Up',
@@ -86,13 +92,16 @@ export function normalizeHotkeys(saved: unknown): Hotkeys {
 }
 
 const SYMBOLS: Record<string, string> = { Up: '↑', Down: '↓', Left: '←', Right: '→', Control: 'Ctrl', Super: 'Win', Return: 'Enter' }
+/** On a Mac the modifiers are shown the way macOS shows them, together: ⌘⌥L */
+const MAC_SYMBOLS: Record<string, string> = { ...SYMBOLS, Control: '⌃', Alt: '⌥', Shift: '⇧', Super: '⌘', Return: '↩' }
 
 /** How a key is shown to the user */
 export function formatHotkey(accelerator: string): string {
-  return accelerator
+  const symbols = macPlatform ? MAC_SYMBOLS : SYMBOLS
+  const parts = accelerator
     .split('+')
-    .map((part) => SYMBOLS[part] ?? part.replace(/^num(\d)$/, 'Num $1'))
-    .join(' + ')
+    .map((part) => symbols[part] ?? part.replace(/^num(\d)$/, 'Num $1'))
+  return macPlatform ? parts.join('') : parts.join(' + ')
 }
 
 export const GAMING_OPACITY_MIN = 0.2
@@ -123,5 +132,10 @@ const SPOKEN_ARROWS: Record<string, Record<'Up' | 'Down' | 'Left' | 'Right', str
 export function spokenHotkey(accelerator: string, lang: string | null | undefined): string {
   const arrows = SPOKEN_ARROWS[String(lang || '').toLowerCase().slice(0, 2)] ?? SPOKEN_ARROWS.en
   if (accelerator in arrows) return arrows[accelerator as keyof typeof arrows]
+  // The voice can't read ⌘⌥: on a Mac the modifiers are said by name
+  if (macPlatform) {
+    const names: Record<string, string> = { Super: 'Command', Alt: 'Option', Control: 'Control', Shift: 'Shift' }
+    return accelerator.split('+').map((part) => names[part] ?? part).join(' ')
+  }
   return formatHotkey(accelerator)
 }

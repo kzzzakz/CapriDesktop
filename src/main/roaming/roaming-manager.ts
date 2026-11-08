@@ -1,5 +1,6 @@
 import { scriptPath } from '../services/app-paths'
-import { screen } from 'electron'
+import { anchorBounds, type ScreenAnchor } from '../../shared/placement'
+import { app, screen } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import { exec, spawn, ChildProcess } from '../services/hidden-process'
@@ -7,7 +8,8 @@ import { windowManager } from '../windows/window-manager'
 import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from '../services/consciousness-service'
 import { IPC_CHANNELS, RoamingStatusPayload } from '../ipc/channels'
-import { findLinuxWindowedApp, isLinux, linuxWindowGeometry } from '../services/platform'
+import { findMacWindowedApp, macWindowGeometry, macDesktopPollingPaused } from '../services/mac-desktop'
+import { findLinuxWindowedApp, isMac, isLinux, linuxWindowGeometry } from '../services/platform'
 
 export interface WindowedAppInfo {
   hwnd?: number | string
@@ -74,6 +76,76 @@ const TAB_QUOTES_ES = [
 ]
 
 export class RoamingManager {
+  private pinnedPlacement: {bounds: {x:number;y:number;width:number;height:number}; sitting:boolean} | null = null
+  private pinSaveTimer: NodeJS.Timeout | null = null
+  private placementFile(): string { return path.join(app.getPath('userData'), 'desktop-placement.json') }
+  public isPositionPinned(): boolean { return !!this.pinnedPlacement }
+  private savePinnedPlacement(): void {
+    if (!isMac) return
+    fs.mkdirSync(path.dirname(this.placementFile()), {recursive:true})
+    fs.writeFileSync(this.placementFile(), JSON.stringify(this.pinnedPlacement))
+  }
+  public restorePinnedPlacement(): boolean {
+    const pin=this.pinnedPlacement, win=windowManager.getCompanionWindow()
+    if (!pin || !win || win.isDestroyed() || windowManager.isGamingModeActive()) return false
+    const area=screen.getDisplayMatching(pin.bounds).workArea
+    const bounds={...pin.bounds, x:Math.round(Math.max(area.x,Math.min(area.x+Math.max(0,area.width-pin.bounds.width),pin.bounds.x))), y:Math.round(Math.max(area.y,Math.min(area.y+Math.max(0,area.height-pin.bounds.height),pin.bounds.y)))}
+    this.isSelfMoving=true
+    this.isPaused=true; this.isRoaming=false; this.isTabMode=pin.sitting
+    win.setBounds(bounds)
+    windowManager.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE,pin.sitting)
+    agentManager.setCompanionState(pin.sitting?'idle_front':'standing')
+    setImmediate(()=>{this.isSelfMoving=false})
+    this.broadcastStatus()
+    return true
+  }
+  public pinPosition(target: ScreenAnchor | 'here'): void {
+    const win=windowManager.getCompanionWindow()
+    if (!win || win.isDestroyed()) return
+    const before=win.getBounds()
+    const sitting=target!=='here' || this.pinnedPlacement?.sitting || this.isTabMode
+    if (isMac && windowManager.isGamingModeActive()) {
+      const bounds=target==='here' ? before : anchorBounds(screen.getDisplayMatching(before).workArea,{width:before.width,height:before.height},target)
+      win.setBounds(bounds)
+      windowManager.setSavedGamingPosition({x:bounds.x,y:bounds.y})
+      windowManager.hideDeck()
+      return
+    }
+    if (windowManager.isGamingModeActive()) windowManager.setGamingMode(false)
+    this.clearTimers(); this.stopTabTracking()
+    if (this.catchGameTimer) clearInterval(this.catchGameTimer)
+    this.catchGameTimer=null; this.isCatchGameActive=false
+    this.isEyeMode=false; this.currentBehavior='still'
+    this.pinnedPlacement={bounds:before,sitting:!!sitting}
+    this.isPaused=true; this.isRoaming=false
+    if (target!=='here') {
+      this.isSelfMoving=true
+      windowManager.setTabMode(true,undefined,false,'front')
+      this.pinnedPlacement.bounds=anchorBounds(screen.getDisplayMatching(before).workArea,{width:360,height:360},target)
+    }
+    this.savePinnedPlacement(); this.restorePinnedPlacement()
+    windowManager.hideDeck()
+  }
+  private releasePosition(): void {
+    if (!this.pinnedPlacement) return
+    this.pinnedPlacement=null
+    if (this.pinSaveTimer) clearTimeout(this.pinSaveTimer)
+    this.pinSaveTimer=null
+    this.savePinnedPlacement()
+    this.isTabMode=false; this.currentBehavior='still'
+    windowManager.setTabMode(false,undefined,true)
+  }
+  private updatePinnedDrag(): boolean {
+    if (!this.pinnedPlacement) return false
+    if (windowManager.isGamingModeActive()) return true
+    const win=windowManager.getCompanionWindow()
+    if (win && !this.isSelfMoving) {
+      this.pinnedPlacement.bounds=win.getBounds()
+      if (this.pinSaveTimer) clearTimeout(this.pinSaveTimer)
+      this.pinSaveTimer=setTimeout(()=>this.savePinnedPlacement(),200)
+    }
+    return true
+  }
   private isRoaming = false
   private isPaused = false
   private direction: 'left' | 'right' = 'right'
@@ -107,8 +179,20 @@ export class RoamingManager {
   public init(): void {
     // Told to stay still last time and never told she could move: she still does
     this.holdingStill = consciousnessService.getHoldingStill()
+    if (isMac) {
+      try {
+        const saved=JSON.parse(fs.readFileSync(this.placementFile(),'utf8'))
+        if (saved && typeof saved.sitting==='boolean' && saved.bounds && ['x','y','width','height'].every(k=>Number.isFinite(saved.bounds[k])) && saved.bounds.width>=100 && saved.bounds.width<=1000 && saved.bounds.height>=100 && saved.bounds.height<=1000) this.pinnedPlacement=saved
+      } catch {}
+    }
     const companionWin = windowManager.getCompanionWindow()
+    if (isMac) {
+      screen.on('display-removed',()=>this.restorePinnedPlacement())
+      screen.on('display-metrics-changed',()=>this.restorePinnedPlacement())
+    }
     if (companionWin) {
+      companionWin.webContents.on('did-finish-load',()=>this.restorePinnedPlacement())
+      this.restorePinnedPlacement()
       companionWin.on('moved', () => {
         if (!this.isSelfMoving) {
           this.handleUserDrag()
@@ -173,6 +257,7 @@ export class RoamingManager {
   }
 
   public releaseHold(): void {
+    if (isMac) this.releasePosition()
     this.setHolding(false)
     this.startAutonomousCycle()
   }
@@ -188,7 +273,7 @@ export class RoamingManager {
 
   // --- Autonomous Behavior Cycle (Desktop Mode) ---
   public startAutonomousCycle(): void {
-    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive || windowManager.isGamingModeActive()) return
+    if (this.pinnedPlacement || this.holdingStill || this.isEyeMode || this.isCatchGameActive || windowManager.isGamingModeActive()) return
     this.clearTimers()
     this.isPaused = false
 
@@ -202,7 +287,7 @@ export class RoamingManager {
   }
 
   private scheduleNextAutonomousBehavior(delayMs?: number): void {
-    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive || this.isPaused || windowManager.isGamingModeActive()) return
+    if (this.pinnedPlacement || this.holdingStill || this.isEyeMode || this.isCatchGameActive || this.isPaused || windowManager.isGamingModeActive()) return
     if (this.autonomousTimer) clearTimeout(this.autonomousTimer)
 
     // Weighted random selection of next autonomous behavior
@@ -236,7 +321,7 @@ export class RoamingManager {
   }
 
   public transitionToBehavior(behavior: 'walking' | 'still' | 'tab'): void {
-    if (this.holdingStill || this.isEyeMode || this.isCatchGameActive) return
+    if (this.pinnedPlacement || this.holdingStill || this.isEyeMode || this.isCatchGameActive) return
 
     if (behavior !== 'tab') {
       this.stopTabTracking()
@@ -253,7 +338,7 @@ export class RoamingManager {
       }
 
       // User requirement: 50% probability of sitting in front pose (center of screen) or perch pose (on window tab)
-      this.currentSittingPose = Math.random() < 0.5 ? 'front' : 'perch'
+      this.currentSittingPose = isMac ? 'perch' : Math.random() < 0.5 ? 'front' : 'perch'
 
       this.findWindowedApp().then((app) => {
         if (this.currentBehavior !== 'tab' || this.isEyeMode || this.isPaused) return
@@ -267,14 +352,14 @@ export class RoamingManager {
           this.startTabTracking()
 
           const quote = tabQuotes[Math.floor(Math.random() * tabQuotes.length)]
-          agentManager.setCompanionSpeech(quote, 4500, true)
+          if (!isMac) agentManager.setCompanionSpeech(quote, 4500, true)
         } else if (app) {
           windowManager.setTabMode(true, app, false, 'perch')
           this.isTabMode = true
           this.startTabTracking(app)
 
           const quote = tabQuotes[Math.floor(Math.random() * tabQuotes.length)]
-          agentManager.setCompanionSpeech(quote, 4500, true)
+          if (!isMac) agentManager.setCompanionSpeech(quote, 4500, true)
         } else {
           // No windowed app open, sit comfortably right on desktop
           this.isTabMode = false
@@ -310,6 +395,7 @@ export class RoamingManager {
   }
 
   public async sitOnWindowedTab(): Promise<WindowedAppInfo | null> {
+    this.releasePosition()
     this.setHolding(false)
     this.isEyeMode = false
     this.isPaused = false
@@ -319,7 +405,7 @@ export class RoamingManager {
     this.isTabMode = true
 
     // 50% probability between front-facing (center screen) and perch (tab corner)
-    this.currentSittingPose = Math.random() < 0.5 ? 'front' : 'perch'
+    this.currentSittingPose = isMac ? 'perch' : Math.random() < 0.5 ? 'front' : 'perch'
 
     const app = await this.findWindowedApp()
     if (this.currentSittingPose === 'front') {
@@ -363,10 +449,15 @@ export class RoamingManager {
     let last = ''
     let asking = false
     const timer = setInterval(async () => {
-      if (asking) return
+      if (asking || (isMac && macDesktopPollingPaused())) return
+      const companion = windowManager.getCompanionWindow()
+      if (isMac && (!companion || companion.isDestroyed() || !companion.isVisible())) return
       asking = true
-      const geometry = await linuxWindowGeometry(id)
-      asking = false
+      let geometry
+      try { geometry = await (isMac ? macWindowGeometry(id) : linuxWindowGeometry(id)) }
+      catch { return }
+      finally { asking = false }
+      if (isMac && macDesktopPollingPaused()) return
       if (this.linuxTrackTimer !== timer) return
       if (!geometry) {
         this.stopTabTracking()
@@ -381,7 +472,7 @@ export class RoamingManager {
       setImmediate(() => {
         this.isSelfMoving = false
       })
-    }, 120)
+    }, isMac ? 500 : 120)
     this.linuxTrackTimer = timer
   }
 
@@ -393,7 +484,7 @@ export class RoamingManager {
       return
     }
 
-    if (app && app.hwnd && isLinux) {
+    if (app && app.hwnd && (isLinux || isMac)) {
       this.startLinuxTabTracking(String(app.hwnd))
     } else if (app && app.hwnd) {
       const trackScriptPath = scriptPath('track_window.ps1')
@@ -477,6 +568,7 @@ export class RoamingManager {
 
   public async findWindowedApp(): Promise<WindowedAppInfo | null> {
     try {
+      if (isMac) return await findMacWindowedApp()
       if (isLinux) {
         const { width, height } = screen.getPrimaryDisplay().size
         return await findLinuxWindowedApp(width, height)
@@ -521,6 +613,7 @@ export class RoamingManager {
   }
 
   public toggle(): boolean {
+    if (this.pinnedPlacement) {this.start(true); return true}
     if (this.isEyeMode) return false
     this.setHolding(false)
     if (this.isRoaming) {
@@ -532,7 +625,9 @@ export class RoamingManager {
     }
   }
 
-  public start(): void {
+  public start(releasePinned = false): void {
+    if (!releasePinned && this.restorePinnedPlacement()) return
+    this.releasePosition()
     if (this.isTabMode || this.currentBehavior === 'tab') {
       return
     }
@@ -558,6 +653,7 @@ export class RoamingManager {
   }
 
   public resume(): void {
+    if (this.restorePinnedPlacement()) return
     if (this.isTabMode || this.currentBehavior === 'tab' || windowManager.isGamingModeActive()) {
       return
     }
@@ -572,6 +668,7 @@ export class RoamingManager {
   public notifyUserDrag(x?: number, y?: number): void {
     // A click that shakes a pixel isn't moving her: same distance the window uses to call it a drag
     if (this.holdingStill && this.heldAt && x !== undefined && y !== undefined && Math.hypot(x - this.heldAt.x, y - this.heldAt.y) <= 10) return
+    if (this.updatePinnedDrag()) return
     this.stopTabTracking()
     if (this.isTabMode || this.currentBehavior === 'tab') {
       this.isTabMode = false
@@ -585,6 +682,7 @@ export class RoamingManager {
   }
 
   public handleUserDrag(): void {
+    if (this.updatePinnedDrag()) return
     if (this.isEyeMode || windowManager.isGamingModeActive()) return
     // Dragged while staying still: she stays still where she was put, until told she can move
     if (this.holdingStill) this.heldAt = windowManager.getCompanionWindow()?.getBounds() ?? this.heldAt
@@ -619,6 +717,7 @@ export class RoamingManager {
 
   // --- "Catch Capri" Desktop Mini-Game ---
   public startCatchGame(): void {
+    this.releasePosition()
     const companionWin = windowManager.getCompanionWindow()
     if (!companionWin) return
 
@@ -716,7 +815,7 @@ export class RoamingManager {
       }
 
       const companionWin = windowManager.getCompanionWindow()
-      if (!companionWin || companionWin.isDestroyed() || !companionWin.isVisible()) return
+      if (!companionWin || companionWin.isDestroyed() || !companionWin.isVisible() || (isMac && macDesktopPollingPaused())) return
 
       try {
         const bounds = companionWin.getBounds()
