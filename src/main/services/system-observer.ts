@@ -6,6 +6,7 @@ import { consciousnessService } from './consciousness-service'
 import { windowManager } from '../windows/window-manager'
 import { cyberpunkAdapter, lolLiveAdapter } from './game'
 import { gamePresenceService } from './game-presence-service'
+import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
 
 interface TriggerConfig {
   lastTriggered: number
@@ -165,7 +166,8 @@ export class SystemObserver {
           this.previousProcesses = currentProcesses
           this.initialScanDone = true
           if (currentProcesses.has('valorant-win64-shipping.exe') || currentProcesses.has('valorant.exe')) {
-            windowManager.setGamingMode(true)
+            // Turned on by the game, so it ends by itself when Valorant closes
+            windowManager.setGamingMode(true, 'top-left', 'game')
           }
           if (currentProcesses.has('cyberpunk2077.exe')) {
             console.log('[SystemObserver] Cyberpunk 2077 already active on startup. Engaging Gaming Mode.')
@@ -366,7 +368,7 @@ export class SystemObserver {
         if (!isAnyGameNow && windowManager.isGamingModeFromGame()) {
           let gameStillThere = false
           try {
-            gameStillThere = !!(cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || gamePresenceService.isGameSessionActive())
+            gameStillThere = !!(cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || gamePresenceService.isGameSessionActive())
           } catch {}
           if (!gameStillThere) {
             console.log('[SystemObserver] No game left. Exiting Gaming Mode.')
