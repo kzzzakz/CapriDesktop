@@ -251,6 +251,9 @@ const api = {
 
     resetSystemPrompt: (): Promise<SystemPromptPayload> => ipcRenderer.invoke(IPC_CHANNELS.AGENT_RESET_SYSTEM_PROMPT),
 
+    setPersonaStyle: (style: { tone?: SystemPromptPayload['tone']; teasing?: SystemPromptPayload['teasing'] }): Promise<SystemPromptPayload> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AGENT_SET_PERSONA_STYLE, style),
+
     // Her long-term memory
     getMemory: (): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET),
     setMemoryEnabled: (enabled: boolean): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SET_ENABLED, enabled),

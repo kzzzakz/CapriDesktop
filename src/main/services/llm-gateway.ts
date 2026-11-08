@@ -12,6 +12,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { scriptPath } from './app-paths'
 import { personalize } from './user-profile'
+import { DEFAULT_SYSTEM_PROMPT, getSystemPromptPersona } from './system-prompt-store'
 
 export type LlmProvider = 'local' | 'cloud'
 export type LlmErrorCode = 'auth' | 'quota' | 'model' | 'network' | 'insecure' | 'other'
@@ -292,6 +293,9 @@ let personaCache: string | null | undefined
 
 /** The "capri" Ollama model carries its persona in the Modelfile: a cloud model needs it in the request */
 function capriPersona(): string | null {
+  // The personality written in Capri // Brain wins over the bundled one
+  const custom = getSystemPromptPersona()
+  if (custom !== DEFAULT_SYSTEM_PROMPT) return personalize(custom)
   if (personaCache === undefined) {
     try {
       const match = fs.readFileSync(scriptPath('Modelfile.capri'), 'utf-8').match(/SYSTEM\s+"""([\s\S]*?)"""/)

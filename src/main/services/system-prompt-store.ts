@@ -64,28 +64,45 @@ CONVERSATIONAL DYNAMICS - SOUND LIKE A REAL PERSON (CRITICAL):
 
 /** Safety cap so a pasted novel can't blow up the model's context window */
 const MAX_PROMPT_CHARS = 20000
+/** The other features have short prompts and small models: they get the start of a long personality */
+const SHARED_PERSONA_CHARS = 1500
+
+export type PersonaTone = 'default' | 'warm' | 'calm' | 'chaotic'
+export type PersonaTeasing = 'default' | 'none' | 'light' | 'heavy'
+const TONES: PersonaTone[] = ['default', 'warm', 'calm', 'chaotic']
+const TEASING: PersonaTeasing[] = ['default', 'none', 'light', 'heavy']
 
 export interface SystemPromptInfo {
   prompt: string
   defaultPrompt: string
   isCustom: boolean
+  tone: PersonaTone
+  teasing: PersonaTeasing
 }
 
-/** Undefined = not read from disk yet, null = no custom prompt (use the default) */
-let cached: string | null | undefined
+interface StoredPersona {
+  prompt?: string
+  tone?: PersonaTone
+  teasing?: PersonaTeasing
+}
+
+/** Undefined = not read from disk yet */
+let cached: StoredPersona | undefined
 
 function promptFile(): string {
   return path.join(app.getPath('userData'), 'capri_system_prompt.json')
 }
 
-function loadCustom(): string | null {
+function load(): StoredPersona {
   if (cached !== undefined) return cached
-  cached = null
+  cached = {}
   try {
     const file = promptFile()
     if (fs.existsSync(file)) {
-      const data = JSON.parse(fs.readFileSync(file, 'utf-8')) as { prompt?: unknown }
-      if (typeof data.prompt === 'string' && data.prompt.trim()) cached = data.prompt
+      const data = JSON.parse(fs.readFileSync(file, 'utf-8')) as Record<string, unknown>
+      if (typeof data.prompt === 'string' && data.prompt.trim()) cached.prompt = data.prompt
+      if (TONES.includes(data.tone as PersonaTone)) cached.tone = data.tone as PersonaTone
+      if (TEASING.includes(data.teasing as PersonaTeasing)) cached.teasing = data.teasing as PersonaTeasing
     }
   } catch (e) {
     console.warn('[Capri] Could not read the custom system prompt, using the default:', e)
@@ -93,38 +110,87 @@ function loadCustom(): string | null {
   return cached
 }
 
-/** The personality text the agent should use right now */
+/** Nothing custom left: the file goes, so the defaults are used */
+function persist(next: StoredPersona): void {
+  const clean: StoredPersona = {}
+  if (next.prompt) clean.prompt = next.prompt
+  if (next.tone && next.tone !== 'default') clean.tone = next.tone
+  if (next.teasing && next.teasing !== 'default') clean.teasing = next.teasing
+  try {
+    if (Object.keys(clean).length) fs.writeFileSync(promptFile(), JSON.stringify(clean, null, 2), 'utf-8')
+    else if (fs.existsSync(promptFile())) fs.unlinkSync(promptFile())
+    cached = clean
+  } catch (e) {
+    console.warn('[Capri] Could not save the custom system prompt:', e)
+    throw e
+  }
+}
+
+/** The personality text the agent should use right now, with the chosen tone and teasing */
 export function getSystemPromptPersona(): string {
-  return loadCustom() ?? DEFAULT_SYSTEM_PROMPT
+  const style = personaStyle()
+  return `${load().prompt ?? DEFAULT_SYSTEM_PROMPT}${style ? `\n\n${style}` : ''}`
+}
+
+/** The user's own personality, or null with the built-in one */
+export function customPersona(): string | null {
+  return load().prompt ?? null
+}
+
+/**
+ * The chosen tone and teasing as one instruction, or '' with the defaults. It goes last and says it
+ * wins, because some features describe her tone themselves ("roast them when they play badly").
+ */
+export function personaStyle(): string {
+  const { tone = 'default', teasing = 'default' } = load()
+  const lines: string[] = []
+  if (tone === 'warm') lines.push('Be extra warm, sweet and supportive.')
+  if (tone === 'calm') lines.push('Be calmer and more laid-back: less hype, fewer exclamations, a softer voice.')
+  if (tone === 'chaotic') lines.push('Be even more hyper, chaotic and over the top.')
+  if (teasing === 'none') lines.push('Never tease, roast or make fun of {name}: be kind even when they mess up.')
+  if (teasing === 'light') lines.push('Tease {name} only now and then, and gently.')
+  if (teasing === 'heavy') lines.push('Tease and roast {name} a lot, always with affection.')
+  return lines.length ? `STYLE CHOSEN BY {name} (this wins over any other description of your tone): ${lines.join(' ')}` : ''
+}
+
+/**
+ * How a feature introduces her: its own tuned lines with the built-in personality, or the user's
+ * personality when they wrote one, followed by what's going on right now. The chosen style goes last.
+ * Only the personality changes: each feature's rules (format, language, length) stay its own.
+ */
+export function personaIntro(builtIn: string, situation = ''): string {
+  const custom = customPersona()
+  const intro = custom
+    ? `${custom.length > SHARED_PERSONA_CHARS ? `${custom.slice(0, SHARED_PERSONA_CHARS).trim()}…` : custom}${situation ? `\n\n${situation}` : ''}`
+    : [builtIn, situation].filter(Boolean).join(' ')
+  const style = personaStyle()
+  return style ? `${intro}\n${style}` : intro
 }
 
 export function getSystemPromptInfo(): SystemPromptInfo {
-  const custom = loadCustom()
-  return { prompt: custom ?? DEFAULT_SYSTEM_PROMPT, defaultPrompt: DEFAULT_SYSTEM_PROMPT, isCustom: custom !== null }
+  const { prompt, tone = 'default', teasing = 'default' } = load()
+  return { prompt: prompt ?? DEFAULT_SYSTEM_PROMPT, defaultPrompt: DEFAULT_SYSTEM_PROMPT, isCustom: !!prompt, tone, teasing }
 }
 
 /** Saves a new prompt, empty text or text equal to the default, goes back to the default. */
 export function setSystemPrompt(text: string): SystemPromptInfo {
   const clean = String(text ?? '').replace(/\r\n/g, '\n').slice(0, MAX_PROMPT_CHARS)
   if (!clean.trim() || clean.trim() === DEFAULT_SYSTEM_PROMPT.trim()) return resetSystemPrompt()
-  try {
-    fs.writeFileSync(promptFile(), JSON.stringify({ prompt: clean }, null, 2), 'utf-8')
-    cached = clean
-  } catch (e) {
-    console.warn('[Capri] Could not save the custom system prompt:', e)
-    throw e
-  }
+  persist({ ...load(), prompt: clean })
   return getSystemPromptInfo()
 }
 
-/** Forgets the custom prompt and goes back to the built-in one */
+/** Forgets the custom prompt and goes back to the built-in one. The tone and teasing stay */
 export function resetSystemPrompt(): SystemPromptInfo {
-  try {
-    if (fs.existsSync(promptFile())) fs.unlinkSync(promptFile())
-    cached = null
-  } catch (e) {
-    console.warn('[Capri] Could not delete the custom system prompt file:', e)
-    throw e
-  }
+  persist({ ...load(), prompt: undefined })
+  return getSystemPromptInfo()
+}
+
+/** Tone and teasing, saved right away */
+export function setPersonaStyle(style: { tone?: string; teasing?: string }): SystemPromptInfo {
+  const next = { ...load() }
+  if (TONES.includes(style.tone as PersonaTone)) next.tone = style.tone as PersonaTone
+  if (TEASING.includes(style.teasing as PersonaTeasing)) next.teasing = style.teasing as PersonaTeasing
+  persist(next)
   return getSystemPromptInfo()
 }

@@ -83,6 +83,7 @@ export const IPC_CHANNELS = {
   AGENT_GET_SYSTEM_PROMPT: 'agent:getSystemPrompt',
   AGENT_SET_SYSTEM_PROMPT: 'agent:setSystemPrompt',
   AGENT_RESET_SYSTEM_PROMPT: 'agent:resetSystemPrompt',
+  AGENT_SET_PERSONA_STYLE: 'agent:setPersonaStyle',
   // Her long-term memory (Capri // Brain settings)
   MEMORY_GET: 'memory:get',
   MEMORY_SET_ENABLED: 'memory:setEnabled',
@@ -190,6 +191,8 @@ export interface SystemPromptPayload {
   prompt: string
   defaultPrompt: string
   isCustom: boolean
+  tone: 'default' | 'warm' | 'calm' | 'chaotic'
+  teasing: 'default' | 'none' | 'light' | 'heavy'
 }
 
 export interface AgentEventPayload {

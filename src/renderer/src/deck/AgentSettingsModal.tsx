@@ -4,6 +4,7 @@ import { LlmProviderForm, LlmProviderFormHandle } from '../components/LlmProvide
 import { useAgentStore } from '../stores/useAgentStore'
 import { useT } from '../utils/useUiLang'
 import { MemorySettings } from './MemorySettings'
+import type { SystemPromptPayload } from '../../../main/ipc/channels'
 
 interface AgentSettingsModalProps {
   isOpen: boolean
@@ -23,6 +24,9 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
   const [savedPrompt, setSavedPrompt] = useState('')
   const [defaultPrompt, setDefaultPrompt] = useState('')
   const [promptLoaded, setPromptLoaded] = useState(false)
+  // Simple presets for who doesn't want to write a prompt, saved as soon as they change
+  const [tone, setTone] = useState<SystemPromptPayload['tone']>('default')
+  const [teasing, setTeasing] = useState<SystemPromptPayload['teasing']>('default')
   const [saveError, setSaveError] = useState(false)
   // Regenerating asks for a second click, since it throws away a prompt of her own
   const [confirmReset, setConfirmReset] = useState(false)
@@ -55,6 +59,8 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
         setPromptText(info.prompt)
         setSavedPrompt(info.prompt)
         setDefaultPrompt(info.defaultPrompt)
+        setTone(info.tone)
+        setTeasing(info.teasing)
         setPromptLoaded(true)
       })
       .catch(() => setPromptLoaded(false))
@@ -162,6 +168,52 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
 
           {/* System prompt editor */}
           <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1">
+                <span className="cp-label">{t('sp_tone')}</span>
+                <div className="cp-frame">
+                  <select
+                    value={tone}
+                    disabled={!promptLoaded}
+                    onChange={async (e) => {
+                      const value = e.target.value as SystemPromptPayload['tone']
+                      setTone(value)
+                      await window.api.agent.setPersonaStyle({ tone: value })
+                    }}
+                    className="cp-input w-full px-3 py-1.5 text-[13px] cursor-pointer"
+                    style={{ colorScheme: 'dark' }}
+                  >
+                    {(['default', 'warm', 'calm', 'chaotic'] as const).map((v) => (
+                      <option key={v} value={v}>
+                        {t(`sp_tone_${v}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+              <label className="space-y-1">
+                <span className="cp-label">{t('sp_teasing')}</span>
+                <div className="cp-frame">
+                  <select
+                    value={teasing}
+                    disabled={!promptLoaded}
+                    onChange={async (e) => {
+                      const value = e.target.value as SystemPromptPayload['teasing']
+                      setTeasing(value)
+                      await window.api.agent.setPersonaStyle({ teasing: value })
+                    }}
+                    className="cp-input w-full px-3 py-1.5 text-[13px] cursor-pointer"
+                    style={{ colorScheme: 'dark' }}
+                  >
+                    {(['default', 'none', 'light', 'heavy'] as const).map((v) => (
+                      <option key={v} value={v}>
+                        {t(`sp_teasing_${v}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+            </div>
             <div className="flex items-center justify-between">
               <span className="cp-label">
                 {t('sp_title')} <span className="text-[var(--cp-muted)]">({promptIsCustom ? t('sp_custom') : t('sp_default')})</span>
@@ -187,7 +239,9 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
               />
             </div>
             <div className="flex justify-between gap-3 text-[12px] text-[var(--cp-muted)]">
-              <span>{t('sp_hint')}</span>
+              <span>
+                {t('sp_hint')} {t('sp_fixedNote')}
+              </span>
               <span className="shrink-0">{t('sp_chars', { n: promptText.length })}</span>
             </div>
           </div>

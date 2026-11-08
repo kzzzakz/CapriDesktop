@@ -19,7 +19,7 @@ import { roamingManager } from '../roaming/roaming-manager'
 import { systemObserver, type ActiveMediaInfo } from '../services/system-observer'
 import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '../services/music-platform'
 import { consciousnessService } from '../services/consciousness-service'
-import { getSystemPromptPersona } from '../services/system-prompt-store'
+import { getSystemPromptPersona, personaIntro } from '../services/system-prompt-store'
 import { scannerService } from '../services/scanner-service'
 import { boredomService } from '../services/boredom-service'
 import { proactiveDialogueService } from '../services/proactive-dialogue-service'
@@ -2932,7 +2932,7 @@ LANGUAGE RULE: ${langDirective}`
     const fileLang = fileContent ? CapriLocalAgent.detectLanguage(fileContent) : (isSpanish ? 'es' : 'en')
     const solutionLang = fileLang === 'es' ? 'Spanish' : 'English'
 
-    const systemPrompt = `You are Capri, a weaponized netrunner companion with elite analytical intelligence.
+    const systemPrompt = `${personaIntro('You are Capri, a weaponized netrunner companion with elite analytical intelligence.')}
 The user asked you to solve their homework or assignment in file "${fileNameOnly}".
 
 FILE CONTENT / ASSIGNMENT:

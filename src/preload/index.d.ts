@@ -113,6 +113,7 @@ export interface IElectronAPI {
     getSystemPrompt: () => Promise<SystemPromptPayload>
     setSystemPrompt: (text: string) => Promise<SystemPromptPayload>
     resetSystemPrompt: () => Promise<SystemPromptPayload>
+    setPersonaStyle: (style: { tone?: SystemPromptPayload['tone']; teasing?: SystemPromptPayload['teasing'] }) => Promise<SystemPromptPayload>
     // Her long-term memory
     getMemory: () => Promise<MemorySnapshot>
     setMemoryEnabled: (enabled: boolean) => Promise<MemorySnapshot>

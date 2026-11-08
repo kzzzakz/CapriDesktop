@@ -24,7 +24,7 @@ import { cyberpunkAdapter } from '../services/game'
 import { CYBERPUNK_GIGS, getNextGig } from '../services/game/adapters/cyberpunk/gigs'
 import { clipService } from '../services/clip-service'
 import { welcomeSpeech } from '../services/welcome-speech'
-import { getSystemPromptInfo, setSystemPrompt, resetSystemPrompt } from '../services/system-prompt-store'
+import { getSystemPromptInfo, setSystemPrompt, resetSystemPrompt, setPersonaStyle } from '../services/system-prompt-store'
 import { memoryService } from '../services/memory-service'
 
 export function registerIpcHandlers(): void {
@@ -327,6 +327,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.AGENT_GET_SYSTEM_PROMPT, () => getSystemPromptInfo())
   ipcMain.handle(IPC_CHANNELS.AGENT_SET_SYSTEM_PROMPT, (_event, text: string) => setSystemPrompt(text))
   ipcMain.handle(IPC_CHANNELS.AGENT_RESET_SYSTEM_PROMPT, () => resetSystemPrompt())
+  ipcMain.handle(IPC_CHANNELS.AGENT_SET_PERSONA_STYLE, (_event, style: { tone?: string; teasing?: string }) => setPersonaStyle(style ?? {}))
 
   // Her memory: the settings window sees what she learns while it is open
   ipcMain.handle(IPC_CHANNELS.MEMORY_GET, () => memoryService.snapshot())
