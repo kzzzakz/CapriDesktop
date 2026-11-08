@@ -618,8 +618,15 @@ async def synthesize_speech(text: str, out_path: str, lang_override: str = None)
     edge_text = re.sub(r'\[(?:giggl(?:e|es|ing))\]', f' {giggle_word}, ', edge_text, flags=re.IGNORECASE)
     edge_text = re.sub(r'\[[a-zA-Z0-9_,\s\-]+\]', '', edge_text)
     edge_text = re.sub(r'\s+,', ',', re.sub(r'\s+', ' ', edge_text)).strip(' ,')
+    edge_text = re.sub(r'[{}\[\]"\'`]+', '', edge_text).strip(' ,')
     if not edge_text:
         edge_text = cleaned
+
+    # Guard: if edge_text has no pronounceable words, discard to prevent speaking stray symbols
+    if not re.search(r'[\w\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]', edge_text):
+        sys.stderr.write(f"[Edge-TTS Guard] Discarding text with no pronounceable words: '{edge_text}'\n")
+        print(json.dumps({"success": False, "error": "No pronounceable text"}))
+        return
 
     sys.stderr.write(
         f"\n==================================================\n"

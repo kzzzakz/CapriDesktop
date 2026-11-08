@@ -5,10 +5,187 @@ import {
   ScannerScanResult,
   ScannerEventPayload
 } from '../../../main/ipc/channels'
+import { useUiLang, UiLang } from '../utils/useUiLang'
 
 type ResizeDirection = 'move' | 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se'
 
+const SCANNER_I18N: Record<string, Record<UiLang, string>> = {
+  watchTitle: {
+    es: 'CAPRI // MIRANDO PANTALLA EN VIVO',
+    en: 'CAPRI // LIVE SCREEN WATCH',
+    pt: 'CAPRI // OBSERVANDO A TELA AO VIVO',
+    fr: 'CAPRI // REGARD SUR L\'ÉCRAN EN DIRECT',
+    de: 'CAPRI // BILDSCHIRM LIVE BEOBACHTUNG',
+    it: 'CAPRI // OSSERVAZIONE SCHERMO IN DIRETTA',
+    ru: 'CAPRI // НАБЛЮДЕНИЕ ЗА ЭКРАНОМ',
+    ja: 'CAPRI // 画面ライブ監視',
+    ko: 'CAPRI // 화면 실시간 관찰',
+    zh: 'CAPRI // 实时屏幕观察'
+  },
+  observing: {
+    es: 'OBSERVANDO',
+    en: 'OBSERVING',
+    pt: 'OBSERVANDO',
+    fr: 'OBSERVATION',
+    de: 'BEOBACHTUNG',
+    it: 'OSSERVAZIONE',
+    ru: 'НАБЛЮДЕНИЕ',
+    ja: '観察中',
+    ko: '관찰 중',
+    zh: '观察中'
+  },
+  stop: {
+    es: '✕ DETENER',
+    en: '✕ STOP',
+    pt: '✕ PARAR',
+    fr: '✕ ARRÊTER',
+    de: '✕ STOPP',
+    it: '✕ FERMA',
+    ru: '✕ СТОП',
+    ja: '✕ 停止',
+    ko: '✕ 정지',
+    zh: '✕ 停止'
+  },
+  feedTelemetry: {
+    es: 'PANTALLA PRINCIPAL // SEÑAL ÓPTICA EN VIVO',
+    en: 'PRIMARY DISPLAY // LIVE OPTICAL FEED',
+    pt: 'TELA PRINCIPAL // SINAL ÓPTICO AO VIVO',
+    fr: 'ÉCRAN PRINCIPAL // FLUX OPTIQUE EN DIRECT',
+    de: 'HAUPTBILDSCHIRM // LIVE OPTISCHER FEED',
+    it: 'SCHERMO PRINCIPALE // FEED OTTICO IN DIRETTA',
+    ru: 'ОСНОВНОЙ ЭКРАН // ЖИВОЙ ОПТИЧЕСКИЙ СИГНАЛ',
+    ja: 'メインディスプレイ // ライブ光学フィード',
+    ko: '기본 디스플레이 // 실시간 광학 피드',
+    zh: '主显示器 // 实时光学信号'
+  },
+  scannerTitle: {
+    es: 'CAPRI // ESCÁNER NEURAL',
+    en: 'CAPRI // NEURAL SCANNER',
+    pt: 'CAPRI // ESCÂNER NEURAL',
+    fr: 'CAPRI // SCANNER NEURONAL',
+    de: 'CAPRI // NEURALER SCANNER',
+    it: 'CAPRI // SCANNER NEURALE',
+    ru: 'CAPRI // НЕЙРОСКАНЕР',
+    ja: 'CAPRI // ニューラルスキャナー',
+    ko: 'CAPRI // 신경 스캐너',
+    zh: 'CAPRI // 神经网络扫描仪'
+  },
+  scan: {
+    es: 'ESCANEAR',
+    en: 'SCAN',
+    pt: 'ESCANEAR',
+    fr: 'SCANNER',
+    de: 'SCANNEN',
+    it: 'SCANSIONA',
+    ru: 'СКАНИРОВАТЬ',
+    ja: 'スキャン',
+    ko: '스캔',
+    zh: '扫描'
+  },
+  scanning: {
+    es: 'ESCANEANDO...',
+    en: 'SCANNING...',
+    pt: 'ESCANEANDO...',
+    fr: 'SCAN EN COURS...',
+    de: 'SCANNT...',
+    it: 'SCANSIONE...',
+    ru: 'СКАНИРОВАНИЕ...',
+    ja: 'スキャン中...',
+    ko: '스캔 중...',
+    zh: '扫描中...'
+  },
+  liveOn: {
+    es: '● AUTO ACTIVO',
+    en: '● LIVE ON',
+    pt: '● AO VIVO ATIVO',
+    fr: '● DIRECT ACTIF',
+    de: '● LIVE AN',
+    it: '● LIVE ATTIVO',
+    ru: '● АВТО ВКЛ',
+    ja: '● ライブON',
+    ko: '● 라이브 켜짐',
+    zh: '● 实时开启'
+  },
+  liveOff: {
+    es: '○ AUTO DESACTIVADO',
+    en: '○ LIVE OFF',
+    pt: '○ AO VIVO INATIVO',
+    fr: '○ DIRECT INACTIF',
+    de: '○ LIVE AUS',
+    it: '○ LIVE SPENTO',
+    ru: '○ АВТО ВЫКЛ',
+    ja: '○ ライブOFF',
+    ko: '○ 라이브 꺼짐',
+    zh: '○ 实时关闭'
+  },
+  target: {
+    es: 'OBJETIVO:',
+    en: 'TARGET:',
+    pt: 'ALVO:',
+    fr: 'CIBLE:',
+    de: 'ZIEL:',
+    it: 'OBIETTIVO:',
+    ru: 'ЦЕЛЬ:',
+    ja: 'ターゲット:',
+    ko: '대상:',
+    zh: '目标:'
+  },
+  close: {
+    es: 'Cerrar escáner',
+    en: 'Close scanner frame',
+    pt: 'Fechar escâner',
+    fr: 'Fermer le scanner',
+    de: 'Scanner schließen',
+    it: 'Chiudi scanner',
+    ru: 'Закрыть сканер',
+    ja: 'スキャナーを閉じる',
+    ko: '스캐너 닫기',
+    zh: '关闭扫描仪'
+  },
+  dragHelp: {
+    es: 'Arrastrá para mover el marco (o Ctrl + rueda para redimensionar)',
+    en: 'Drag to move scanner frame (or use Ctrl + Wheel to resize)',
+    pt: 'Arraste para mover o quadro (ou Ctrl + roda para redimensionar)',
+    fr: 'Faites glisser pour déplacer (ou Ctrl + molette pour redimensionner)',
+    de: 'Ziehen zum Bewegen (oder Strg + Mausrad zum Skalieren)',
+    it: 'Trascina per spostare (o Ctrl + rotella per ridimensionare)',
+    ru: 'Перетащите для перемещения (или Ctrl + колесо)',
+    ja: 'ドラッグして移動 (Ctrl+ホイールでリサイズ)',
+    ko: '드래그하여 이동 (Ctrl+휠로 크기 조절)',
+    zh: '拖动以移动 (或 Ctrl+滚轮缩放)'
+  },
+  watchingScreenTitle: {
+    es: 'Capri está mirando tu pantalla y reacciona en tiempo real',
+    en: 'Capri is actively watching your screen and reacting in real-time',
+    pt: 'Capri está observando sua tela e reagindo em tempo real',
+    fr: 'Capri regarde votre écran et réagit en direct',
+    de: 'Capri beobachtet deinen Bildschirm live',
+    it: 'Capri sta guardando il tuo schermo e reagisce in tempo reale',
+    ru: 'Capri наблюдает за экраном и реагирует в реальном времени',
+    ja: 'Capriが画面を観察しリアルタイムに反応します',
+    ko: 'Capri가 화면을 실시간으로 관찰하고 반응합니다',
+    zh: 'Capri正在实时观察屏幕并做出反应'
+  },
+  glitchTitle: {
+    es: 'AVISO DEL ESCÁNER ÓPTICO',
+    en: 'OPTICAL SCANNER NOTICE',
+    pt: 'AVISO DO ESCÂNER ÓPTICO',
+    fr: 'AVIS DU SCANNER OPTIQUE',
+    de: 'HINWEIS DES OPTISCHEN SCANNERS',
+    it: 'AVVISO DELLO SCANNER OTTICO',
+    ru: 'УВЕДОМЛЕНИЕ ОПТИЧЕСКОГО СКАНЕРА',
+    ja: '光学スキャナー通知',
+    ko: '광학 스캐너 알림',
+    zh: '光学扫描仪通知'
+  }
+}
+
 export const ScannerView: React.FC = () => {
+  const lang = useUiLang()
+  const tr = useCallback((key: keyof typeof SCANNER_I18N): string => {
+    return SCANNER_I18N[key]?.[lang] || SCANNER_I18N[key]?.['en'] || ''
+  }, [lang])
+
   const [isScanning, setIsScanning] = useState(false)
   const [isContinuous, setIsContinuous] = useState(false)
   const [isWatchingScreen, setIsWatchingScreen] = useState(false)
@@ -357,7 +534,7 @@ export const ScannerView: React.FC = () => {
       onMouseLeave={handleMouseLeave}
     >
       {isWatchingScreen ? (
-        /* Full-Screen Live Watch Overlay (Zero disruption to games/videos) */
+        /* Full-Screen Live Watch Overlay (Zero disruption to games/videos - Frame only, no laser sweep) */
         <>
           {/* Cybernetic Perimeter Neon Edge & Corners */}
           <div className="absolute inset-0 pointer-events-none border border-cyan-400/40 shadow-[inset_0_0_24px_rgba(0,240,255,0.2)]">
@@ -375,14 +552,14 @@ export const ScannerView: React.FC = () => {
 
             {/* Corner Metadata Telemetry */}
             <div className="absolute bottom-3 left-4 font-mono text-[9px] text-cyan-400/70 tracking-wider">
-              PRIMARY_DISPLAY // LIVE VISION FEED
+              {tr('feedTelemetry')}
             </div>
           </div>
 
           {/* Top Center Floating Live Watch Status Badge */}
           <div
             className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#090b14]/92 border border-cyan-400/60 shadow-[0_0_20px_rgba(0,240,255,0.4)] backdrop-blur-md pointer-events-auto"
-            title="Capri is actively watching your screen and reacting in real-time"
+            title={tr('watchingScreenTitle')}
           >
             <div className="flex items-center gap-2">
               <span className="relative flex h-2.5 w-2.5">
@@ -390,38 +567,24 @@ export const ScannerView: React.FC = () => {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
               <span className="font-mono text-[11px] font-bold text-cyan-300 tracking-wider">
-                CAPRI // LIVE SCREEN WATCH
+                {tr('watchTitle')}
               </span>
             </div>
 
             {isScanning && (
               <span className="font-mono text-[9px] text-rose-300 bg-rose-950/70 border border-rose-400/50 px-1.5 py-0.5 rounded animate-pulse">
-                OBSERVING
+                {tr('observing')}
               </span>
             )}
 
             <button
               onClick={handleStopWatchScreen}
               className="ml-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-500/70 text-rose-200 hover:text-white transition-all cursor-pointer shadow-[0_0_8px_rgba(244,63,94,0.35)] active:scale-95"
-              title="Stop watching screen"
+              title={tr('stop')}
             >
-              ✕ STOP
+              {tr('stop')}
             </button>
           </div>
-
-          {/* Sweeping Laser Beam when actively inferring */}
-          {isScanning && (
-            <div
-              className="absolute left-0 right-0 h-1 z-10 pointer-events-none"
-              style={{
-                animation: 'scanSweep 2s cubic-bezier(0.4, 0, 0.2, 1) infinite',
-                background:
-                  'linear-gradient(90deg, transparent 0%, #00f0ff 25%, #ffffff 50%, #ff007f 75%, transparent 100%)',
-                boxShadow:
-                  '0 0 15px #00f0ff, 0 0 30px #ff007f, 0 0 45px rgba(0, 240, 255, 0.8)'
-              }}
-            />
-          )}
 
           {/* Live Reaction Subtitle Overlay at Bottom */}
           {liveReaction && (
@@ -459,13 +622,13 @@ export const ScannerView: React.FC = () => {
           <div
             className="absolute top-1 left-11 right-11 h-10 z-30 flex items-center justify-between px-2 bg-[#090b14]/90 border border-cyan-500/40 rounded shadow-[0_0_15px_rgba(0,240,255,0.25)] backdrop-blur-sm cursor-grab active:cursor-grabbing"
             onMouseDown={(e) => startDrag('move', e)}
-            title="Drag to move scanner frame (or use Ctrl + Wheel to resize)"
+            title={tr('dragHelp')}
           >
             {/* Left: Drag Handle & Title */}
             <div className="flex items-center gap-2 overflow-hidden">
               <div className="flex items-center gap-1.5 text-cyan-400 font-mono text-[11px] font-bold tracking-wider">
                 <span className="text-cyan-300">☵</span>
-                <span className="truncate">CAPRI // NEURAL SCANNER</span>
+                <span className="truncate">{tr('scannerTitle')}</span>
               </div>
               <span className="text-[10px] font-mono text-cyan-500/70 border border-cyan-500/30 px-1 py-0.2 rounded bg-cyan-950/30">
                 {dimensions.width}×{dimensions.height}
@@ -483,10 +646,10 @@ export const ScannerView: React.FC = () => {
                     ? 'bg-rose-950/80 border border-rose-400 text-rose-300 animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.5)]'
                     : 'bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400 text-cyan-300 hover:text-white shadow-[0_0_10px_rgba(0,240,255,0.35)] active:scale-95'
                 }`}
-                title="Scan and show Capri what is inside the frame"
+                title={tr('scan')}
               >
                 <span className="text-xs">{isScanning ? '⏳' : '⚡'}</span>
-                <span>{isScanning ? 'SCANNING...' : 'SCAN'}</span>
+                <span>{isScanning ? tr('scanning') : tr('scan')}</span>
               </button>
 
               {/* Continuous Mode Toggle */}
@@ -497,16 +660,16 @@ export const ScannerView: React.FC = () => {
                     ? 'bg-emerald-950/80 border-emerald-400 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
                     : 'bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
                 }`}
-                title="Continuous mode: auto-scans when frame content changes"
+                title={isContinuous ? tr('liveOn') : tr('liveOff')}
               >
-                {isContinuous ? '● LIVE ON' : '○ LIVE OFF'}
+                {isContinuous ? tr('liveOn') : tr('liveOff')}
               </button>
 
               {/* Close Button */}
               <button
                 onClick={handleClose}
                 className="w-6 h-6 flex items-center justify-center rounded font-mono text-xs font-bold text-slate-400 hover:text-rose-300 bg-slate-900/80 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500 transition-colors cursor-pointer"
-                title="Close scanner frame"
+                title={tr('close')}
               >
                 ✕
               </button>
@@ -602,53 +765,8 @@ export const ScannerView: React.FC = () => {
             {/* Idle / Live Telemetry Indicator */}
             <div className="absolute bottom-2 right-3 font-mono text-[9px] text-cyan-400/60 tracking-wider flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-full ${isContinuous ? 'bg-emerald-400 animate-ping' : 'bg-cyan-400/70'}`} />
-              <span>{isContinuous ? 'LIVE FEED MONITORING' : 'OPTICAL_FEED: STANDBY'}</span>
+              <span>{isContinuous ? tr('liveOn') : tr('liveOff')}</span>
             </div>
-
-            {/* scanning state: Neon Laser Sweep & Holographic Grid */}
-            {scanState === 'scanning' && (
-              <div className="absolute inset-0">
-                {/* Holographic Matrix Grid */}
-                <div
-                  className="absolute inset-0 opacity-20"
-                  style={{
-                    backgroundImage:
-                      'linear-gradient(to right, rgba(0, 240, 255, 0.25) 1px, transparent 1px), linear-gradient(to bottom, rgba(0, 240, 255, 0.25) 1px, transparent 1px)',
-                    backgroundSize: '24px 24px'
-                  }}
-                />
-
-                {/* Neon Glitch Horizontal Flickers */}
-                <div className="absolute top-1/4 left-0 right-0 h-0.5 bg-cyan-400/30 animate-pulse" />
-                <div className="absolute top-2/3 left-0 right-0 h-0.5 bg-rose-400/30 animate-pulse" />
-
-                {/* Sweeping Laser Beam & Glowing Trail */}
-                <div
-                  className="absolute left-0 right-0 h-1 z-10"
-                  style={{
-                    animation: 'scanSweep 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite',
-                    background:
-                      'linear-gradient(90deg, transparent 0%, #00f0ff 25%, #ffffff 50%, #ff007f 75%, transparent 100%)',
-                    boxShadow:
-                      '0 0 15px #00f0ff, 0 0 30px #ff007f, 0 0 45px rgba(0, 240, 255, 0.8)'
-                  }}
-                >
-                  {/* Trailing vertical gradient light wash */}
-                  <div
-                    className="w-full h-24 -mt-24 pointer-events-none"
-                    style={{
-                      background:
-                        'linear-gradient(180deg, transparent 0%, rgba(0, 240, 255, 0.15) 70%, rgba(255, 0, 128, 0.25) 100%)'
-                    }}
-                  />
-                </div>
-
-                {/* Telemetry Readout */}
-                <div className="absolute top-3 left-3 font-mono text-[10px] text-cyan-300 font-bold bg-[#090b14]/85 px-2 py-1 rounded border border-cyan-400/40 shadow-[0_0_10px_rgba(0,240,255,0.3)] animate-pulse">
-                  &gt; ACQUIRING OPTICAL BUFFER // NEURAL INFERENCE...
-                </div>
-              </div>
-            )}
 
             {/* result state: Floating Cyberpunk HUD Tags & Summary */}
             {scanState === 'result' && scanResult && (
@@ -670,7 +788,7 @@ export const ScannerView: React.FC = () => {
                 <div className="flex flex-col gap-1 max-w-full">
                   {scanResult.summary && (
                     <div className="font-mono text-[10px] text-slate-200 bg-[#090b14]/90 px-2 py-1 rounded border border-cyan-500/40 shadow-[0_0_10px_rgba(0,240,255,0.25)] flex items-center gap-1.5 truncate">
-                      <span className="text-cyan-400 font-bold">TARGET:</span>
+                      <span className="text-cyan-400 font-bold">{tr('target')}</span>
                       <span className="truncate">{scanResult.summary}</span>
                     </div>
                   )}
@@ -688,7 +806,7 @@ export const ScannerView: React.FC = () => {
             {scanState === 'error' && errorMessage && (
               <div className="absolute inset-0 flex items-center justify-center p-4">
                 <div className="bg-[#1a0a14]/95 border border-rose-500/70 text-rose-300 font-mono text-xs px-3 py-2 rounded shadow-[0_0_15px_rgba(244,63,94,0.4)] text-center max-w-md">
-                  <div className="font-bold text-rose-400 mb-0.5">⚠️ OPTICAL SCANNER GLITCH</div>
+                  <div className="font-bold text-rose-400 mb-0.5">⚠️ {tr('glitchTitle')}</div>
                   <div className="text-[11px] leading-snug">{errorMessage}</div>
                 </div>
               </div>
@@ -696,23 +814,6 @@ export const ScannerView: React.FC = () => {
           </div>
         </>
       )}
-
-      {/* Global CSS Animation for Scanner Sweep */}
-      <style>{`
-        @keyframes scanSweep {
-          0% {
-            top: 0%;
-            opacity: 0.9;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            top: 100%;
-            opacity: 0.8;
-          }
-        }
-      `}</style>
     </div>
   )
 }

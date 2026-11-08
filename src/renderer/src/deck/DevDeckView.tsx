@@ -7,7 +7,7 @@ import { LanguageSettingsModal } from './LanguageSettingsModal'
 import { AppsModal } from './AppsModal'
 import { useCompanionStore } from '../stores/useCompanionStore'
 import { useAgentStore } from '../stores/useAgentStore'
-import { useT } from '../utils/useUiLang'
+import { useT, useUiLang } from '../utils/useUiLang'
 import { AppWindow,
   Minus,
   X,
@@ -34,6 +34,8 @@ export const DevDeckView: React.FC = () => {
   const [isAppsModalOpen, setIsAppsModalOpen] = useState(false)
   const { setEmotion, setSpeech } = useCompanionStore()
   const t = useT()
+  const lang = useUiLang()
+  const isEs = lang === 'es'
   const [configLoaded, setConfigLoaded] = useState(false)
   const [cloudModel, setCloudModel] = useState<string | null>(null)
   const [isWatchingScreen, setIsWatchingScreen] = useState(false)
@@ -255,11 +257,11 @@ export const DevDeckView: React.FC = () => {
                 ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(0,240,255,0.4)]'
                 : 'border-[#3c1c1d] bg-[#210f10] text-stone-400 hover:text-cyan-300 hover:border-cyan-500/50'
             }`}
-            title="Capri mira tu pantalla completa en vivo y reacciona a juegos o videos"
+            title={isEs ? 'Capri mira tu pantalla completa en vivo y reacciona a juegos o videos' : 'Capri watches your screen live and reacts to games or videos'}
           >
             <Eye size={12} className={isWatchingScreen ? 'text-cyan-300 animate-pulse' : 'text-cyan-400'} />
             <span className="text-[12px] uppercase font-bold text-stone-300">
-              {isWatchingScreen ? 'MIRANDO PANTALLA' : 'MIRAR PANTALLA'}
+              {isWatchingScreen ? (isEs ? 'MIRANDO PANTALLA' : 'WATCHING SCREEN') : (isEs ? 'MIRAR PANTALLA' : 'WATCH SCREEN')}
             </span>
           </button>
 

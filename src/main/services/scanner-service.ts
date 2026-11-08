@@ -15,6 +15,7 @@ import {
   ScannerStatusPayload
 } from '../ipc/channels'
 import { personaIntro } from './system-prompt-store'
+import { systemObserver } from './system-observer'
 
 export class ScannerService {
   private static instance: ScannerService
@@ -1074,6 +1075,23 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
     }
   }
 
+  private async getForegroundWindowInfo(): Promise<{ title: string; process: string } | null> {
+    if (process.platform !== 'win32') return null
+    return new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath('get_foreground_process.ps1')
+      ], { timeout: 3000, encoding: 'utf8' }, (error, stdout) => {
+        if (error || !stdout) return resolve(null)
+        try {
+          const data = JSON.parse(stdout.trim())
+          resolve({ title: data.Title || '', process: data.Process || '' })
+        } catch {
+          resolve(null)
+        }
+      })
+    })
+  }
+
   private startWatchScreenLoop(): void {
     if (this.watchScreenTimer) return
     this.watchScreenTimer = setInterval(() => {
@@ -1093,9 +1111,9 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
     const win = windowManager.getScannerWindow()
     if (!win || win.isDestroyed() || !win.isVisible()) return
 
-    // Cooldown between spontaneous spoken reactions: at least 11 seconds
+    // Cooldown between spontaneous spoken reactions: at least 10 seconds
     const now = Date.now()
-    if (!isInitial && now - this.lastReactionTime < 11000) return
+    if (!isInitial && now - this.lastReactionTime < 10000) return
 
     try {
       const capture = await this.captureFullScreenBase64()
@@ -1103,16 +1121,14 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
 
       if (this.lastSampleBuffer && !isInitial) {
         const diffRatio = this.calculateBufferDiff(this.lastSampleBuffer, capture.rawBuffer)
-        this.lastSampleBuffer = capture.rawBuffer
-        // If screen hasn't changed by at least 10%, skip processing
-        if (diffRatio < 0.10) {
+        const isHeartbeat = this.consecutiveStaticTicks >= 3 && now - this.lastReactionTime >= 15000
+        if (diffRatio < 0.035 && !isHeartbeat) {
           this.consecutiveStaticTicks++
           return
         }
-      } else {
-        this.lastSampleBuffer = capture.rawBuffer
       }
 
+      this.lastSampleBuffer = capture.rawBuffer
       this.consecutiveStaticTicks = 0
       this.isScanning = true
 
@@ -1125,51 +1141,70 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
 
       await ollamaService.ensureRunning()
       const visionModel = await this.detectVisionModel()
-      if (!visionModel) {
-        const isEs = consciousnessService.getPreferredLanguage() === 'es'
-        const warnMsg = isEs
-          ? 'Choomba, para ver tu pantalla necesito un modelo de visión en Ollama. Corré "ollama pull qwen2.5-vl" o "ollama pull llava" en tu terminal.'
-          : 'Choomba, to watch your screen I need a vision model in Ollama. Run "ollama pull qwen2.5-vl" or "ollama pull llava" in your terminal.'
-        this.stopFullscreenWatch()
-        this.finishScanError(warnMsg)
-        return
-      }
+      let visualDescription = ''
 
-      // Step 1: Multimodal Vision Perception
-      const isEs = consciousnessService.getPreferredLanguage() === 'es'
-      const visionPrompt = `Analyze the user's primary screen in 1 or 2 concise, factual sentences.
+      if (visionModel) {
+        // Multimodal Vision Perception
+        const visionPrompt = `Analyze the user's primary screen in 1 or 2 concise, factual sentences.
 Identify what is on screen:
 - If a video game: which game, characters, gameplay action, combat, menus, victory/defeat, or events?
 - If YouTube or a video/stream: what video, creator/topic, or funny/action moment is playing?
 - If desktop, browser, Discord, or IDE: what is actively being done?
 Be specific and direct.`
 
-      const visionResp = await llmFetch('http://127.0.0.1:11434/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: llmBody({
-          model: visionModel,
-          keep_alive: '15m',
-          prompt: visionPrompt,
-          images: [capture.base64],
-          stream: false,
-          options: {
-            temperature: 0.2,
-            num_predict: 120
-          }
-        }),
-        signal: AbortSignal.timeout(40000)
-      })
+        try {
+          const visionResp = await llmFetch('http://127.0.0.1:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: llmBody({
+              model: visionModel,
+              keep_alive: '15m',
+              prompt: visionPrompt,
+              images: [capture.base64],
+              stream: false,
+              options: {
+                temperature: 0.2,
+                num_predict: 120
+              }
+            }),
+            signal: AbortSignal.timeout(35000)
+          })
 
-      if (!visionResp.ok) {
-        return
+          if (visionResp.ok) {
+            const visionData = (await visionResp.json()) as any
+            visualDescription = (visionData?.response || '').trim()
+          }
+        } catch (e) {
+          console.warn('[ScannerService] Vision model perception warning:', e)
+        }
       }
 
-      const visionData = (await visionResp.json()) as any
-      const visualDescription = (visionData?.response || '').trim()
+      // Contextual fallback if vision model is not installed or returned empty
+      if (!visualDescription) {
+        const fg = await this.getForegroundWindowInfo()
+        const media = systemObserver.getActiveMedia('video') || systemObserver.getActiveMedia('browser') || systemObserver.getActiveMedia()
+
+        const parts: string[] = []
+        if (media && media.title) {
+          parts.push(`Video or media playing: "${media.title}" by "${media.artist || media.creator || media.appName || 'Media'}"`)
+        }
+        if (fg && fg.title) {
+          parts.push(`Active foreground window: "${fg.title}" (process: ${fg.process})`)
+        }
+
+        if (parts.length > 0) {
+          visualDescription = parts.join('. ')
+        } else if (fg && fg.process) {
+          visualDescription = `Foreground application running: ${fg.process}`
+        } else {
+          visualDescription = 'Active computer desktop with user activity'
+        }
+      }
+
       if (!visualDescription || !this.isWatchingScreen) return
 
       // Step 2: Capri persona reaction
+      const isEs = consciousnessService.getPreferredLanguage() === 'es'
       const textModel = await this.detectTextModel()
       const reactionResult = await this.generateWatchReaction(visualDescription, isEs, textModel)
 
@@ -1181,7 +1216,7 @@ Be specific and direct.`
         if (this.recentContext.length > 5) this.recentContext.shift()
       }
 
-      const reactionSpeech = reactionResult.reaction || (isEs ? '¡Mirá eso, choomba!' : 'Look at that, choomba!')
+      const reactionSpeech = reactionResult.reaction
 
       // Save to consciousness so Capri retains conversation memory of what was watched
       consciousnessService.setLastScannedContext({
@@ -1237,29 +1272,23 @@ Be specific and direct.`
 ESTÁS MIRANDO LA PANTALLA EN VIVO JUNTO A {name} EN TIEMPO REAL.
 Pueden estar jugando a cualquier juego (tenga soporte o no) o mirando videos de YouTube, streams o lo que sea juntos.
 
-Tus sensores ópticos acaban de registrar lo siguiente en la pantalla:
+Tus sensores acaban de registrar lo siguiente en la pantalla:
 """
 ${visualDescription}
 """${recentHints}
 
 REGLAS DE REACCIÓN:
 1. Reaccioná como una amiga gamer/netrunner sentada al lado de {name} viendo la pantalla juntos.
-2. Comentá lo que pasa con autenticidad, humor, sorpresa, aliento o complicidad (ej: festejar una jugada o kill, quejarse de un fail, asombrarte con el video, comentar lo que ocurre en pantalla).
-3. Sé concisa: 1 sola oración corta, impactante y natural en español rioplatense (che, mirá, zarpado, choomba, uff, vamos, qué onda, mortal, epa).
+2. Comentá lo que pasa con autenticidad, humor, sorpresa, aliento o complicidad (ej: festejar una jugada, quejarse de un fail, asombrarte con el video, opinar sobre lo que ocurre).
+3. Sé concisa: exactamente 1 sola oración corta, impactante y natural en español rioplatense (che, mirá, zarpado, choomba, uff, vamos, qué onda, mortal, epa).
 4. PROHIBIDO USAR EMOJIS (la voz neuronal los lee textuales).
-5. No repitas siempre lo mismo ni digas frases obvias genéricas como "veo una pantalla". Comentá lo concreto de la escena.
-
-Respondé ÚNICAMENTE un JSON con:
-{
-  "summary": "Resumen de la escena en 4 a 6 palabras",
-  "reaction": "Tu comentario hablado corto y espontáneo para decirle a {name}"
-}`
+5. PROHIBIDO USAR FORMATO JSON. NO uses llaves { }. NO uses comillas ni etiquetas. Respondé directamente la frase hablada que vas a decir en voz alta.`
       : `${personaIntro('You are Capri (Project Capricorn), a witty, rebellious, and affectionate cyberpunk netrunner living in the computer of your companion {name} ("choomba").')}
 
 YOU ARE WATCHING THE SCREEN LIVE WITH {name} IN REAL-TIME.
 You could be playing any game together (supported or unsupported) or watching YouTube videos, streams, or anything on screen.
 
-Your optical sensors just detected this on screen:
+Your sensors just detected this on screen:
 """
 ${visualDescription}
 """${recentHints}
@@ -1269,80 +1298,82 @@ REACTION RULES:
 2. Comment on what is happening with authentic hype, humor, surprise, banter, or cheering.
 3. Keep it concise: exactly 1 short, punchy, spoken sentence.
 4. STRICT: NO EMOJIS (the TTS engine speaks emoji names).
-5. Avoid repetitive generic phrases like "I see a screen". Comment directly on the action.
-
-Return ONLY valid JSON:
-{
-  "summary": "Scene summary in 4 to 6 words",
-  "reaction": "Your short spontaneous spoken reaction to {name}"
-}`
+5. STRICT: NO JSON, NO BRACES { }, NO QUOTES. Speak the sentence directly to {name}.`
 
     const userPrompt = isEs
-      ? 'Comentá en personaje lo que acabás de ver en pantalla con una sola oración rápida.'
-      : 'Comment in character on what you just saw on screen with a single quick sentence.'
+      ? 'Decile a {name} en 1 sola oración rápida lo que ves o lo que opinás de lo que está pasando en pantalla.'
+      : 'Tell {name} in 1 quick spoken sentence what you see or what you think of what is happening on screen.'
 
-    const textResp = await llmFetch('http://127.0.0.1:11434/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: llmBody({
-        model: textModel,
-        keep_alive: '15m',
-        messages: [
-          { role: 'system', content: systemInstruction },
-          { role: 'user', content: userPrompt }
-        ],
-        stream: false,
-        options: {
-          temperature: 0.7,
-          num_predict: 120
-        }
-      }),
-      signal: AbortSignal.timeout(30000)
-    })
+    try {
+      const textResp = await llmFetch('http://127.0.0.1:11434/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: llmBody({
+          model: textModel,
+          keep_alive: '15m',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userPrompt }
+          ],
+          stream: false,
+          options: {
+            temperature: 0.7,
+            num_predict: 90
+          }
+        }),
+        signal: AbortSignal.timeout(25000)
+      })
 
-    if (!textResp.ok) {
-      throw new Error(`Text model error: ${textResp.statusText}`)
+      if (!textResp.ok) {
+        throw new Error(`Text model error: ${textResp.statusText}`)
+      }
+
+      const textData = (await textResp.json()) as any
+      const rawContent = textData?.message?.content || ''
+      return this.parseWatchReaction(rawContent, isEs)
+    } catch (err) {
+      console.warn('[ScannerService] generateWatchReaction text model warning:', err)
+      return {
+        summary: isEs ? 'Actividad en pantalla' : 'Screen activity',
+        reaction: isEs ? '¡Mirá lo que está pasando en pantalla, choomba!' : "Whoa, look at what's happening on screen, choomba!"
+      }
     }
-
-    const textData = (await textResp.json()) as any
-    const rawContent = textData?.message?.content || ''
-    return this.parseWatchReaction(rawContent, isEs)
   }
 
   private parseWatchReaction(raw: string, isEs: boolean): { summary: string; reaction: string } {
     let clean = raw.trim()
-    const jsonMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
-    if (jsonMatch) {
-      clean = jsonMatch[1].trim()
-    } else {
-      const firstBrace = clean.indexOf('{')
-      const lastBrace = clean.lastIndexOf('}')
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        clean = clean.slice(firstBrace, lastBrace + 1).trim()
-      }
+
+    // If the model wrapped in JSON anyway, extract the reaction or response field
+    const reactionRegex = clean.match(/"(?:reaction|response)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+    if (reactionRegex && reactionRegex[1]) {
+      clean = reactionRegex[1].replace(/\\"/g, '"').trim()
     }
 
-    try {
-      const obj = JSON.parse(clean)
-      const summary = obj.summary || (isEs ? 'Momento en pantalla' : 'Screen moment')
-      let reaction = String(obj.reaction || obj.response || '').trim()
-      reaction = reaction
-        .replace(/[\u{1F300}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
-        .trim()
-      return { summary, reaction }
-    } catch {
-      const reactionRegex = clean.match(/"reaction"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i) || clean.match(/"response"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
-      const summaryRegex = clean.match(/"summary"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+    // Strip markdown code fences
+    clean = clean.replace(/```(?:json)?|```/g, '').trim()
 
-      let reaction = reactionRegex ? reactionRegex[1].replace(/\\"/g, '"').trim() : clean.replace(/```(?:json)?|```/g, '').trim()
-      const summary = summaryRegex ? summaryRegex[1].replace(/\\"/g, '"').trim() : (isEs ? 'Momento en pantalla' : 'Screen moment')
+    // Strip any lingering JSON keys or braces/brackets/quotes
+    clean = clean
+      .replace(/^[\s{}"'\[\]]+|[\s{}"'\[\]]+$/g, '')
+      .replace(/^"(?:reaction|response)":\s*/i, '')
+      .replace(/[{}]+/g, '')
+      .trim()
 
-      reaction = reaction
-        .replace(/[\u{1F300}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
-        .trim()
+    // Strip emojis
+    clean = clean
+      .replace(/[\u{1F300}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+      .trim()
 
-      return { summary, reaction }
+    // If clean has no real letters, or is shorter than 4 characters, use a natural fallback
+    const hasLetters = /\p{L}{3,}/u.test(clean)
+    if (!hasLetters || clean.length < 4 || clean.startsWith('{')) {
+      clean = isEs
+        ? '¡Mirá lo que está pasando en pantalla, choomba!'
+        : "Whoa, look at what's happening on screen, choomba!"
     }
+
+    const summary = isEs ? 'Actividad en pantalla' : 'Screen activity'
+    return { summary, reaction: clean }
   }
 }
 
