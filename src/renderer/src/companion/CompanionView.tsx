@@ -274,13 +274,13 @@ export const CompanionView: React.FC = () => {
 
   // Welcome back greeting on application mount (aware of reboots and past shutdowns)
   useEffect(() => {
-    // Fresh chat session: clear past stored messages and backend LLM history
+    // Fresh chat session on screen. Her saved conversation is kept: it comes back with her first answer
     try {
       localStorage.removeItem(STORAGE_KEY)
     } catch {}
 
     if (window.api?.agent?.clearHistory) {
-      window.api.agent.clearHistory().catch(() => {})
+      window.api.agent.clearHistory({ startup: true }).catch(() => {})
     }
 
     if (window.api?.companion?.getConsciousness) {

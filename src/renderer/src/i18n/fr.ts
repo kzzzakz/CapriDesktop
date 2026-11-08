@@ -347,5 +347,25 @@ export const fr: Messages = {
   sp_resetConfirm: 'Clique encore pour le remplacer',
   sp_resetDone: 'Prompt par défaut rétabli',
   sp_chars: '{n} caractères',
-  sp_saveError: 'Impossible d’enregistrer les modifications. Vérifie que le dossier est accessible en écriture et réessaie.'
+  sp_saveError: 'Impossible d’enregistrer les modifications. Vérifie que le dossier est accessible en écriture et réessaie.',
+
+  // Memory (Capri // Brain settings)
+  mem_title: 'Mémoire',
+  mem_count: '{n} enregistrés',
+  mem_enabled: 'Se souvenir',
+  mem_privacyLocal: 'Tout ce dont elle se souvient reste sur ce PC. Elle apprend des choses sur toi dans vos conversations et tu peux en supprimer n’importe laquelle. Ce qui est à l’écran n’est jamais enregistré.',
+  mem_privacyCloud: 'Tu utilises un modèle dans le cloud : les souvenirs qu’elle utilise dans chaque réponse, et la conversation dont elle apprend, sont envoyés à ce fournisseur.',
+  mem_addPlaceholder: 'Quelque chose dont elle devrait se souvenir…',
+  mem_add: 'Ajouter',
+  mem_saved: 'Enregistré.',
+  mem_known: 'Elle s’en souvenait déjà.',
+  mem_sensitive: 'Pas enregistré : on dirait un mot de passe, un numéro ou une adresse.',
+  mem_empty: 'Rien d’enregistré pour l’instant. Raconte-lui des choses ou dis « souviens-toi que… ».',
+  mem_fromYou: 'Toi',
+  mem_learned: 'Appris',
+  mem_delete: 'Oublier ceci',
+  mem_thread: 'La dernière conversation est enregistrée ({n} messages), pour la reprendre après un redémarrage.',
+  mem_noThread: 'Aucune conversation enregistrée.',
+  mem_clearAll: 'Tout effacer',
+  mem_clearConfirm: 'Clique encore pour tout effacer'
 }

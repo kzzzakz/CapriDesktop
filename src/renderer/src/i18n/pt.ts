@@ -347,5 +347,25 @@ export const pt: Messages = {
   sp_resetConfirm: 'Clique de novo para substituir',
   sp_resetDone: 'Prompt padrão restaurado',
   sp_chars: '{n} caracteres',
-  sp_saveError: 'Não foi possível salvar as alterações. Verifique se a pasta pode ser gravada e tente de novo.'
+  sp_saveError: 'Não foi possível salvar as alterações. Verifique se a pasta pode ser gravada e tente de novo.',
+
+  // Memory (Capri // Brain settings)
+  mem_title: 'Memória',
+  mem_count: '{n} salvos',
+  mem_enabled: 'Lembrar das coisas',
+  mem_privacyLocal: 'Tudo o que ela lembra fica neste PC. Ela aprende coisas sobre você nas conversas e você pode apagar qualquer uma. O que está na sua tela nunca é salvo.',
+  mem_privacyCloud: 'Você está usando um modelo na nuvem: as lembranças que ela usa em cada resposta, e a conversa de onde ela aprende, são enviadas para esse provedor.',
+  mem_addPlaceholder: 'Algo que ela deveria lembrar sobre você…',
+  mem_add: 'Adicionar',
+  mem_saved: 'Salvo.',
+  mem_known: 'Ela já lembrava disso.',
+  mem_sensitive: 'Não foi salvo: parece uma senha, um número ou um endereço.',
+  mem_empty: 'Nada salvo ainda. Conte coisas para ela ou diga "lembra que…".',
+  mem_fromYou: 'Você',
+  mem_learned: 'Aprendido',
+  mem_delete: 'Esquecer isto',
+  mem_thread: 'A última conversa está salva ({n} mensagens), para você continuar depois de reiniciar.',
+  mem_noThread: 'Nenhuma conversa salva.',
+  mem_clearAll: 'Apagar tudo',
+  mem_clearConfirm: 'Clique de novo para apagar tudo'
 }

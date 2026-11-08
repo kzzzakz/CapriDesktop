@@ -1,4 +1,5 @@
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
+import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
   CompanionEmotionState,
@@ -112,11 +113,18 @@ export interface IElectronAPI {
     getSystemPrompt: () => Promise<SystemPromptPayload>
     setSystemPrompt: (text: string) => Promise<SystemPromptPayload>
     resetSystemPrompt: () => Promise<SystemPromptPayload>
+    // Her long-term memory
+    getMemory: () => Promise<MemorySnapshot>
+    setMemoryEnabled: (enabled: boolean) => Promise<MemorySnapshot>
+    addMemory: (text: string) => Promise<MemoryAddResult>
+    deleteMemory: (id: string) => Promise<MemorySnapshot>
+    clearMemory: () => Promise<MemorySnapshot>
+    onMemoryChanged: (callback: (memory: MemorySnapshot) => void) => () => void
     getLlmSettings: () => Promise<LlmPublicSettings>
     setLlmSettings: (update: LlmSettingsUpdate) => Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }>
     listLlmModels: (baseUrl: string, apiKey?: string) => Promise<{ ok: boolean; models: string[]; error?: string }>
     testLlm: (baseUrl: string, model: string, apiKey?: string) => Promise<{ ok: boolean; error?: string }>
-    clearHistory: () => Promise<boolean>
+    clearHistory: (options?: { startup?: boolean }) => Promise<boolean>
     respondPermission: (requestId: string, approved: boolean) => Promise<boolean>
     cancel: () => Promise<boolean>
     getStatus: () => Promise<{ isRunning: boolean; mode: string }>

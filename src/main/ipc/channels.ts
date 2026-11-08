@@ -83,6 +83,13 @@ export const IPC_CHANNELS = {
   AGENT_GET_SYSTEM_PROMPT: 'agent:getSystemPrompt',
   AGENT_SET_SYSTEM_PROMPT: 'agent:setSystemPrompt',
   AGENT_RESET_SYSTEM_PROMPT: 'agent:resetSystemPrompt',
+  // Her long-term memory (Capri // Brain settings)
+  MEMORY_GET: 'memory:get',
+  MEMORY_SET_ENABLED: 'memory:setEnabled',
+  MEMORY_ADD: 'memory:add',
+  MEMORY_DELETE: 'memory:delete',
+  MEMORY_CLEAR: 'memory:clear',
+  MEMORY_CHANGED: 'memory:changed',
   LLM_GET_SETTINGS: 'llm:getSettings',
   LLM_SET_SETTINGS: 'llm:setSettings',
   LLM_LIST_MODELS: 'llm:listModels',

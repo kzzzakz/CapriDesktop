@@ -232,6 +232,26 @@ export const FIXED_COMMANDS: Record<string, Forms> = {
     ja: ['シャットダウンして', '電源を切って', '終了して'],
     ko: ['꺼져줘', '종료해줘', '전원 꺼줘'],
     zh: ['关机', '退出吧', '关闭你自己']
+  },
+  'what do you remember about me': {
+    fr: ['qu est ce que tu sais de moi', 'que sais tu de moi', 'de quoi tu te souviens sur moi', 'tu te souviens de quoi sur moi', 'qu est ce que tu te rappelles de moi'],
+    de: ['was weißt du uber mich', 'was weisst du uber mich', 'woran erinnerst du dich bei mir', 'was hast du dir uber mich gemerkt'],
+    it: ['cosa ricordi di me', 'che cosa ricordi di me', 'cosa sai di me', 'cosa ti ricordi di me'],
+    pt: ['o que voce lembra de mim', 'o que voce sabe sobre mim', 'do que voce lembra sobre mim', 'o que voce lembra sobre mim'],
+    ru: ['что ты помнишь обо мне', 'что ты знаешь обо мне', 'что ты обо мне помнишь'],
+    ja: ['私について何を覚えてる', '私のこと何を覚えてる', '私のこと何覚えてる', '私について何を知ってる'],
+    ko: ['나에 대해 뭘 기억해', '나에 대해 뭐 기억해', '나에 대해 뭐 알아', '나에 대해 기억하는 거 있어'],
+    zh: ['你记得我什么', '关于我你记得什么', '你记得关于我的什么', '你对我了解多少']
+  },
+  'forget everything': {
+    fr: ['oublie tout', 'oublie tout sur moi', 'oublie tout ce que tu sais'],
+    de: ['vergiss alles', 'vergiss alles uber mich'],
+    it: ['dimentica tutto', 'dimenticati tutto', 'dimentica tutto di me'],
+    pt: ['esquece tudo', 'esqueca tudo', 'esquece tudo sobre mim'],
+    ru: ['забудь всё', 'забудь все', 'забудь всё обо мне', 'забудь все обо мне'],
+    ja: ['全部忘れて', 'すべて忘れて', '私のこと全部忘れて'],
+    ko: ['다 잊어줘', '전부 잊어줘', '나에 대해 다 잊어줘'],
+    zh: ['全部忘掉', '忘掉一切', '忘记所有', '把我的事都忘了']
   }
 }
 
@@ -339,6 +359,33 @@ export const TEMPLATE_COMMANDS: { en: string; forms: Forms }[] = [
       ja: ['{x}を描いて', '{x}の絵を描いて'],
       ko: ['{x} 그려줘'],
       zh: ['画一个{x}', '画个{x}', '帮我画{x}']
+    }
+  },
+  {
+    // What to remember stays in the user's words: memory-commands.ts takes it from the original
+    en: 'remember that {x}',
+    forms: {
+      fr: ['souviens toi que {x}', 'rappelle toi que {x}', 'n oublie pas que {x}', 'retiens que {x}', 'souviens toi de {x}', 'note que {x}'],
+      de: ['merk dir dass {x}', 'vergiss nicht dass {x}', 'denk dran dass {x}', 'denk daran dass {x}', 'merk dir {x}'],
+      it: ['ricorda che {x}', 'ricordati che {x}', 'non dimenticare che {x}', 'tieni a mente che {x}', 'ricordati di {x}'],
+      pt: ['lembra que {x}', 'lembre que {x}', 'lembre se que {x}', 'nao esquece que {x}', 'nao esqueca que {x}', 'grava que {x}', 'lembra de {x}'],
+      ru: ['запомни что {x}', 'не забудь что {x}', 'помни что {x}', 'запомни {x}'],
+      ja: ['{x}って覚えておいて', '{x}と覚えておいて', '{x}を覚えておいて', '{x}を忘れないで', '{x}って覚えて', '{x}を覚えて'],
+      ko: ['{x}라는 거 기억해줘', '{x} 기억해줘', '{x} 잊지 마', '{x} 기억해'],
+      zh: ['请记住{x}', '记住{x}', '别忘了{x}', '记得{x}', '記住{x}']
+    }
+  },
+  {
+    en: 'forget that {x}',
+    forms: {
+      fr: ['oublie que {x}', 'oublie {x}'],
+      de: ['vergiss dass {x}', 'vergiss {x}'],
+      it: ['dimentica che {x}', 'dimenticati che {x}', 'dimenticati di {x}', 'dimentica {x}'],
+      pt: ['esquece que {x}', 'esqueca que {x}', 'esquece {x}', 'esqueca {x}'],
+      ru: ['забудь что {x}', 'забудь про {x}', 'забудь о {x}', 'забудь {x}'],
+      ja: ['{x}のことは忘れて', '{x}は忘れて', '{x}を忘れて'],
+      ko: ['{x}는 잊어줘', '{x} 잊어줘', '{x} 잊어버려'],
+      zh: ['忘掉{x}', '忘记{x}', '忘了{x}']
     }
   }
 ]

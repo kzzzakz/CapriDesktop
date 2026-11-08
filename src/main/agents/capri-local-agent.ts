@@ -33,6 +33,8 @@ import { CodingAgent, isCodingRequest } from './coding-agent'
 import { updateService } from '../services/update-service'
 import { cleanAppRequest } from '../services/app-finder'
 import { commandInEnglish } from './command-translations'
+import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
+import { memoryService } from '../services/memory-service'
 import { appRequestInEnglish, isHoldStillRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
@@ -224,10 +226,20 @@ export class CapriLocalAgent extends EventEmitter {
     }
   }
 
-  public clearHistory(): void {
+  /**
+   * startup: her window just opened. The chat on screen starts empty, but the saved conversation
+   * comes back with her first answer. Otherwise it's "new chat": the saved thread goes too, and what
+   * she knows about the user stays.
+   */
+  public clearHistory(startup = false): void {
     this.conversationHistory = []
     this.ownLines = []
+    this.threadRestored = !startup
+    if (!startup) memoryService.clearThread()
   }
+
+  /** The last session's conversation comes back once, the first time she answers */
+  private threadRestored = false
 
   /**
    * Something she said or did by herself. It goes in the conversation with her next reply, in order
@@ -287,6 +299,8 @@ export class CapriLocalAgent extends EventEmitter {
   ): Promise<void> {
     this.isCancelled = false
     this.currentPrompt = prompt.trim().slice(0, 200)
+    // The background memory pass hands the model back the moment the user talks
+    memoryService.interrupt()
     ollamaService.touchActivity()
     proactiveDialogueService.touchInteraction()
     // Warm up Ollama in the background if it was stopped
@@ -420,6 +434,15 @@ export class CapriLocalAgent extends EventEmitter {
         this.finishSession()
         return
       }
+    }
+
+    // Her memory: "acordate de que...", "olvidate de...", "¿qué recordás de mí?"
+    const memoryCommand = parseMemoryCommand(trimmed)
+    if (memoryCommand) {
+      // From another language the part to remember comes back folded: it is taken from the original
+      this.handleMemoryCommand(memoryCommand, fixedCommand ? spokenPrompt : null, isSpanish)
+      this.finishSession()
+      return
     }
 
     // "Quedate quieta": she stays where she is until the user moves her
@@ -1424,6 +1447,12 @@ export class CapriLocalAgent extends EventEmitter {
 CRITICAL: If {name} asks about what you saw, how she/it looked, what you thought, who was in the picture, or continues the conversation about this scan, YOU REMEMBER THIS ACCURATELY! React and chat about it like an authentic friend with genuine opinions!`
       : ''
 
+    // What she remembers about the user from other days, only what matters for this message
+    const remembered = memoryService.recallFor(prompt)
+    const memoryContext = remembered
+      ? `\nWHAT YOU REMEMBER ABOUT {name} (from earlier conversations, all true):\n${remembered}\n- Bring these up naturally when they fit, and tease {name} about them like an old friend would. Never recite them as a list, and never invent memories you don't have.`
+      : ''
+
     // Emotion/laughter tags only make sense when Fish Audio is the voice: it acts them out
     const fishVoice = voiceService.isFishAudioActive()
     const voiceActingRules = fishVoice
@@ -1476,7 +1505,7 @@ TOOL EXECUTION (CRITICAL):
   * You can't see the user's journal or map from here and you can't place map markers. Never invent gigs, missions, fixers or districts, and never say you pinned or marked anything. If asked what to do in Cyberpunk, suggest a general activity (a cyberpsycho hunt, an NCPD hustle, a street race) and tell them to ask you with the game open so you can mark it.
 - When creating a file on the user's desktop, use path: "${desktopPath.replace(/\\/g, '\\\\')}\\\\<filename>".
 ${windowManager.isGamingModeActive() ? '- The user is playing a game right now: answer in one or two short sentences.\n' : ''}${activeMediaContext}
-${lastScanContext}
+${lastScanContext}${memoryContext}
 `
 
     const toolsSpec = CAPRI_TOOLS.map((t) => ({
@@ -1516,6 +1545,16 @@ ${lastScanContext}
       ? `${replyLanguage} You MUST respond strictly and authentically in ${targetLangName}, even if earlier messages or examples are in another language.${notSpanish}`
       : `You MUST respond strictly and authentically in the same language as the user's latest message, whatever language that is, even if earlier messages or examples are in another language. If you can't tell, use ${fallbackLangName}.${notSpanish}`
 
+    // The conversation from last time, so it can go on after a restart
+    if (!this.threadRestored) {
+      this.threadRestored = true
+      if (this.conversationHistory[0]?.role !== 'system') {
+        const restored = memoryService.recentThread().map((t) => ({ role: t.role, content: t.content }))
+        if (restored.length) console.log(`[Capri Agent] Picking up the last conversation (${restored.length} messages)`)
+        this.conversationHistory = [...restored, ...this.conversationHistory]
+      }
+    }
+
     // Maintain multi-turn memory so Capri doesn't repeat phrases or forget context
     if (this.conversationHistory[0]?.role !== 'system') {
       // A reply that skipped the model may have left lines here: the instructions always go first
@@ -1554,6 +1593,7 @@ LANGUAGE RULE: ${langDirective}`
       role: 'user',
       content: prompt.trim()
     })
+    memoryService.recordTurn('user', prompt.trim())
 
     // Keep history within token boundaries (up to 20 messages)
     if (this.conversationHistory.length > 20) {
@@ -1714,6 +1754,7 @@ LANGUAGE RULE: ${langDirective}`
               role: 'assistant',
               content: finalReply
             })
+            memoryService.recordTurn('assistant', finalReply, model, effectiveLang)
             this.emitAssistant(finalReply)
           }
         }
@@ -4439,6 +4480,70 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     return es
       ? "Estoy escaneando tu pantalla, choomba, ¡pero no veo nada activo! Abrí una página, un video o un tema en Spotify y preguntame de nuevo."
       : "I'm scanning your screen, choomba, but nothing active popped up! Open up a browser page, video, or Spotify track and ask me again."
+  }
+
+  /** "Remember that...", "forget that...", "what do you remember about me?" and "forget everything" */
+  private handleMemoryCommand(command: MemoryCommand, original: string | null, isSpanish: boolean): void {
+    // Wiping everything by voice is too easy to trigger by mistake: that one is done by hand
+    if (command.kind === 'forgetAll') {
+      this.emitAssistant(
+        isSpanish
+          ? '[thoughtful] Para borrar toda mi memoria, abrí mi configuración de Cerebro y usá Borrar todo. Esa prefiero que la hagas a mano, choomba.'
+          : "[thoughtful] To wipe my whole memory, open my Brain settings and use Clear all. That one I'd rather you do by hand, choomba."
+      )
+      return
+    }
+    if (!memoryService.isEnabled()) {
+      this.emitAssistant(
+        isSpanish
+          ? '[curious] Mi memoria está apagada ahora. La podés prender en mi configuración de Cerebro.'
+          : '[curious] My memory is turned off right now. You can turn it on in my Brain settings.'
+      )
+      return
+    }
+    if (command.kind === 'recall') {
+      const facts = memoryService.snapshot().facts.slice(0, 8).map((f) => f.text)
+      const list = facts.join('; ')
+      this.emitAssistant(
+        facts.length
+          ? isSpanish
+            ? `[warmly] Esto es lo que me acuerdo de vos, {name}: ${list}.`
+            : `[warmly] Here's what I remember about you, {name}: ${list}.`
+          : isSpanish
+          ? '[playful] Todavía no tengo nada guardado sobre vos, {name}. Contame algo y me lo acuerdo.'
+          : "[playful] Nothing saved about you yet, {name}. Tell me something and I'll remember it."
+      )
+      return
+    }
+    const what = original ? originalWords(original, command.what) : command.what
+    if (command.kind === 'remember') {
+      const result = memoryService.remember(what, 'user')
+      if (result.reason === 'sensitive') {
+        this.emitAssistant(
+          isSpanish
+            ? '[thoughtful] Esa prefiero no guardarla: parece una contraseña, un número o una dirección. Más segura en tu cabeza que en la mía.'
+            : "[thoughtful] I'd rather not keep that one: it looks like a password, a number or an address. Safer in your head than in mine."
+        )
+      } else if (!result.fact) {
+        this.emitAssistant(isSpanish ? '[curious] ¿Que me acuerde de qué? Decímelo completo, choomba.' : '[curious] Remember what? Tell me the whole thing, choomba.')
+      } else if (result.reason === 'known') {
+        this.emitAssistant(isSpanish ? `[cheerful] Eso ya lo tenía guardado: ${result.fact.text}.` : `[cheerful] I already had that one saved: ${result.fact.text}.`)
+      } else {
+        this.emitAssistant(isSpanish ? `[happy] Listo, me lo acuerdo: ${result.fact.text}.` : `[happy] Got it, I'll remember that: ${result.fact.text}.`)
+      }
+      return
+    }
+    const removed = memoryService.forgetMatching(what)
+    const forgotten = removed.map((f) => f.text).join('; ')
+    this.emitAssistant(
+      removed.length
+        ? isSpanish
+          ? `[happy] Hecho, ya me olvidé: ${forgotten}.`
+          : `[happy] Done, I forgot it: ${forgotten}.`
+        : isSpanish
+        ? `[curious] No tengo nada parecido guardado: ${what}.`
+        : `[curious] I don't have anything like that saved: ${what}.`
+    )
   }
 
   private finishSession(): void {

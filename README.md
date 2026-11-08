@@ -152,6 +152,7 @@ Everything lives on your PC, in `%APPDATA%\Capri Desktop` (or `%APPDATA%\Cyber C
 
 - **`capri_consciousness.json`**: boot/shutdown counters (she comments on them), your name, language settings and onboarding state.
 - **`capri_macros.json`**: your voice macros.
+- **`capri_memory.json`**: what she remembers about you and the latest conversation, so she can pick it up after a restart. You can see, delete or turn off her memory in Dev Deck → **Capri // Brain**.
 - **`capri_voice/`**: voice configuration, API keys (`voice_config.local.json`) and the audio cache.
 - **`python-env/`**: the Python environment of the voice engine (installed by the first-run wizard).
 - **`learned_drawings/`**: drawings Capri learned through the scanner.
@@ -216,6 +217,16 @@ Capri understands commands in both English and Spanish.
 | `update yourself` / `actualizate` | Looks for a new version and installs it. A `.deb` asks for your password. |
 | `clip that` / `clipeá eso` | Saves the last moments of your game with ShadowPlay (`F8`). |
 | `are you bored?` / `¿estás aburrida?` | She finds something to do: music, a video or a search. |
+| `exit gaming mode` / `salí del modo gaming` | Brings her back from Gaming Mode. Also from the tray icon menu. |
+
+### Memory
+| Command | Action |
+| :--- | :--- |
+| `remember that I main Jinx` / `acordate de que juego de Jinx` | She saves it and can bring it up later, even after a restart. |
+| `forget that I main Jinx` / `olvidate de que juego de Jinx` | She deletes what matches. |
+| `what do you remember about me?` / `¿qué recordás de mí?` | She tells you what she has saved. |
+
+She also picks up lasting facts from your chats on her own, in the background, when the conversation goes quiet. What is on your screen is never saved, and anything that looks like a password, number or address is dropped. To wipe everything, use **Clear all** in Dev Deck → **Capri // Brain**. With a cloud model, the memories she uses in each reply go to that provider.
 
 The drawing, League of Legends and Cyberpunk 2077 commands are in [section 8](#8-autonomous-drawing-in-paint) and [section 9](#9-live-game-integrations-lol--cyberpunk-2077).
 

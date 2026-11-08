@@ -3,6 +3,7 @@ import { Cpu, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { LlmProviderForm, LlmProviderFormHandle } from '../components/LlmProviderForm'
 import { useAgentStore } from '../stores/useAgentStore'
 import { useT } from '../utils/useUiLang'
+import { MemorySettings } from './MemorySettings'
 
 interface AgentSettingsModalProps {
   isOpen: boolean
@@ -190,6 +191,9 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
               <span className="shrink-0">{t('sp_chars', { n: promptText.length })}</span>
             </div>
           </div>
+
+          {/* What she remembers about the user */}
+          <MemorySettings isCloud={provider === 'cloud'} />
         </div>
 
         <div className="px-5 py-3.5 border-t border-[var(--cp-red-line)] flex justify-end gap-2 shrink-0">

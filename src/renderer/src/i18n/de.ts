@@ -347,5 +347,25 @@ export const de: Messages = {
   sp_resetConfirm: 'Zum Ersetzen erneut klicken',
   sp_resetDone: 'Standardprompt wiederhergestellt',
   sp_chars: '{n} Zeichen',
-  sp_saveError: 'Die Änderungen konnten nicht gespeichert werden. Prüfe, ob der Ordner beschreibbar ist, und versuch es erneut.'
+  sp_saveError: 'Die Änderungen konnten nicht gespeichert werden. Prüfe, ob der Ordner beschreibbar ist, und versuch es erneut.',
+
+  // Memory (Capri // Brain settings)
+  mem_title: 'Gedächtnis',
+  mem_count: '{n} gespeichert',
+  mem_enabled: 'Dinge merken',
+  mem_privacyLocal: 'Alles, woran sie sich erinnert, bleibt auf diesem PC. Sie merkt sich Dinge über dich aus euren Gesprächen, und du kannst jedes davon löschen. Was auf deinem Bildschirm ist, wird nie gespeichert.',
+  mem_privacyCloud: 'Du nutzt ein Cloud-Modell: Die Erinnerungen, die sie in jeder Antwort nutzt, und das Gespräch, aus dem sie lernt, gehen an diesen Anbieter.',
+  mem_addPlaceholder: 'Etwas, das sie sich über dich merken soll…',
+  mem_add: 'Hinzufügen',
+  mem_saved: 'Gespeichert.',
+  mem_known: 'Das wusste sie schon.',
+  mem_sensitive: 'Nicht gespeichert: Es sieht nach einem Passwort, einer Nummer oder einer Adresse aus.',
+  mem_empty: 'Noch nichts gespeichert. Erzähl ihr etwas oder sag „merk dir, dass…“.',
+  mem_fromYou: 'Du',
+  mem_learned: 'Gelernt',
+  mem_delete: 'Vergessen',
+  mem_thread: 'Das letzte Gespräch ist gespeichert ({n} Nachrichten), damit du es nach einem Neustart fortsetzen kannst.',
+  mem_noThread: 'Kein Gespräch gespeichert.',
+  mem_clearAll: 'Alles löschen',
+  mem_clearConfirm: 'Zum Löschen von allem erneut klicken'
 }

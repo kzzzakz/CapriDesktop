@@ -347,5 +347,25 @@ export const ja: Messages = {
   sp_resetConfirm: 'もう一度クリックすると置き換えます',
   sp_resetDone: 'デフォルトのプロンプトに戻しました',
   sp_chars: '{n} 文字',
-  sp_saveError: '変更を保存できませんでした。フォルダーに書き込めるか確認して、もう一度お試しください。'
+  sp_saveError: '変更を保存できませんでした。フォルダーに書き込めるか確認して、もう一度お試しください。',
+
+  // Memory (Capri // Brain settings)
+  mem_title: 'メモリー',
+  mem_count: '{n}件保存済み',
+  mem_enabled: '覚えておく',
+  mem_privacyLocal: '彼女が覚えたことはすべてこのPCに残ります。会話からあなたのことを覚え、どれでも削除できます。画面の内容は保存されません。',
+  mem_privacyCloud: 'クラウドのモデルを使用中です：各返答で使う記憶と、学習に使う会話がそのプロバイダーに送信されます。',
+  mem_addPlaceholder: '彼女に覚えておいてほしいこと…',
+  mem_add: '追加',
+  mem_saved: '保存しました。',
+  mem_known: 'もう覚えていました。',
+  mem_sensitive: '保存しませんでした：パスワード、番号、住所のようです。',
+  mem_empty: 'まだ何も保存されていません。話しかけるか「〜って覚えておいて」と言ってください。',
+  mem_fromYou: 'あなた',
+  mem_learned: '学習',
+  mem_delete: '忘れる',
+  mem_thread: '前回の会話を保存しています（{n}件）。再起動後も続けられます。',
+  mem_noThread: '保存された会話はありません。',
+  mem_clearAll: 'すべて消去',
+  mem_clearConfirm: 'もう一度クリックですべて消去'
 }

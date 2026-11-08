@@ -347,5 +347,25 @@ export const es: Messages = {
   sp_resetConfirm: 'Hacé clic de nuevo para reemplazarlo',
   sp_resetDone: 'Prompt predeterminado restaurado',
   sp_chars: '{n} caracteres',
-  sp_saveError: 'No se pudieron guardar los cambios. Revisá que la carpeta se pueda escribir y probá de nuevo.'
+  sp_saveError: 'No se pudieron guardar los cambios. Revisá que la carpeta se pueda escribir y probá de nuevo.',
+
+  // Memory (Capri // Brain settings)
+  mem_title: 'Memoria',
+  mem_count: '{n} guardados',
+  mem_enabled: 'Recordar cosas',
+  mem_privacyLocal: 'Todo lo que recuerda se queda en esta PC. Aprende cosas sobre vos de las charlas y podés borrar cualquiera. Lo que hay en tu pantalla nunca se guarda.',
+  mem_privacyCloud: 'Estás usando un modelo en la nube: los recuerdos que usa en cada respuesta, y la charla de la que aprende, se envían a ese proveedor.',
+  mem_addPlaceholder: 'Algo que debería recordar de vos…',
+  mem_add: 'Agregar',
+  mem_saved: 'Guardado.',
+  mem_known: 'Eso ya lo recordaba.',
+  mem_sensitive: 'No se guardó: parece una contraseña, un número o una dirección.',
+  mem_empty: 'Todavía no hay nada guardado. Contale cosas o decile "acordate de que…".',
+  mem_fromYou: 'Vos',
+  mem_learned: 'Aprendido',
+  mem_delete: 'Olvidar esto',
+  mem_thread: 'La última conversación está guardada ({n} mensajes), así la podés retomar después de reiniciar.',
+  mem_noThread: 'No hay ninguna conversación guardada.',
+  mem_clearAll: 'Borrar todo',
+  mem_clearConfirm: 'Hacé clic de nuevo para borrar todo'
 }

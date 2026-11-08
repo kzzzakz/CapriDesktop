@@ -230,8 +230,8 @@ export class AgentManager extends EventEmitter {
     return await ollamaService.ensureRunning()
   }
 
-  public clearHistory(): void {
-    this.capriLocal.clearHistory()
+  public clearHistory(startup = false): void {
+    this.capriLocal.clearHistory(startup)
   }
 
   public async sendPrompt(

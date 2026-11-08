@@ -347,5 +347,25 @@ export const zh: Messages = {
   sp_resetConfirm: '再点一次以替换',
   sp_resetDone: '已恢复默认提示词',
   sp_chars: '{n} 个字符',
-  sp_saveError: '无法保存更改。请检查文件夹是否可写入,然后重试。'
+  sp_saveError: '无法保存更改。请检查文件夹是否可写入,然后重试。',
+
+  // Memory (Capri // Brain settings)
+  mem_title: '记忆',
+  mem_count: '已保存 {n} 条',
+  mem_enabled: '记住事情',
+  mem_privacyLocal: '她记住的一切都只保存在这台电脑上。她会从聊天中了解你，你可以删除其中任何一条。屏幕上的内容永远不会被保存。',
+  mem_privacyCloud: '你正在使用云端模型：她在每次回复中使用的记忆，以及她学习所用的聊天内容，会发送给该提供商。',
+  mem_addPlaceholder: '她应该记住的关于你的事…',
+  mem_add: '添加',
+  mem_saved: '已保存。',
+  mem_known: '她早就记得了。',
+  mem_sensitive: '未保存：看起来像密码、号码或地址。',
+  mem_empty: '还没有保存任何内容。跟她聊聊，或者说"记住……"。',
+  mem_fromYou: '你',
+  mem_learned: '学到的',
+  mem_delete: '忘掉这条',
+  mem_thread: '上一次对话已保存（{n} 条消息），重启后可以继续。',
+  mem_noThread: '没有保存的对话。',
+  mem_clearAll: '全部清除',
+  mem_clearConfirm: '再点一次以全部清除'
 }

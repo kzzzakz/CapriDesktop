@@ -825,10 +825,21 @@
  "[curious] I can't find {0} anywhere, choomba. Show me where it is and I'll remember it.",
  "Where is {0}?",
  "I couldn't open {0}, choomba. Ask me again whenever you want and show me where it is.",
- "[happy] Okay, I'm staying right here. [playful] I won't move until you move me.",
+ "[happy] Okay, I'm staying right here. [playful] I won't move until you tell me I can.",
  "[excited] Free again! Back to wandering around, choomba.",
  "[happy] I'm on version {0}, choomba.",
  "Show Capri",
  "Dev Deck",
- "Quit"
+ "Quit",
+ "[thoughtful] To wipe my whole memory, open my Brain settings and use Clear all. That one I'd rather you do by hand, choomba.",
+ "[curious] My memory is turned off right now. You can turn it on in my Brain settings.",
+ "[warmly] Here's what I remember about you, {name}: {0}.",
+ "[playful] Nothing saved about you yet, {name}. Tell me something and I'll remember it.",
+ "[thoughtful] I'd rather not keep that one: it looks like a password, a number or an address. Safer in your head than in mine.",
+ "[curious] Remember what? Tell me the whole thing, choomba.",
+ "[cheerful] I already had that one saved: {0}.",
+ "[happy] Got it, I'll remember that: {0}.",
+ "[happy] Done, I forgot it: {0}.",
+ "[curious] I don't have anything like that saved: {0}.",
+ "Gaming Mode"
 ]

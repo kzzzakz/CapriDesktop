@@ -345,7 +345,27 @@ export const en = {
   sp_resetConfirm: 'Click again to replace it',
   sp_resetDone: 'Default prompt restored',
   sp_chars: '{n} characters',
-  sp_saveError: 'Could not save the changes. Check that the folder can be written to and try again.'
+  sp_saveError: 'Could not save the changes. Check that the folder can be written to and try again.',
+
+  // Memory (Capri // Brain settings)
+  mem_title: 'Memory',
+  mem_count: '{n} saved',
+  mem_enabled: 'Remember things',
+  mem_privacyLocal: 'Everything she remembers stays on this PC. She picks up facts about you from your chats and you can delete any of them. What is on your screen is never saved.',
+  mem_privacyCloud: 'You are using a cloud model: the memories she uses in each reply, and the chat she learns from, are sent to that provider.',
+  mem_addPlaceholder: 'Something she should remember about you…',
+  mem_add: 'Add',
+  mem_saved: 'Saved.',
+  mem_known: 'She already remembered that.',
+  mem_sensitive: 'Not saved: it looks like a password, a number or an address.',
+  mem_empty: 'Nothing saved yet. Tell her things, or say "remember that…".',
+  mem_fromYou: 'You',
+  mem_learned: 'Learned',
+  mem_delete: 'Forget this',
+  mem_thread: 'The last conversation is saved ({n} messages), so you can pick it up after a restart.',
+  mem_noThread: 'No conversation saved.',
+  mem_clearAll: 'Clear all',
+  mem_clearConfirm: 'Click again to erase everything'
 }
 
 export type Messages = typeof en

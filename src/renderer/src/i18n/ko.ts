@@ -347,5 +347,25 @@ export const ko: Messages = {
   sp_resetConfirm: '한 번 더 클릭하면 바뀝니다',
   sp_resetDone: '기본 프롬프트를 복원했습니다',
   sp_chars: '{n}자',
-  sp_saveError: '변경 사항을 저장할 수 없습니다. 폴더에 쓸 수 있는지 확인하고 다시 시도하세요.'
+  sp_saveError: '변경 사항을 저장할 수 없습니다. 폴더에 쓸 수 있는지 확인하고 다시 시도하세요.',
+
+  // Memory (Capri // Brain settings)
+  mem_title: '기억',
+  mem_count: '{n}개 저장됨',
+  mem_enabled: '기억하기',
+  mem_privacyLocal: '그녀가 기억하는 모든 것은 이 PC에만 남습니다. 대화에서 당신에 대해 배우며, 어떤 기억이든 지울 수 있습니다. 화면의 내용은 절대 저장되지 않습니다.',
+  mem_privacyCloud: '클라우드 모델을 사용 중입니다: 답변마다 쓰는 기억과 학습에 쓰는 대화가 해당 제공업체로 전송됩니다.',
+  mem_addPlaceholder: '그녀가 당신에 대해 기억해야 할 것…',
+  mem_add: '추가',
+  mem_saved: '저장했습니다.',
+  mem_known: '이미 기억하고 있었어요.',
+  mem_sensitive: '저장하지 않았습니다: 비밀번호, 번호 또는 주소로 보입니다.',
+  mem_empty: '아직 저장된 것이 없습니다. 이야기해 주거나 "~ 기억해줘"라고 말하세요.',
+  mem_fromYou: '당신',
+  mem_learned: '학습함',
+  mem_delete: '잊기',
+  mem_thread: '마지막 대화가 저장되어 있어({n}개 메시지) 재시작 후에도 이어갈 수 있습니다.',
+  mem_noThread: '저장된 대화가 없습니다.',
+  mem_clearAll: '모두 지우기',
+  mem_clearConfirm: '한 번 더 클릭하면 모두 지워집니다'
 }

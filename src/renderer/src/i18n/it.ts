@@ -347,5 +347,25 @@ export const it: Messages = {
   sp_resetConfirm: 'Clicca di nuovo per sostituirlo',
   sp_resetDone: 'Prompt predefinito ripristinato',
   sp_chars: '{n} caratteri',
-  sp_saveError: 'Impossibile salvare le modifiche. Controlla che la cartella sia scrivibile e riprova.'
+  sp_saveError: 'Impossibile salvare le modifiche. Controlla che la cartella sia scrivibile e riprova.',
+
+  // Memory (Capri // Brain settings)
+  mem_title: 'Memoria',
+  mem_count: '{n} salvati',
+  mem_enabled: 'Ricordare le cose',
+  mem_privacyLocal: 'Tutto ciò che ricorda resta su questo PC. Impara cose su di te dalle conversazioni e puoi cancellarne qualsiasi. Quello che hai sullo schermo non viene mai salvato.',
+  mem_privacyCloud: 'Stai usando un modello nel cloud: i ricordi che usa in ogni risposta, e la conversazione da cui impara, vengono inviati a quel fornitore.',
+  mem_addPlaceholder: 'Qualcosa che dovrebbe ricordare di te…',
+  mem_add: 'Aggiungi',
+  mem_saved: 'Salvato.',
+  mem_known: 'Se lo ricordava già.',
+  mem_sensitive: 'Non salvato: sembra una password, un numero o un indirizzo.',
+  mem_empty: 'Ancora niente di salvato. Raccontale qualcosa o di’ "ricorda che…".',
+  mem_fromYou: 'Tu',
+  mem_learned: 'Imparato',
+  mem_delete: 'Dimentica questo',
+  mem_thread: 'L’ultima conversazione è salvata ({n} messaggi), così puoi riprenderla dopo un riavvio.',
+  mem_noThread: 'Nessuna conversazione salvata.',
+  mem_clearAll: 'Cancella tutto',
+  mem_clearConfirm: 'Clicca di nuovo per cancellare tutto'
 }
