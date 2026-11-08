@@ -98,3 +98,27 @@ export function clampGamingOpacity(value: unknown): number {
   const n = typeof value === 'number' && Number.isFinite(value) ? value : 1
   return Math.min(1, Math.max(GAMING_OPACITY_MIN, n))
 }
+
+/**
+ * The arrows as she says them, in the form that goes after "press" in each language, so a spoken line
+ * reads naturally. Everything else is said the way formatHotkey() shows it ("Ctrl + Alt + K").
+ */
+const SPOKEN_ARROWS: Record<string, Record<'Up' | 'Down' | 'Left' | 'Right', string>> = {
+  en: { Up: 'the up arrow', Down: 'the down arrow', Left: 'the left arrow', Right: 'the right arrow' },
+  es: { Up: 'la flecha para arriba', Down: 'la flecha para abajo', Left: 'la flecha izquierda', Right: 'la flecha derecha' },
+  pt: { Up: 'a seta para cima', Down: 'a seta para baixo', Left: 'a seta para a esquerda', Right: 'a seta para a direita' },
+  fr: { Up: 'la flèche du haut', Down: 'la flèche du bas', Left: 'la flèche de gauche', Right: 'la flèche de droite' },
+  it: { Up: 'la freccia su', Down: 'la freccia giù', Left: 'la freccia sinistra', Right: 'la freccia destra' },
+  de: { Up: 'den Pfeil nach oben', Down: 'den Pfeil nach unten', Left: 'den Pfeil nach links', Right: 'den Pfeil nach rechts' },
+  ru: { Up: 'стрелку вверх', Down: 'стрелку вниз', Left: 'стрелку влево', Right: 'стрелку вправо' },
+  ja: { Up: '上矢印キー', Down: '下矢印キー', Left: '左矢印キー', Right: '右矢印キー' },
+  ko: { Up: '위 화살표', Down: '아래 화살표', Left: '왼쪽 화살표', Right: '오른쪽 화살표' },
+  zh: { Up: '上方向键', Down: '下方向键', Left: '左方向键', Right: '右方向键' }
+}
+
+/** How she says a key out loud: the TTS can't read "↓" */
+export function spokenHotkey(accelerator: string, lang: string | null | undefined): string {
+  const arrows = SPOKEN_ARROWS[String(lang || '').toLowerCase().slice(0, 2)] ?? SPOKEN_ARROWS.en
+  if (accelerator in arrows) return arrows[accelerator as keyof typeof arrows]
+  return formatHotkey(accelerator)
+}

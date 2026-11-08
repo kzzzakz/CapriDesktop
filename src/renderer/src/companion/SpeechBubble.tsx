@@ -3,6 +3,7 @@ import { personalize } from '../utils/userName'
 import React from 'react'
 import { X } from 'lucide-react'
 import { useUiLang } from '../utils/useUiLang'
+import { useHotkeyLabels } from '../utils/useHotkeys'
 
 interface SpeechBubbleProps {
   text: string | null
@@ -40,6 +41,7 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
 }) => {
   const uiLang = useUiLang()
   const es = uiLang === 'es'
+  const talkKey = useHotkeyLabels().talk
   // Dynamic animated thinking dots: thinking. -> thinking.. -> thinking...
   const [thinkingDots, setThinkingDots] = React.useState('.')
   React.useEffect(() => {
@@ -130,7 +132,7 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between mt-0.5 text-[9px] text-zinc-400 font-mono">
-                  <span>{es ? '↓ envía · Esc cancela' : localizeLine('↓ sends · Esc cancels', uiLang)}</span>
+                  <span>{es ? `${talkKey} envía · Esc cancela` : localizeLine(`${talkKey} sends · Esc cancels`, uiLang)}</span>
                   <div className="flex items-center gap-1">
                   {onCancelVoice && isRecordingVoice && (
                     <button
@@ -150,7 +152,7 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
                       className="px-2 py-0.5 rounded bg-[#ff003c]/20 hover:bg-[#ff003c]/40 text-[#ff0055] border border-[#ff003c]/70 text-[10px] font-bold cursor-pointer transition-colors shadow-sm flex items-center gap-1"
                     >
                       <span>{es ? '[ENVIAR]' : `[${localizeLine('Send', uiLang).toUpperCase()}]`}</span>
-                      <span className="text-[9px] px-1 bg-[#ff003c] text-white rounded">↓</span>
+                      <span className="text-[9px] px-1 bg-[#ff003c] text-white rounded">{talkKey}</span>
                     </button>
                   )}
                   </div>

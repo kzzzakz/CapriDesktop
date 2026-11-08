@@ -196,6 +196,20 @@ test('main rejects unlocks over a game and restores Ctrl interaction after alt-t
   for (const timer of manager.mouseForwardTimers.values()) clearInterval(timer)
 })
 
+test('automatic gaming activation preserves manual ownership and can be promoted to manual', () => {
+  const { WindowManager } = load('windows/window-manager.ts')
+  const manager = new WindowManager()
+  manager.setGamingMode(true, 'top-left', 'game')
+  assert.equal(manager.isGamingModeFromGame(), true)
+  manager.setGamingMode(true)
+  assert.equal(manager.isGamingModeFromGame(), false)
+  manager.setGamingMode(true, 'top-left', 'game')
+  assert.equal(manager.isGamingModeFromGame(), false)
+  manager.setGamingMode(false)
+  manager.setGamingMode(true, 'top-left', 'game')
+  assert.equal(manager.isGamingModeFromGame(), true)
+})
+
 test('entering gaming mode leaves window opacity at full strength for the configured sprite opacity', () => {
   const { WindowManager } = load('windows/window-manager.ts', {
     '../ipc/channels': { IPC_CHANNELS: {} },

@@ -144,9 +144,9 @@ export class GameEventBus extends EventEmitter {
       const active = valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()
       if (active && !this.nativeGameActive) {
         this.engagedGamingMode = true
-        if (!windowManager.isGamingModeActive()) windowManager.setGamingMode(true)
+        if (!windowManager.isGamingModeActive()) windowManager.setGamingMode(true, 'top-left', 'game')
       } else if (!active && this.nativeGameActive && this.engagedGamingMode) {
-        if (!lolLiveAdapter.isRunning() && !cyberpunkAdapter.isCyberpunkActive()) windowManager.setGamingMode(false)
+        if (windowManager.isGamingModeFromGame() && !lolLiveAdapter.isRunning() && !cyberpunkAdapter.isCyberpunkActive()) windowManager.setGamingMode(false)
         this.engagedGamingMode = false
       }
       this.nativeGameActive = active

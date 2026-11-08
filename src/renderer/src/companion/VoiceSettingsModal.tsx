@@ -23,6 +23,9 @@ import {
   Radio
 } from 'lucide-react'
 
+/** Capri's voice on Fish Audio: used when no other voice model is set */
+const DEFAULT_FISH_VOICE_ID = 'f6f9169f53244cbfb3bd8ce69bf2db10'
+
 export interface VoiceConfigData {
   provider: 'edge-tts' | 'elevenlabs' | 'fish-audio'
   active_voice: string
@@ -101,7 +104,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
 
   // Fish Audio State
   const [fishApiKey, setFishApiKey] = useState('')
-  const [fishRefId, setFishRefId] = useState('')
+  const [fishRefId, setFishRefId] = useState(DEFAULT_FISH_VOICE_ID)
   const [fishModel, setFishModel] = useState('s2.1-pro-free')
   const [fishFormat, setFishFormat] = useState('mp3')
   const [showFishKey, setShowFishKey] = useState(false)
@@ -146,7 +149,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
 
         if (cfg.fish_audio) {
           setFishApiKey(cfg.fish_audio.api_key || '')
-          setFishRefId(cfg.fish_audio.reference_id || '')
+          setFishRefId(cfg.fish_audio.reference_id || DEFAULT_FISH_VOICE_ID)
           setFishModel(cfg.fish_audio.model || 's2.1-pro-free')
           setFishFormat(cfg.fish_audio.format || 'mp3')
         }
@@ -180,7 +183,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
       },
       fish_audio: {
         api_key: fishApiKey.trim(),
-        reference_id: fishRefId.trim(),
+        reference_id: fishRefId.trim() || DEFAULT_FISH_VOICE_ID,
         model: fishModel.trim() || 's2.1-pro-free',
         format: fishFormat
       }
@@ -292,6 +295,19 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
           <SoundSettings />
           <HotkeySettings />
           <BehaviorSettings />
+          <label className="block space-y-2">
+            <span className="text-stone-300 font-bold tracking-wide">{t('music_platformTitle')}</span>
+            <select
+              value={musicPlatform}
+              onChange={(e) => setMusicPlatform(e.target.value as 'youtube_music' | 'spotify')}
+              className="cp-input w-full px-3 py-2 text-[15px] cursor-pointer"
+              style={{ colorScheme: 'dark' }}
+            >
+              <option value="spotify">Spotify</option>
+              <option value="youtube_music">YouTube Music</option>
+            </select>
+            <span className="block text-[13px] text-stone-400">{t('music_platformHelp')}</span>
+          </label>
 
           <label className="block space-y-2">
             <span className="text-stone-300 font-bold tracking-wide">{t('music_platformTitle')}</span>

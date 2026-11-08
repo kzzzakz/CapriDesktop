@@ -3,6 +3,7 @@ import { Mic, MicOff, Loader2, X } from 'lucide-react'
 import { useVoiceInput } from '../utils/useVoiceInput'
 import { useCompanionStore } from '../stores/useCompanionStore'
 import { useT } from '../utils/useUiLang'
+import { useHotkeyLabels } from '../utils/useHotkeys'
 import { stopDevVoice } from '../utils/devVoice'
 
 interface MicButtonProps {
@@ -12,10 +13,11 @@ interface MicButtonProps {
   className?: string
 }
 
-/** Dev Deck microphone: click or Down arrow to talk to Capri, again to send, Esc to cancel */
+/** Dev Deck microphone: click or her talk key to talk to Capri, again to send, Esc to cancel */
 export const MicButton: React.FC<MicButtonProps> = ({ onText, disabled, className = '' }) => {
   const setSpeech = useCompanionStore((s) => s.setSpeech)
   const t = useT()
+  const keys = useHotkeyLabels()
 
   const { state, level, toggle, cancel } = useVoiceInput({
     onText,
@@ -68,7 +70,7 @@ export const MicButton: React.FC<MicButtonProps> = ({ onText, disabled, classNam
     return () => unsub?.()
   }, [])
 
-  const title = recording ? t('mic_recording') : busy ? t('mic_transcribing') : t('mic_talk')
+  const title = recording ? t('mic_recording', keys) : busy ? t('mic_transcribing') : t('mic_talk', keys)
 
   return (
     <>

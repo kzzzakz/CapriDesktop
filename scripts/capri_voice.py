@@ -412,6 +412,9 @@ def synthesize_elevenlabs(text: str, out_path: str, el_cfg: dict, synth_preset: 
         sys.stderr.write(f"[ElevenLabs] Request failed: {e}\n")
         return False
 
+# Capri's voice on Fish Audio, used when no other voice model is set
+DEFAULT_FISH_VOICE_ID = "f6f9169f53244cbfb3bd8ce69bf2db10"
+
 def synthesize_fish_audio(text: str, out_path: str, fish_cfg: dict, synth_preset: str = "cyber_android", pitch_str: str = "+32Hz") -> bool:
     import urllib.request
     import urllib.error
@@ -422,8 +425,8 @@ def synthesize_fish_audio(text: str, out_path: str, fish_cfg: dict, synth_preset
         sys.stderr.write("[Fish Audio] Error: Missing API Key\n")
         return False
 
-    # Voice model to use (your own or one from the Fish Audio library). Empty = Fish Audio's default voice
-    ref_id = fish_cfg.get("reference_id", "").strip() or os.environ.get("FISH_AUDIO_REFERENCE_ID", "").strip()
+    # Voice model to use (your own or one from the Fish Audio library). Empty = Capri's voice
+    ref_id = fish_cfg.get("reference_id", "").strip() or os.environ.get("FISH_AUDIO_REFERENCE_ID", "").strip() or DEFAULT_FISH_VOICE_ID
     model = fish_cfg.get("model", "").strip() or os.environ.get("FISH_AUDIO_MODEL", "").strip() or "s2.1-pro-free"
     url = "https://api.fish.audio/v1/tts"
 

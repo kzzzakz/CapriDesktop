@@ -227,7 +227,7 @@ test('overtime queues require a decisive margin and final score gaps do not bloc
   assert.deepEqual(types({ ...baseline, queue: 'unknown' }, { ...baseline, queue: 'unknown', allyScore: 13 }), [])
 })
 
-test('sudden-death queues end at 13–12 in either direction', () => {
+test('sudden-death queues end at 13-12 in either direction', () => {
   for (const queue of ['unrated', 'newmap']) {
     for (const isWin of [true, false]) {
       const before = { ...baseline, queue, allyScore: 12, enemyScore: 12 }
@@ -253,6 +253,7 @@ test('decisive Valorant result bypasses global cooldown five seconds after death
       getStatus: () => ({ isRunning: false }),
       setCompanionSpeech: text => spoken.push(text)
     } },
+    './valorant-templates': { valorantFallback: () => 'reaction' },
     './factual-commentator': { factualFallback: (_event, line) => line, narrateFacts: async (_event, line) => line },
     './templates': { getRandomReactionTemplate: () => 'reaction' },
     '../consciousness-service': { consciousnessService: { getPreferredLanguage: () => 'en' } }
@@ -387,7 +388,7 @@ test('Valorant captures only during foreground matches and checks foreground aft
         emitGame(type, payload) { globalThis.valorantCaptureTest.events.push({type, payload}) }
       }; export const findGameProcess = async () => null;`),
       '../../../game-presence-service': moduleUrl(
-        `export const gamePresenceService = { getForegroundApp: () => globalThis.valorantCaptureTest.foreground };`
+        `export const foregroundApp = async () => globalThis.valorantCaptureTest.foreground;`
       ),
       '../../../scanner-service': moduleUrl(`export const scannerService = { captureGameWindow: async () => {
         const c = globalThis.valorantCaptureTest; c.captures++;

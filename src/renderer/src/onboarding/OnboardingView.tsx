@@ -3,6 +3,7 @@ import { Check, Download, X, ChevronRight, ChevronLeft, Mic, Film, Cpu, Brain, S
 import type { SetupStatus } from '../../../preload/index.d'
 import { LlmProviderForm, LlmProviderFormHandle } from '../components/LlmProviderForm'
 import { MessageKey, toUiLang, translator, UI_LANGUAGES, UiLang } from '../i18n'
+import { useHotkeyLabels } from '../utils/useHotkeys'
 
 type StepId = 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona'
 
@@ -81,6 +82,8 @@ export const OnboardingView: React.FC = () => {
   const logRef = useRef<HTMLDivElement>(null)
   const brainRef = useRef<LlmProviderFormHandle>(null)
   const t = useMemo(() => translator(lang), [lang])
+  // When the setup runs again after a rebind, the last page names the keys she really uses
+  const hotkeyLabels = useHotkeyLabels()
   const order = provider !== 'local' ? CLOUD_ORDER : LOCAL_ORDER
 
   useEffect(() => {
@@ -363,7 +366,7 @@ export const OnboardingView: React.FC = () => {
 
         {page === 4 && (
           <div className="space-y-6">
-            <PageHead index={4} tag={t(PAGE_TAGS[4])} title={t('ob_doneTitle', { name: displayName })} sub={t('ob_doneSub')} />
+            <PageHead index={4} tag={t(PAGE_TAGS[4])} title={t('ob_doneTitle', { name: displayName })} sub={t('ob_doneSub', hotkeyLabels)} />
             {!allReady && <div className="cp-frame is-warn px-4 py-3 text-[14px] leading-snug text-[var(--cp-yellow)]">{t('ob_missing')}</div>}
           </div>
         )}

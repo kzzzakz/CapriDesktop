@@ -1,4 +1,5 @@
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
+import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -8,6 +9,7 @@ import {
   RoamingStatusPayload,
   AgentMode,
   AgentConfigPayload,
+  SystemPromptPayload,
   ScannerBounds,
   ScannerStatusPayload,
   ScannerScanResult,
@@ -241,6 +243,31 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.AGENT_DETECT_OLLAMA),
 
     confirmClaudeBypass: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.LLM_CONFIRM_CLAUDE_BYPASS),
+    // Editable system prompt
+    getSystemPrompt: (): Promise<SystemPromptPayload> => ipcRenderer.invoke(IPC_CHANNELS.AGENT_GET_SYSTEM_PROMPT),
+
+    setSystemPrompt: (text: string): Promise<SystemPromptPayload> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AGENT_SET_SYSTEM_PROMPT, text),
+
+    resetSystemPrompt: (): Promise<SystemPromptPayload> => ipcRenderer.invoke(IPC_CHANNELS.AGENT_RESET_SYSTEM_PROMPT),
+
+    setPersonaStyle: (style: { tone?: SystemPromptPayload['tone']; teasing?: SystemPromptPayload['teasing'] }): Promise<SystemPromptPayload> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AGENT_SET_PERSONA_STYLE, style),
+
+    // Her long-term memory
+    getMemory: (): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GET),
+    setMemoryEnabled: (enabled: boolean): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SET_ENABLED, enabled),
+    addMemory: (text: string): Promise<MemoryAddResult> => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_ADD, text),
+    deleteMemory: (id: string): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE, id),
+    clearMemory: (): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CLEAR),
+    onMemoryChanged: (callback: (memory: MemorySnapshot) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, memory: MemorySnapshot): void => callback(memory)
+      ipcRenderer.on(IPC_CHANNELS.MEMORY_CHANGED, subscription)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.MEMORY_CHANGED, subscription)
+      }
+    },
+
     getLlmSettings: (): Promise<LlmPublicSettings> => ipcRenderer.invoke(IPC_CHANNELS.LLM_GET_SETTINGS),
 
     setLlmSettings: (update: LlmSettingsUpdate): Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }> =>
@@ -258,8 +285,8 @@ const api = {
     testLlm: (baseUrl: string, model: string, apiKey?: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST, baseUrl, model, apiKey),
 
-    clearHistory: (): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AGENT_CLEAR_HISTORY),
+    clearHistory: (options?: { startup?: boolean }): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AGENT_CLEAR_HISTORY, options),
 
     respondPermission: (requestId: string, approved: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.AGENT_PERMISSION_RESPONSE, { requestId, approved }),

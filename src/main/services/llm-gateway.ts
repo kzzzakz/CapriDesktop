@@ -15,6 +15,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { scriptPath } from './app-paths'
 import { personalize } from './user-profile'
+import { DEFAULT_SYSTEM_PROMPT, getSystemPromptPersona } from './system-prompt-store'
 
 export type LlmProvider = 'local' | 'cloud' | 'claude-code' | 'codex'
 export type LlmErrorCode = 'auth' | 'quota' | 'model' | 'network' | 'insecure' | 'other'
@@ -43,6 +44,7 @@ export interface LlmSettingsUpdate {
 }
 
 interface StoredSettings {
+  localModel?: string
   provider: LlmProvider
   preset: string
   baseUrl: string
@@ -114,6 +116,14 @@ function keyWouldLeakInClear(baseUrl: string, key: string): boolean {
 export function isRemoteMode(): boolean {
   const s = load()
   return s.provider === 'codex' || s.provider === 'claude-code' || (s.provider === 'cloud' && !!s.baseUrl && !!s.model)
+}
+
+export function getLocalModel(): string {
+  return load().localModel || 'capri'
+}
+
+export function setLocalModel(model: string): void {
+  persist({ ...load(), localModel: model })
 }
 
 export function getLlmSettings(): LlmPublicSettings {
@@ -331,6 +341,9 @@ let personaCache: string | null | undefined
 
 /** The "capri" Ollama model carries its persona in the Modelfile: a cloud model needs it in the request */
 function capriPersona(): string | null {
+  // The personality written in Capri // Brain wins over the bundled one
+  const custom = getSystemPromptPersona()
+  if (custom !== DEFAULT_SYSTEM_PROMPT) return personalize(custom)
   if (personaCache === undefined) {
     try {
       const match = fs.readFileSync(scriptPath('Modelfile.capri'), 'utf-8').match(/SYSTEM\s+"""([\s\S]*?)"""/)

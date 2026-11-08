@@ -17,6 +17,10 @@ import { consciousnessService } from './consciousness-service'
 import { ollamaService } from './ollama-service'
 import { isLinux, isWindows, linuxForegroundWindow } from './platform'
 import { windowManager } from '../windows/window-manager'
+import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
+import { wutheringWavesAdapter } from './game/adapters/wuthering-waves/wuthering-waves-adapter'
+import { lolLiveAdapter } from './game/adapters/lol'
+import { cyberpunkAdapter } from './game/adapters/cyberpunk'
 import {
   detectGameName,
   fallbackGameComment,
@@ -170,7 +174,10 @@ export class GamePresenceService {
 
     if (this.game && !isAlive(this.game.pid)) {
       console.log(`[GamePresence] ${this.game.name} closed.`)
-      if (this.game.engagedGamingMode) windowManager.setGamingMode(false)
+      if (windowManager.isGamingModeFromGame() && !valorantAdapter.isRunning() &&
+          !wutheringWavesAdapter.isRunning() && !lolLiveAdapter.isRunning() && !cyberpunkAdapter.isCyberpunkActive()) {
+        windowManager.setGamingMode(false)
+      }
       this.game = null
     }
 
@@ -179,7 +186,7 @@ export class GamePresenceService {
       // Engaged once per game: if the user turns Gaming Mode off, it stays off for this session
       const engaged = !windowManager.isGamingModeActive()
       console.log(`[GamePresence] Playing ${name}.`)
-      if (engaged) windowManager.setGamingMode(true)
+      if (engaged) windowManager.setGamingMode(true, 'top-left', 'game')
       this.game = { name, pid: current.pid, engagedGamingMode: engaged }
       this.nextCommentAt = Date.now() + FIRST_COMMENT_MS
       this.recent = []

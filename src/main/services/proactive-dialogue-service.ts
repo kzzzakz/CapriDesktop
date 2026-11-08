@@ -172,13 +172,13 @@ export class ProactiveDialogueService {
       return false
     }
 
-    // In Gaming Mode (LoL / Cyberpunk), let in-game telemetry handle voice commentary
+    // In Gaming Mode (LoL / Cyberpunk / Valorant / WuWa), let in-game telemetry handle voice commentary
     // But if Gaming Mode is stuck on with no active game running, auto-heal and allow desktop conversation
     if (windowManager.isGamingModeActive()) {
       const isCyberpunk = cyberpunkAdapter?.isCyberpunkActive?.() ?? false
       const isLol = lolLiveAdapter?.isRunning?.() ?? false
       const isNativeGame = valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()
-      if (!isCyberpunk && !isLol && !isNativeGame && !gamePresenceService.isGameSessionActive()) {
+      if (!isCyberpunk && !isLol && !isNativeGame && !gamePresenceService.isGameSessionActive() && windowManager.isGamingModeFromGame()) {
         try {
           windowManager.setGamingMode(false)
         } catch {}
