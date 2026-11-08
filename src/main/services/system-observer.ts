@@ -365,7 +365,8 @@ export class SystemObserver {
         // Gaming Mode a game turned on ends once no game is left. Checked on every tick, not only on the
         // one where the game closed: League's adapter takes a few seconds to notice the match is over,
         // and a single check during that time used to leave her stuck in Gaming Mode (#21)
-        if (!isAnyGameNow && windowManager.isGamingModeFromGame()) {
+        const fromGame = typeof windowManager.isGamingModeFromGame === 'function' ? windowManager.isGamingModeFromGame() : true
+        if (!isAnyGameNow && fromGame) {
           let gameStillThere = false
           try {
             gameStillThere = !!(cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || gamePresenceService.isGameSessionActive())

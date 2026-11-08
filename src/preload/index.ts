@@ -466,6 +466,9 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.SCANNER_SCAN, query),
     setContinuous: (enabled: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.SCANNER_SET_CONTINUOUS, enabled),
+    startWatchScreen: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_WATCH_SCREEN_START),
+    stopWatchScreen: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_WATCH_SCREEN_STOP),
+    toggleWatchScreen: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_WATCH_SCREEN_TOGGLE),
     setIgnoreMouse: (ignore: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.SCANNER_SET_IGNORE_MOUSE, ignore),
     onEvent: (callback: (event: ScannerEventPayload) => void): (() => void) => {

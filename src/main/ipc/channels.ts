@@ -160,6 +160,9 @@ export const IPC_CHANNELS = {
   SCANNER_SCAN: 'scanner:scan',
   SCANNER_SET_CONTINUOUS: 'scanner:setContinuous',
   SCANNER_SET_IGNORE_MOUSE: 'scanner:setIgnoreMouse',
+  SCANNER_WATCH_SCREEN_START: 'scanner:watchScreenStart',
+  SCANNER_WATCH_SCREEN_STOP: 'scanner:watchScreenStop',
+  SCANNER_WATCH_SCREEN_TOGGLE: 'scanner:watchScreenToggle',
   SCANNER_EVENT: 'scanner:event'
 } as const
 
@@ -245,6 +248,8 @@ export interface ScannerStatusPayload {
   isScanning: boolean
   isContinuous: boolean
   bounds: ScannerBounds
+  isWatchingScreen?: boolean
+  isFullscreenWatch?: boolean
 }
 
 export interface ScannerScanResult {
@@ -259,9 +264,12 @@ export interface ScannerEventPayload {
   type: 'scanning' | 'result' | 'error' | 'status'
   isScanning?: boolean
   isContinuous?: boolean
+  isWatchingScreen?: boolean
+  isFullscreenWatch?: boolean
   result?: ScannerScanResult
   tags?: string[]
   error?: string
+  reaction?: string
 }
 
 /** A hand-written script playing part by part (see services/script) */

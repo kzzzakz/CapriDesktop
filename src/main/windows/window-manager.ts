@@ -25,6 +25,8 @@ export class WindowManager {
   /** 'game' when a running game turned it on: only then does it end by itself when the game is gone */
   private gamingModeSource: 'game' | 'user' = 'user'
   private mouseForwardTimers = new Map<BrowserWindow, NodeJS.Timeout>()
+  private isScannerFullscreen = false
+  private savedScannerBoundsBeforeFullscreen: ScannerBounds | null = null
 
   /**
    * Electron only honors { forward: true } on Windows and macOS. Without it, a click-through window
@@ -724,6 +726,47 @@ export class WindowManager {
       // Crucial on Windows: toggling ignoreMouseEvents can alter DWM z-order flags; reassert topmost level
       this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.scannerWin.moveTop()
+    }
+  }
+
+  public isScannerFullscreenActive(): boolean {
+    return this.isScannerFullscreen
+  }
+
+  public setScannerFullscreenWatch(active: boolean): void {
+    this.isScannerFullscreen = active
+    if (!this.scannerWin || this.scannerWin.isDestroyed()) {
+      this.scannerWin = createScannerWindow()
+      this.scannerWin.on('closed', () => {
+        this.scannerWin = null
+      })
+    }
+
+    if (active) {
+      const primaryDisplay = screen.getPrimaryDisplay()
+      this.savedScannerBoundsBeforeFullscreen = this.scannerWin.getBounds()
+      this.scannerWin.setBounds(primaryDisplay.bounds)
+      this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
+      this.scannerWin.moveTop()
+      this.scannerWin.setIgnoreMouseEvents(true, { forward: true })
+      this.forwardMouseOnLinux(this.scannerWin, true)
+      this.scannerWin.showInactive()
+      this.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'status',
+        isFullscreenWatch: true,
+        isWatchingScreen: true
+      })
+    } else {
+      const restoreBounds = this.savedScannerBoundsBeforeFullscreen || consciousnessService.getScannerBounds()
+      this.scannerWin.setBounds(restoreBounds)
+      this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
+      this.scannerWin.setIgnoreMouseEvents(false)
+      this.forwardMouseOnLinux(this.scannerWin, false)
+      this.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'status',
+        isFullscreenWatch: false,
+        isWatchingScreen: false
+      })
     }
   }
 

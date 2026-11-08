@@ -215,6 +215,9 @@ export interface IElectronAPI {
     setBounds: (bounds: Partial<ScannerBounds>) => Promise<boolean>
     scan: (query?: string) => Promise<ScannerScanResult>
     setContinuous: (enabled: boolean) => Promise<boolean>
+    startWatchScreen: () => Promise<boolean>
+    stopWatchScreen: () => Promise<boolean>
+    toggleWatchScreen: () => Promise<boolean>
     setIgnoreMouse: (ignore: boolean) => Promise<boolean>
     onEvent: (callback: (event: ScannerEventPayload) => void) => () => void
   }

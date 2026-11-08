@@ -36,7 +36,7 @@ import { commandInEnglish } from './command-translations'
 import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
 import { memoryService } from '../services/memory-service'
 import { listKnownApps } from '../services/known-apps'
-import { appRequestInEnglish, fixedCommandLanguage, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
+import { appRequestInEnglish, fixedCommandLanguage, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isStopWatchScreenRequest, isUpdateInOtherLanguage, isVersionRequest, isWatchScreenRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
  * Deleting is only allowed when the user asked to delete and named that file or folder
@@ -502,6 +502,28 @@ export class CapriLocalAgent extends EventEmitter {
     if (isMoveAgainRequest(trimmed)) {
       roamingManager.releaseHold()
       this.emitAssistant(isSpanish ? '[excited] ¡Libre otra vez! Vuelvo a dar vueltas, choomba.' : '[excited] Free again! Back to wandering around, choomba.')
+      this.finishSession()
+      return
+    }
+
+    if (isWatchScreenRequest(trimmed) || isWatchScreenRequest(norm)) {
+      void scannerService.startFullscreenWatch()
+      this.emitAssistant(
+        isSpanish
+          ? '[happy] ¡Activando escaneo de pantalla completa, choomba! Voy a estar atenta a lo que estés jugando o mirando.'
+          : "[happy] Activating full-screen live watch, choomba! I'll be watching whatever you're playing or viewing."
+      )
+      this.finishSession()
+      return
+    }
+
+    if (isStopWatchScreenRequest(trimmed) || isStopWatchScreenRequest(norm)) {
+      void scannerService.stopFullscreenWatch()
+      this.emitAssistant(
+        isSpanish
+          ? '[happy] ¡Listo, desactivo el escaneo de pantalla, choomba!'
+          : '[happy] Stopped screen watch, choomba!'
+      )
       this.finishSession()
       return
     }

@@ -133,6 +133,32 @@ const KNOWN_APPS = byLanguage({
   zh: ['你知道哪些应用', '你认识哪些应用', '你能打开哪些应用', '我的应用', '应用列表', '你知道哪些軟體']
 })
 
+const WATCH_SCREEN = byLanguage({
+  en: ['watch my screen', 'watch the screen', 'watch screen', 'watch with me', 'look at my screen', 'look at the screen', 'watch this with me', "let's watch together", 'see my screen'],
+  es: ['mira mi pantalla', 'mirá mi pantalla', 'mira la pantalla', 'mirá la pantalla', 'mira esto', 'mirá esto', 'mira conmigo', 'mirá conmigo', 'miremos un video', 'mira lo que juego', 'mirá lo que juego', 'mira mi juego', 'mirá mi juego', 'mira lo que hago', 'mirá lo que hago', 'mira la compu', 'mirá la compu'],
+  pt: ['olha minha tela', 'olhe minha tela', 'veja minha tela', 'assista minha tela', 'assiste comigo', 'assista comigo'],
+  fr: ['regarde mon ecran', 'regarde l ecran', 'regarde avec moi'],
+  de: ['schau dir meinen bildschirm an', 'sieh dir meinen bildschirm an', 'schau meinen bildschirm an', 'schau mit mir'],
+  it: ['guarda il mio schermo', 'guarda lo schermo', 'guarda con me'],
+  ru: ['посмотри на мой экран', 'смотри на экран', 'смотри со мной', 'посмотри экран'],
+  ja: ['画面を見て', '画面見て', '一緒に見て'],
+  ko: ['내 화면 봐줘', '화면 봐줘', '화면 봐', '같이 봐줘'],
+  zh: ['看我的屏幕', '看看我的屏幕', '看屏幕', '帮我看屏幕', '跟我一起看']
+})
+
+const STOP_WATCH_SCREEN = byLanguage({
+  en: ['stop watching my screen', 'stop watching the screen', 'stop watching', "don't watch my screen", "don't watch the screen", 'close screen watch'],
+  es: ['deja de mirar mi pantalla', 'dejá de mirar mi pantalla', 'deja de mirar la pantalla', 'dejá de mirar la pantalla', 'deja de mirar', 'dejá de mirar', 'no mires mas', 'no mires más', 'para de mirar', 'pará de mirar'],
+  pt: ['para de olhar minha tela', 'pare de olhar minha tela', 'para de olhar', 'pare de olhar', 'nao olhe mais'],
+  fr: ['arrete de regarder mon ecran', 'arrete de regarder', 'ne regarde plus'],
+  de: ['hor auf meinen bildschirm anzuschauen', 'hor auf zu schauen', 'nicht mehr schauen'],
+  it: ['smetti di guardare il mio schermo', 'smetti di guardare', 'non guardare piu'],
+  ru: ['перестань смотреть на экран', 'хватит смотреть', 'не смотри'],
+  ja: ['画面を見るのをやめて', '見るのをやめて', '見ないで'],
+  ko: ['화면 그만 봐', '그만 봐', '보지 마'],
+  zh: ['别看屏幕了', '不要看屏幕了', '别看了', '停止看屏幕']
+})
+
 const containsPhrase = (key: string, set: Set<string>) => Array.from(set).some((p) => key === p || (/[^\x00-\x7f]/.test(p) ? key.includes(p) : ` ${key} `.includes(` ${p} `)))
 
 // Both ways: a polite word in one language can be part of the command in another ("che" in Italian)
@@ -142,6 +168,8 @@ const mentions = (text: string, set: Set<string>) => containsPhrase(commandKey(t
 export const isHoldStillRequest = (text: string) => isExactly(text, HOLD_STILL.all)
 export const isKnownAppsRequest = (text: string) => isExactly(text, KNOWN_APPS.all)
 export const isMoveAgainRequest = (text: string) => isExactly(text, MOVE_AGAIN.all)
+export const isWatchScreenRequest = (text: string) => isExactly(text, WATCH_SCREEN.all) || mentions(text, WATCH_SCREEN.all)
+export const isStopWatchScreenRequest = (text: string) => isExactly(text, STOP_WATCH_SCREEN.all) || mentions(text, STOP_WATCH_SCREEN.all)
 /**
  * The language of a fixed command these lists know ("quedate quieta" -> es), or null. Short commands
  * often carry no clue a language detector can use: without this one went to the translator, waited
@@ -149,7 +177,7 @@ export const isMoveAgainRequest = (text: string) => isExactly(text, MOVE_AGAIN.a
  */
 export function fixedCommandLanguage(text: string): CommandLanguage | null {
   const keys = [commandKey(text), plain(text)]
-  for (const list of [HOLD_STILL, MOVE_AGAIN, KNOWN_APPS]) {
+  for (const list of [HOLD_STILL, MOVE_AGAIN, KNOWN_APPS, WATCH_SCREEN, STOP_WATCH_SCREEN]) {
     for (const [lang, set] of list.byLanguage) if (keys.some((k) => set.has(k))) return lang
   }
   return null

@@ -20,7 +20,8 @@ import { AppWindow,
   Volume2,
   VolumeX,
   Sliders,
-  Languages
+  Languages,
+  Eye
 } from 'lucide-react'
 
 type DeckTab = 'chat' | 'editor'
@@ -35,6 +36,7 @@ export const DevDeckView: React.FC = () => {
   const t = useT()
   const [configLoaded, setConfigLoaded] = useState(false)
   const [cloudModel, setCloudModel] = useState<string | null>(null)
+  const [isWatchingScreen, setIsWatchingScreen] = useState(false)
   const {
     isRunning,
     projectPath,
@@ -60,6 +62,21 @@ export const DevDeckView: React.FC = () => {
       })
     }
   }, [setLlmConfig, setOllamaStatus])
+
+  // Sync screen watch mode state
+  useEffect(() => {
+    if (window.api?.scanner) {
+      window.api.scanner.getStatus().then((st) => {
+        setIsWatchingScreen(!!st.isWatchingScreen)
+      })
+      const unsubscribe = window.api.scanner.onEvent((ev) => {
+        if (typeof ev.isWatchingScreen === 'boolean') {
+          setIsWatchingScreen(ev.isWatchingScreen)
+        }
+      })
+      return () => unsubscribe()
+    }
+  }, [])
 
   // A cloud model is chosen in the settings: the top bar only shows it
   useEffect(() => {
@@ -222,6 +239,28 @@ export const DevDeckView: React.FC = () => {
           >
             <Languages size={12} className="text-cyan-400" />
             <span className="text-[12px] uppercase font-bold text-stone-300">{t('deck_language')}</span>
+          </button>
+
+          {/* Watch Screen Button */}
+          <button
+            type="button"
+            onClick={async () => {
+              if (window.api?.scanner) {
+                const next = await window.api.scanner.toggleWatchScreen()
+                setIsWatchingScreen(next)
+              }
+            }}
+            className={`cp-cut flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[14px] font-semibold border transition-all cursor-pointer ${
+              isWatchingScreen
+                ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300 shadow-[0_0_10px_rgba(0,240,255,0.4)]'
+                : 'border-[#3c1c1d] bg-[#210f10] text-stone-400 hover:text-cyan-300 hover:border-cyan-500/50'
+            }`}
+            title="Capri mira tu pantalla completa en vivo y reacciona a juegos o videos"
+          >
+            <Eye size={12} className={isWatchingScreen ? 'text-cyan-300 animate-pulse' : 'text-cyan-400'} />
+            <span className="text-[12px] uppercase font-bold text-stone-300">
+              {isWatchingScreen ? 'MIRANDO PANTALLA' : 'MIRAR PANTALLA'}
+            </span>
           </button>
 
           {/* Voice Engine Settings Button */}

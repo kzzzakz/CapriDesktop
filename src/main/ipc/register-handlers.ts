@@ -643,6 +643,18 @@ export function registerIpcHandlers(): void {
     return scannerService.setContinuous(enabled)
   })
 
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_START, async () => {
+    return await scannerService.startFullscreenWatch()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_STOP, () => {
+    return scannerService.stopFullscreenWatch()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_TOGGLE, async () => {
+    return await scannerService.toggleFullscreenWatch()
+  })
+
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_LINE_DONE, (_event, id: number) => scriptPlayer.onLineDone(id))
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_CANCEL, () => scriptPlayer.cancel())
 

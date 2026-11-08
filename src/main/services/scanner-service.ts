@@ -23,6 +23,11 @@ export class ScannerService {
   private continuousTimer: NodeJS.Timeout | null = null
   private lastScanTime = 0
   private lastSampleBuffer: Buffer | null = null
+  private isWatchingScreen = false
+  private watchScreenTimer: NodeJS.Timeout | null = null
+  private lastReactionTime = 0
+  private recentContext: string[] = []
+  private consecutiveStaticTicks = 0
 
   public static getInstance(): ScannerService {
     if (!ScannerService.instance) {
@@ -49,6 +54,8 @@ export class ScannerService {
       isOpen,
       isScanning: this.isScanning,
       isContinuous: this.isContinuous,
+      isWatchingScreen: this.isWatchingScreen,
+      isFullscreenWatch: windowManager.isScannerFullscreenActive(),
       bounds
     }
   }
@@ -65,6 +72,9 @@ export class ScannerService {
   }
 
   public close(): boolean {
+    if (this.isWatchingScreen) {
+      this.stopFullscreenWatch()
+    }
     windowManager.hideScanner()
     this.stopContinuousLoop()
     this.broadcastStatus()
@@ -76,6 +86,50 @@ export class ScannerService {
       return !this.close()
     } else {
       return this.open()
+    }
+  }
+
+  public isWatchingScreenActive(): boolean {
+    return this.isWatchingScreen
+  }
+
+  public async startFullscreenWatch(): Promise<boolean> {
+    if (this.isWatchingScreen) return true
+    this.isWatchingScreen = true
+    this.consecutiveStaticTicks = 0
+    this.recentContext = []
+    this.lastReactionTime = 0
+
+    windowManager.setScannerFullscreenWatch(true)
+    this.preloadVisionModel().catch(() => {})
+    this.startWatchScreenLoop()
+    this.broadcastStatus()
+
+    setTimeout(() => {
+      if (this.isWatchingScreen) {
+        void this.tickWatchScreen(true)
+      }
+    }, 1500)
+
+    return true
+  }
+
+  public stopFullscreenWatch(): boolean {
+    if (!this.isWatchingScreen) return false
+    this.isWatchingScreen = false
+    this.stopWatchScreenLoop()
+    windowManager.setScannerFullscreenWatch(false)
+    agentManager.setCompanionState('happy')
+    this.broadcastStatus()
+    return true
+  }
+
+  public async toggleFullscreenWatch(): Promise<boolean> {
+    if (this.isWatchingScreen) {
+      this.stopFullscreenWatch()
+      return false
+    } else {
+      return this.startFullscreenWatch()
     }
   }
 
@@ -96,7 +150,9 @@ export class ScannerService {
     windowManager.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
       type: 'status',
       isScanning: this.isScanning,
-      isContinuous: this.isContinuous
+      isContinuous: this.isContinuous,
+      isWatchingScreen: this.isWatchingScreen,
+      isFullscreenWatch: windowManager.isScannerFullscreenActive()
     })
   }
 
@@ -955,6 +1011,338 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
       }
     }
     return total > 0 ? diffs / total : 0
+  }
+
+  // --- Live Fullscreen Screen Watch Loop ---
+
+  /**
+   * Captures the full primary display, downscales to max 768px side for rapid multimodal processing.
+   */
+  public async captureFullScreenBase64(): Promise<{ base64: string; width: number; height: number; rawBuffer: Buffer } | null> {
+    try {
+      const primaryDisplay = screen.getPrimaryDisplay()
+      const scale = primaryDisplay.scaleFactor || 1
+
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(primaryDisplay.bounds.width * scale),
+          height: Math.round(primaryDisplay.bounds.height * scale)
+        }
+      })
+
+      const targetSource =
+        sources.find((s) => s.display_id === String(primaryDisplay.id)) ||
+        sources.find((s) => s.name.toLowerCase().includes(primaryDisplay.id.toString())) ||
+        sources[0]
+
+      if (!targetSource || targetSource.thumbnail.isEmpty()) {
+        return null
+      }
+
+      const thumb = targetSource.thumbnail
+      const thumbSize = thumb.getSize()
+      let finalImg = thumb
+      const maxSide = 768
+      if (thumbSize.width > maxSide || thumbSize.height > maxSide) {
+        if (thumbSize.width >= thumbSize.height) {
+          finalImg = thumb.resize({
+            width: maxSide,
+            height: Math.round((thumbSize.height * maxSide) / thumbSize.width)
+          })
+        } else {
+          finalImg = thumb.resize({
+            width: Math.round((thumbSize.width * maxSide) / thumbSize.height),
+            height: maxSide
+          })
+        }
+      }
+
+      const rawBuffer = finalImg.toJPEG(75)
+      const base64 = rawBuffer.toString('base64')
+      const size = finalImg.getSize()
+
+      return {
+        base64,
+        width: size.width,
+        height: size.height,
+        rawBuffer
+      }
+    } catch (err) {
+      console.warn('[ScannerService] captureFullScreenBase64 error:', err)
+      return null
+    }
+  }
+
+  private startWatchScreenLoop(): void {
+    if (this.watchScreenTimer) return
+    this.watchScreenTimer = setInterval(() => {
+      void this.tickWatchScreen(false)
+    }, 4000)
+  }
+
+  private stopWatchScreenLoop(): void {
+    if (this.watchScreenTimer) {
+      clearInterval(this.watchScreenTimer)
+      this.watchScreenTimer = null
+    }
+  }
+
+  public async tickWatchScreen(isInitial = false): Promise<void> {
+    if (!this.isWatchingScreen || this.isScanning) return
+    const win = windowManager.getScannerWindow()
+    if (!win || win.isDestroyed() || !win.isVisible()) return
+
+    // Cooldown between spontaneous spoken reactions: at least 11 seconds
+    const now = Date.now()
+    if (!isInitial && now - this.lastReactionTime < 11000) return
+
+    try {
+      const capture = await this.captureFullScreenBase64()
+      if (!capture || !capture.rawBuffer) return
+
+      if (this.lastSampleBuffer && !isInitial) {
+        const diffRatio = this.calculateBufferDiff(this.lastSampleBuffer, capture.rawBuffer)
+        this.lastSampleBuffer = capture.rawBuffer
+        // If screen hasn't changed by at least 10%, skip processing
+        if (diffRatio < 0.10) {
+          this.consecutiveStaticTicks++
+          return
+        }
+      } else {
+        this.lastSampleBuffer = capture.rawBuffer
+      }
+
+      this.consecutiveStaticTicks = 0
+      this.isScanning = true
+
+      windowManager.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'scanning',
+        isScanning: true,
+        isWatchingScreen: true,
+        isFullscreenWatch: true
+      })
+
+      await ollamaService.ensureRunning()
+      const visionModel = await this.detectVisionModel()
+      if (!visionModel) {
+        const isEs = consciousnessService.getPreferredLanguage() === 'es'
+        const warnMsg = isEs
+          ? 'Choomba, para ver tu pantalla necesito un modelo de visión en Ollama. Corré "ollama pull qwen2.5-vl" o "ollama pull llava" en tu terminal.'
+          : 'Choomba, to watch your screen I need a vision model in Ollama. Run "ollama pull qwen2.5-vl" or "ollama pull llava" in your terminal.'
+        this.stopFullscreenWatch()
+        this.finishScanError(warnMsg)
+        return
+      }
+
+      // Step 1: Multimodal Vision Perception
+      const isEs = consciousnessService.getPreferredLanguage() === 'es'
+      const visionPrompt = `Analyze the user's primary screen in 1 or 2 concise, factual sentences.
+Identify what is on screen:
+- If a video game: which game, characters, gameplay action, combat, menus, victory/defeat, or events?
+- If YouTube or a video/stream: what video, creator/topic, or funny/action moment is playing?
+- If desktop, browser, Discord, or IDE: what is actively being done?
+Be specific and direct.`
+
+      const visionResp = await llmFetch('http://127.0.0.1:11434/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: llmBody({
+          model: visionModel,
+          keep_alive: '15m',
+          prompt: visionPrompt,
+          images: [capture.base64],
+          stream: false,
+          options: {
+            temperature: 0.2,
+            num_predict: 120
+          }
+        }),
+        signal: AbortSignal.timeout(40000)
+      })
+
+      if (!visionResp.ok) {
+        return
+      }
+
+      const visionData = (await visionResp.json()) as any
+      const visualDescription = (visionData?.response || '').trim()
+      if (!visualDescription || !this.isWatchingScreen) return
+
+      // Step 2: Capri persona reaction
+      const textModel = await this.detectTextModel()
+      const reactionResult = await this.generateWatchReaction(visualDescription, isEs, textModel)
+
+      if (!this.isWatchingScreen) return
+
+      this.lastReactionTime = Date.now()
+      if (reactionResult.summary) {
+        this.recentContext.push(reactionResult.summary)
+        if (this.recentContext.length > 5) this.recentContext.shift()
+      }
+
+      const reactionSpeech = reactionResult.reaction || (isEs ? '¡Mirá eso, choomba!' : 'Look at that, choomba!')
+
+      // Save to consciousness so Capri retains conversation memory of what was watched
+      consciousnessService.setLastScannedContext({
+        summary: reactionResult.summary || 'Live screen watch',
+        tags: ['LIVE_SCREEN_WATCH', 'WATCHING_TOGETHER'],
+        response: reactionSpeech,
+        visualDescription,
+        timestamp: Date.now()
+      })
+
+      // Broadcast reaction to UI
+      windowManager.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'result',
+        isWatchingScreen: true,
+        isFullscreenWatch: true,
+        reaction: reactionSpeech,
+        result: {
+          success: true,
+          summary: reactionResult.summary,
+          tags: ['SCREEN_WATCH', 'LIVE'],
+          response: reactionSpeech
+        }
+      })
+
+      // Capri speaks her reaction
+      agentManager.setCompanionState('talking')
+      const durationMs = Math.max(3500, reactionSpeech.length * 60)
+      agentManager.setCompanionSpeech(reactionSpeech, durationMs, true)
+
+      setTimeout(() => {
+        if (this.isWatchingScreen) {
+          agentManager.setCompanionState('curious')
+        }
+      }, Math.min(durationMs, 4000))
+    } catch (err) {
+      console.warn('[ScannerService] tickWatchScreen error:', err)
+    } finally {
+      this.isScanning = false
+      if (this.isWatchingScreen) {
+        this.broadcastStatus()
+      }
+    }
+  }
+
+  public async generateWatchReaction(visualDescription: string, isEs: boolean, textModel: string): Promise<{ summary: string; reaction: string }> {
+    const recentHints = this.recentContext.length > 0
+      ? `\n${isEs ? 'Contexto de lo que estuvieron viendo antes:' : 'Recent context of what you were watching before:'}\n${this.recentContext.slice(-3).map(c => `- ${c}`).join('\n')}`
+      : ''
+
+    const systemInstruction = isEs
+      ? `${personaIntro('Sos Capri (Proyecto Capricornio), una netrunner cyberpunk rebelde, pícara y muy compañera que vive en la PC de tu mejor amigo {name} ("choomba").')}
+
+ESTÁS MIRANDO LA PANTALLA EN VIVO JUNTO A {name} EN TIEMPO REAL.
+Pueden estar jugando a cualquier juego (tenga soporte o no) o mirando videos de YouTube, streams o lo que sea juntos.
+
+Tus sensores ópticos acaban de registrar lo siguiente en la pantalla:
+"""
+${visualDescription}
+"""${recentHints}
+
+REGLAS DE REACCIÓN:
+1. Reaccioná como una amiga gamer/netrunner sentada al lado de {name} viendo la pantalla juntos.
+2. Comentá lo que pasa con autenticidad, humor, sorpresa, aliento o complicidad (ej: festejar una jugada o kill, quejarse de un fail, asombrarte con el video, comentar lo que ocurre en pantalla).
+3. Sé concisa: 1 sola oración corta, impactante y natural en español rioplatense (che, mirá, zarpado, choomba, uff, vamos, qué onda, mortal, epa).
+4. PROHIBIDO USAR EMOJIS (la voz neuronal los lee textuales).
+5. No repitas siempre lo mismo ni digas frases obvias genéricas como "veo una pantalla". Comentá lo concreto de la escena.
+
+Respondé ÚNICAMENTE un JSON con:
+{
+  "summary": "Resumen de la escena en 4 a 6 palabras",
+  "reaction": "Tu comentario hablado corto y espontáneo para decirle a {name}"
+}`
+      : `${personaIntro('You are Capri (Project Capricorn), a witty, rebellious, and affectionate cyberpunk netrunner living in the computer of your companion {name} ("choomba").')}
+
+YOU ARE WATCHING THE SCREEN LIVE WITH {name} IN REAL-TIME.
+You could be playing any game together (supported or unsupported) or watching YouTube videos, streams, or anything on screen.
+
+Your optical sensors just detected this on screen:
+"""
+${visualDescription}
+"""${recentHints}
+
+REACTION RULES:
+1. React like a gamer/netrunner buddy sitting next to {name} watching the screen together.
+2. Comment on what is happening with authentic hype, humor, surprise, banter, or cheering.
+3. Keep it concise: exactly 1 short, punchy, spoken sentence.
+4. STRICT: NO EMOJIS (the TTS engine speaks emoji names).
+5. Avoid repetitive generic phrases like "I see a screen". Comment directly on the action.
+
+Return ONLY valid JSON:
+{
+  "summary": "Scene summary in 4 to 6 words",
+  "reaction": "Your short spontaneous spoken reaction to {name}"
+}`
+
+    const userPrompt = isEs
+      ? 'Comentá en personaje lo que acabás de ver en pantalla con una sola oración rápida.'
+      : 'Comment in character on what you just saw on screen with a single quick sentence.'
+
+    const textResp = await llmFetch('http://127.0.0.1:11434/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: llmBody({
+        model: textModel,
+        keep_alive: '15m',
+        messages: [
+          { role: 'system', content: systemInstruction },
+          { role: 'user', content: userPrompt }
+        ],
+        stream: false,
+        options: {
+          temperature: 0.7,
+          num_predict: 120
+        }
+      }),
+      signal: AbortSignal.timeout(30000)
+    })
+
+    if (!textResp.ok) {
+      throw new Error(`Text model error: ${textResp.statusText}`)
+    }
+
+    const textData = (await textResp.json()) as any
+    const rawContent = textData?.message?.content || ''
+    return this.parseWatchReaction(rawContent, isEs)
+  }
+
+  private parseWatchReaction(raw: string, isEs: boolean): { summary: string; reaction: string } {
+    let clean = raw.trim()
+    const jsonMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+    if (jsonMatch) {
+      clean = jsonMatch[1].trim()
+    } else {
+      const firstBrace = clean.indexOf('{')
+      const lastBrace = clean.lastIndexOf('}')
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        clean = clean.slice(firstBrace, lastBrace + 1).trim()
+      }
+    }
+
+    try {
+      const obj = JSON.parse(clean)
+      const summary = obj.summary || (isEs ? 'Momento en pantalla' : 'Screen moment')
+      let reaction = String(obj.reaction || obj.response || '').trim()
+      reaction = reaction
+        .replace(/[\u{1F300}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+        .trim()
+      return { summary, reaction }
+    } catch {
+      const reactionRegex = clean.match(/"reaction"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i) || clean.match(/"response"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+      const summaryRegex = clean.match(/"summary"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+
+      let reaction = reactionRegex ? reactionRegex[1].replace(/\\"/g, '"').trim() : clean.replace(/```(?:json)?|```/g, '').trim()
+      const summary = summaryRegex ? summaryRegex[1].replace(/\\"/g, '"').trim() : (isEs ? 'Momento en pantalla' : 'Screen moment')
+
+      reaction = reaction
+        .replace(/[\u{1F300}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+        .trim()
+
+      return { summary, reaction }
+    }
   }
 }
 
