@@ -4,6 +4,7 @@ import { consciousnessService } from './consciousness-service'
 import { scannerService } from './scanner-service'
 import { windowManager } from '../windows/window-manager'
 import { cyberpunkAdapter, lolLiveAdapter } from './game'
+import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
 import { gamePresenceService } from './game-presence-service'
 
 interface ProactiveTopic {
@@ -170,12 +171,12 @@ export class ProactiveDialogueService {
       return false
     }
 
-    // In Gaming Mode (LoL / Cyberpunk), let in-game telemetry handle voice commentary
+    // In Gaming Mode (LoL / Cyberpunk / Valorant), let in-game telemetry handle voice commentary
     // But if Gaming Mode is stuck on with no active game running, auto-heal and allow desktop conversation
     if (windowManager.isGamingModeActive()) {
       const isCyberpunk = cyberpunkAdapter?.isCyberpunkActive?.() ?? false
       const isLol = lolLiveAdapter?.isRunning?.() ?? false
-      if (!isCyberpunk && !isLol && !gamePresenceService.isGameSessionActive()) {
+      if (!isCyberpunk && !isLol && !valorantAdapter.isRunning() && !gamePresenceService.isGameSessionActive()) {
         try {
           windowManager.setGamingMode(false)
         } catch {}

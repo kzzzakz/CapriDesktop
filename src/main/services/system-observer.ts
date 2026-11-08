@@ -50,7 +50,6 @@ export class SystemObserver {
     lol: { lastTriggered: 0, cooldownMs: 15 * 60 * 1000 }, // 15 mins
     ram: { lastTriggered: 0, cooldownMs: 15 * 60 * 1000 },
     cyberpunk: { lastTriggered: 0, cooldownMs: 20 * 60 * 1000 },
-    valorant: { lastTriggered: 0, cooldownMs: 20 * 60 * 1000 },
     steam: { lastTriggered: 0, cooldownMs: 30 * 60 * 1000 },
     spotify: { lastTriggered: 0, cooldownMs: 30 * 60 * 1000 },
     discord: { lastTriggered: 0, cooldownMs: 30 * 60 * 1000 },
@@ -164,6 +163,9 @@ export class SystemObserver {
         if (!this.initialScanDone) {
           this.previousProcesses = currentProcesses
           this.initialScanDone = true
+          if (currentProcesses.has('valorant-win64-shipping.exe') || currentProcesses.has('valorant.exe')) {
+            windowManager.setGamingMode(true)
+          }
           if (currentProcesses.has('cyberpunk2077.exe')) {
             console.log('[SystemObserver] Cyberpunk 2077 already active on startup. Engaging Gaming Mode.')
             try {
@@ -424,22 +426,7 @@ export class SystemObserver {
           return resolve()
         }
 
-        // Check for Valorant
-        if (
-          (currentProcesses.has('valorant.exe') || currentProcesses.has('valorant-win64-shipping.exe')) &&
-          !this.previousProcesses.has('valorant.exe') &&
-          this.canTrigger('valorant')
-        ) {
-          this.markTriggered('valorant')
-          this.triggerCapriReaction(
-            isEs
-              ? "¡Valorant iniciado! Meté mocha y plantá la spike, choomba. ¡No dejes que los duelistas te ganen!"
-              : "Valorant booted up! Click heads and plant that spike, choomba! Don't let their duelists diff you!",
-            'curious'
-          )
-          this.previousProcesses = currentProcesses
-          return resolve()
-        }
+        // Valorant reactions are emitted by its read-only adapter.
 
         // Check for Spotify
         if (

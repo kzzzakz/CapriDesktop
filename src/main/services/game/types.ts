@@ -1,6 +1,13 @@
 import { EventEmitter } from 'events'
 
 export type GameEventType =
+  | 'game_opened'
+  | 'game_closed'
+  | 'agent_picked'
+  | 'round_won'
+  | 'round_lost'
+  | 'match_point'
+  | 'overtime'
   | 'player_died'
   | 'player_kill'
   | 'multikill'

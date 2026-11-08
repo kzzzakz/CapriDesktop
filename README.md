@@ -10,6 +10,9 @@
 
 ## Table of Contents
 
+Valorant live reactions and limitations: [supported games](#supported-game-reactions).
+Contributors: [adding a read-only adapter](docs/game-adapters.md).
+
 1. [Who is Capri?](#1-who-is-capri)
 2. [Voice: speaking and listening](#2-voice-speaking-and-listening)
 3. [How it works](#3-how-it-works)
@@ -119,6 +122,27 @@ Press the **Right arrow (→)** and Capri listens all the time, but **only answe
 ---
 
 ## 4. Components
+
+### Supported game reactions
+
+| Game | Live observations |
+| :--- | :--- |
+| League of Legends | Existing Live Client Data API match events and commentary. |
+| Cyberpunk 2077 | Existing CET mod telemetry, including combat, driving and cyberware events. |
+| Valorant | Observed locked agent, match start/map, single-round team wins/losses and streaks, match point, overtime, score-derived win/loss, and local spectator-HUD death transitions. |
+| Other detected games | Occasional generic presence commentary; no live match facts. |
+
+**Valorant prerequisites and limits:** run the Windows Riot Client and Valorant, signed in as the current local user. Capri reads the Riot Client lockfile under `%LOCALAPPDATA%\Riot Games\Riot Client\Config`, its local HTTPS entitlement/presence/session endpoints, and the head/tail of `%LOCALAPPDATA%\VALORANT\Saved\Logs\ShooterGame.log` for region/shard and client version. It uses authenticated **GET-only, unofficial Riot endpoints**, including regional pregame/core-game player and match metadata. These are not a public supported integration; availability and formats may change. This project does not claim Riot approval or endorsement.
+
+There is no Valorant agent selection/lock-in automation, game input, memory reading, injection or process manipulation. Observing an already locked agent does not select one. Death observation uses only pixels from the foreground game window's spectator portrait/name HUD. Pixels stay local and are not sent to a vision model; only event facts can be sent to the configured commentary LLM. A visible 16:9 game window, known team scores and a prior non-spectator observation in that round are required. Other aspect ratios are skipped. Obscured HUDs, death animations, last-player deaths without a spectator panel, focus changes and missed polling samples can prevent detection. No kills, damage, abilities or teammate life state are inferred.
+
+Round results require a one-round score delta. Match point/results cover competitive, premier, unrated, newmap and swiftplay according to their score rules. A decisive score can yield a win/loss; unsupported queues, draws, surrender/early termination and missing final scores may remain unknown and are not announced as a result. Starting mid-match does not reconstruct past rounds. Polls run sequentially with a 2.5-second delay after each attempt; network/capture latency adds to that interval.
+
+Valorant reactions use all ten supported text languages, including localized fallbacks when narration is unavailable or rejected by the language check. They respect silence, frequency, priority and cooldown settings; a result can be skipped during a cooldown. Pending narration is discarded after session/settings/language changes or when stale. Gaming Mode uses the existing process detection, including when Capri starts while Valorant is already open.
+
+The fork's Valorant support was **manually tested by the user on Windows 11**. This standalone port has offline regression coverage; no live game test was performed in this implementation session. **Windows 10, Linux and macOS have not been tested for Valorant.** Detection/capture currently target Windows; this is not a claim of full cross-platform game support.
+
+Adapter contributors can follow the [short guide](docs/game-adapters.md).
 
 | Component | File / location | Responsibility |
 | :--- | :--- | :--- |
