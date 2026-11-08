@@ -841,5 +841,7 @@
  "[happy] Got it, I'll remember that: {0}.",
  "[happy] Done, I forgot it: {0}.",
  "[curious] I don't have anything like that saved: {0}.",
- "Gaming Mode"
+ "Gaming Mode",
+ "[worried] I can't find the model \"{0}\" in Ollama, so I'm using \"{1}\". Your choice is still saved.",
+ "[worried] The model didn't answer in time, choomba. It may have stalled, or the PC may be short on memory. Try again in a bit."
 ]

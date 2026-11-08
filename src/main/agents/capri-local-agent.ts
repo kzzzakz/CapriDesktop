@@ -181,6 +181,21 @@ const SHORT_MAX_TOKENS = 400
 const LONG_MAX_TOKENS = 1500
 const MAX_CONTINUATIONS = 2
 
+/**
+ * How long one answer from the model may take. A local model loading into a PC short on memory can
+ * take minutes for its first answer, so the local limit is generous; it exists because a request
+ * Ollama drops never answers, and she used to wait for it forever.
+ */
+const LOCAL_REPLY_TIMEOUT_MS = 5 * 60_000
+
+class ReplyTimeoutError extends Error {
+  constructor() {
+    super('The model did not answer in time')
+    this.name = 'ReplyTimeoutError'
+  }
+}
+const CLOUD_REPLY_TIMEOUT_MS = 2 * 60_000
+
 /** Lists, explanations and stories need room, in any language */
 function wantsLongAnswer(text: string): boolean {
   if (text.length > 140) return true
@@ -214,8 +229,12 @@ export class CapriLocalAgent extends EventEmitter {
   private currentPrompt = ''
   private conversationHistory: { role: 'system' | 'user' | 'assistant' | 'tool'; content?: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] = []
 
+  /** The request to the model in progress, so cancelling stops it too */
+  private llmRequest: AbortController | null = null
+
   public cancel(): void {
     this.isCancelled = true
+    this.llmRequest?.abort()
     if (this.agyProc) {
       try {
         this.agyProc.kill()
@@ -1639,11 +1658,30 @@ LANGUAGE RULE: ${langDirective}`
         console.log(`  User Prompt: "${prompt.trim()}"`)
         console.log(`==================================================`)
 
-        const response = await llmFetch(url, {
-          method: 'POST',
-          headers,
-          body
-        })
+        const request = new AbortController()
+        this.llmRequest = request
+        let timedOut = false
+        const timer = setTimeout(() => {
+          timedOut = true
+          request.abort()
+        }, isCloudMode() ? CLOUD_REPLY_TIMEOUT_MS : LOCAL_REPLY_TIMEOUT_MS)
+        let response: Response
+        let data: any
+        try {
+          response = await llmFetch(url, {
+            method: 'POST',
+            headers,
+            body,
+            signal: request.signal
+          })
+          if (response.ok) data = await response.json()
+        } catch (err) {
+          if (timedOut) throw new ReplyTimeoutError()
+          throw err
+        } finally {
+          clearTimeout(timer)
+          if (this.llmRequest === request) this.llmRequest = null
+        }
 
         if (!response.ok) {
           const errText = await response.text()
@@ -1656,8 +1694,7 @@ LANGUAGE RULE: ${langDirective}`
           throw new Error(`HTTP ${response.status}: ${errText}`)
         }
 
-        const data = (await response.json()) as any
-        const choice = data.choices?.[0]
+        const choice = data?.choices?.[0]
         const message = choice?.message
 
         if (!message) {
@@ -1931,6 +1968,19 @@ LANGUAGE RULE: ${langDirective}`
         } as AgentEventPayload)
         return
       } catch (err) {
+        // Cancelled by the user: nothing to say
+        if (this.isCancelled) return
+        // The model never answered: she says so, instead of waiting forever or making something up offline
+        if (err instanceof ReplyTimeoutError) {
+          console.warn('[Capri Agent] The model did not answer in time')
+          this.emitAssistant(
+            detectedLang === 'es'
+              ? '[worried] El modelo no me contestó a tiempo, choomba. Puede que se haya trabado o que la PC ande corta de memoria. Probá de nuevo en un ratito.'
+              : "[worried] The model didn't answer in time, choomba. It may have stalled, or the PC may be short on memory. Try again in a bit."
+          )
+          this.finishSession()
+          return
+        }
         // A failing cloud provider must say so instead of quietly answering with the offline fallback
         if (isCloudMode()) {
           console.warn('[Capri Agent] Cloud turn failed:', cloudErrorDetail(err))
