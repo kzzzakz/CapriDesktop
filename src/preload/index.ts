@@ -1,5 +1,6 @@
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
+import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -265,6 +266,20 @@ const api = {
       ipcRenderer.on(IPC_CHANNELS.MEMORY_CHANGED, subscription)
       return (): void => {
         ipcRenderer.removeListener(IPC_CHANNELS.MEMORY_CHANGED, subscription)
+      }
+    },
+
+    // The apps she knows by name (Dev Deck > Apps)
+    listApps: (): Promise<KnownApp[]> => ipcRenderer.invoke(IPC_CHANNELS.APPS_LIST),
+    pickApp: (): Promise<KnownAppResult | null> => ipcRenderer.invoke(IPC_CHANNELS.APPS_PICK),
+    renameApp: (id: string, name: string): Promise<KnownAppResult> => ipcRenderer.invoke(IPC_CHANNELS.APPS_RENAME, id, name),
+    removeApp: (id: string): Promise<KnownApp[]> => ipcRenderer.invoke(IPC_CHANNELS.APPS_REMOVE, id),
+    openApp: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.APPS_OPEN, id),
+    onAppsChanged: (callback: (apps: KnownApp[]) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, apps: KnownApp[]): void => callback(apps)
+      ipcRenderer.on(IPC_CHANNELS.APPS_CHANGED, subscription)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.APPS_CHANGED, subscription)
       }
     },
 

@@ -379,5 +379,28 @@ export const ko: Messages = {
   mem_thread: '마지막 대화가 저장되어 있어({n}개 메시지) 재시작 후에도 이어갈 수 있습니다.',
   mem_noThread: '저장된 대화가 없습니다.',
   mem_clearAll: '모두 지우기',
-  mem_clearConfirm: '한 번 더 클릭하면 모두 지워집니다'
+  mem_clearConfirm: '한 번 더 클릭하면 모두 지워집니다',
+
+  // Apps window and the user's name
+  deck_apps: '앱',
+  deck_appsTitle: 'Capri가 이름으로 아는 앱',
+  apps_title: 'Capri // 앱',
+  apps_hint: '"열어"와 이름을 말하면 음성이나 채팅으로 열 수 있어요. 이름은 부탁할 때 쓰는 이름이니 평소 부르는 이름으로 바꾸세요. 그녀가 스스로 찾는 앱도 되지만, 여기는 당신이 정한 이름으로 아는 앱이에요.',
+  apps_empty: '아직 앱이 없어요. 추가하거나, 찾지 못하는 앱을 열어 달라고 하고 위치를 알려주세요.',
+  apps_rename: '이름 바꾸기',
+  apps_saveName: '이름 저장',
+  apps_open: '열기',
+  apps_openFailed: '열 수 없어요. 파일이 옮겨졌을 수 있어요:',
+  apps_remove: '삭제',
+  apps_removeConfirm: '삭제할까요?',
+  apps_add: '앱 추가',
+  apps_count: '앱 {n}개',
+  apps_problemEmpty: '이름은 비워 둘 수 없어요.',
+  apps_problemDuplicate: '다른 앱이 이미 그 이름이에요.',
+  apps_problemMissing: '그 파일은 더 이상 없어요.',
+  you_title: '당신의 이름',
+  you_placeholder: 'Capri가 당신을 부를 이름',
+  you_save: '저장',
+  you_saved: '저장됨',
+  you_hint: 'Capri는 어디서나 이 이름으로 불러요: 채팅, 음성, 게임.'
 }

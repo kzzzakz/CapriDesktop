@@ -843,5 +843,7 @@
  "[curious] I don't have anything like that saved: {0}.",
  "Gaming Mode",
  "[worried] I can't find the model \"{0}\" in Ollama, so I'm using \"{1}\". Your choice is still saved.",
- "[worried] The model didn't answer in time, choomba. It may have stalled, or the PC may be short on memory. Try again in a bit."
+ "[worried] The model didn't answer in time, choomba. It may have stalled, or the PC may be short on memory. Try again in a bit.",
+ "[cheerful] These are the apps I know: {0}. Ask me to open any of them.",
+ "[curious] I don't know any apps by name yet. Add them in the Dev Deck under Apps, or ask me to open one and show me where it is."
 ]

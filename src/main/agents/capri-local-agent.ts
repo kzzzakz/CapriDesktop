@@ -35,7 +35,8 @@ import { cleanAppRequest } from '../services/app-finder'
 import { commandInEnglish } from './command-translations'
 import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
 import { memoryService } from '../services/memory-service'
-import { appRequestInEnglish, isHoldStillRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
+import { listKnownApps } from '../services/known-apps'
+import { appRequestInEnglish, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
  * Deleting is only allowed when the user asked to delete and named that file or folder
@@ -460,6 +461,23 @@ export class CapriLocalAgent extends EventEmitter {
     if (memoryCommand) {
       // From another language the part to remember comes back folded: it is taken from the original
       this.handleMemoryCommand(memoryCommand, fixedCommand ? spokenPrompt : null, isSpanish)
+      this.finishSession()
+      return
+    }
+
+    // "¿Qué apps conocés?": the ones in Dev Deck > Apps, by the names she is asked for them
+    if (isKnownAppsRequest(spokenPrompt) || isKnownAppsRequest(trimmed)) {
+      const names = listKnownApps().map((a) => a.name)
+      const list = names.join(', ')
+      this.emitAssistant(
+        names.length
+          ? isSpanish
+            ? `[cheerful] Estas son las apps que conozco: ${list}. Pedime que abra cualquiera.`
+            : `[cheerful] These are the apps I know: ${list}. Ask me to open any of them.`
+          : isSpanish
+          ? '[curious] Todavía no conozco ninguna app por nombre. Agregalas en el Dev Deck, en Apps, o pedime que abra una y mostrame dónde está.'
+          : "[curious] I don't know any apps by name yet. Add them in the Dev Deck under Apps, or ask me to open one and show me where it is."
+      )
       this.finishSession()
       return
     }

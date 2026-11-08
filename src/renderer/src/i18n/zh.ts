@@ -379,5 +379,28 @@ export const zh: Messages = {
   mem_thread: '上一次对话已保存（{n} 条消息），重启后可以继续。',
   mem_noThread: '没有保存的对话。',
   mem_clearAll: '全部清除',
-  mem_clearConfirm: '再点一次以全部清除'
+  mem_clearConfirm: '再点一次以全部清除',
+
+  // Apps window and the user's name
+  deck_apps: '应用',
+  deck_appsTitle: 'Capri 按名称认识的应用',
+  apps_title: 'Capri // 应用',
+  apps_hint: '说"打开"加名称就能打开其中任意一个，语音或聊天都行。名称就是你叫它的方式，改成你平时用的叫法。她自己能找到的应用也能用，这里是她按你起的名字认识的。',
+  apps_empty: '还没有应用。添加一个，或者让她打开一个找不到的应用并告诉她在哪里。',
+  apps_rename: '重命名',
+  apps_saveName: '保存名称',
+  apps_open: '打开',
+  apps_openFailed: '打不开，文件可能被移动了：',
+  apps_remove: '移除',
+  apps_removeConfirm: '移除？',
+  apps_add: '添加应用',
+  apps_count: '{n} 个应用',
+  apps_problemEmpty: '名称不能为空。',
+  apps_problemDuplicate: '已经有别的应用叫这个名字。',
+  apps_problemMissing: '那个文件已经不存在了。',
+  you_title: '你的名字',
+  you_placeholder: 'Capri 应该怎么叫你',
+  you_save: '保存',
+  you_saved: '已保存',
+  you_hint: 'Capri 在所有地方都这样叫你：聊天、语音和游戏。'
 }

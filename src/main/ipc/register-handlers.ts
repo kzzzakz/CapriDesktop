@@ -26,6 +26,8 @@ import { clipService } from '../services/clip-service'
 import { welcomeSpeech } from '../services/welcome-speech'
 import { getSystemPromptInfo, setSystemPrompt, resetSystemPrompt, setPersonaStyle } from '../services/system-prompt-store'
 import { memoryService } from '../services/memory-service'
+import { addKnownApp, listKnownApps, onKnownAppsChanged, removeKnownApp, renameKnownApp, suggestedAppName } from '../services/known-apps'
+import { openKnownApp } from '../services/app-launcher'
 
 export function registerIpcHandlers(): void {
   // Deck window visibility
@@ -336,6 +338,26 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.MEMORY_DELETE, (_event, id: string) => memoryService.deleteFact(String(id ?? '')))
   ipcMain.handle(IPC_CHANNELS.MEMORY_CLEAR, () => memoryService.clearAll())
   memoryService.onChanged(() => windowManager.broadcast(IPC_CHANNELS.MEMORY_CHANGED, memoryService.snapshot()))
+
+  // The apps she knows by name
+  ipcMain.handle(IPC_CHANNELS.APPS_LIST, () => listKnownApps())
+  // The file is chosen here, in the main process: the window never gets to pass a path of its own
+  ipcMain.handle(IPC_CHANNELS.APPS_PICK, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const options: Electron.OpenDialogOptions = {
+      properties: ['openFile'],
+      defaultPath: process.platform === 'win32' ? process.env.ProgramFiles || 'C:\\' : os.homedir(),
+      filters: process.platform === 'win32' ? [{ name: 'Apps', extensions: ['exe', 'lnk', 'url', 'bat', 'cmd'] }] : []
+    }
+    const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const file = picked.filePaths[0]
+    if (picked.canceled || !file) return null
+    return addKnownApp(suggestedAppName(file), file)
+  })
+  ipcMain.handle(IPC_CHANNELS.APPS_RENAME, (_event, id: string, name: string) => renameKnownApp(String(id ?? ''), String(name ?? '')))
+  ipcMain.handle(IPC_CHANNELS.APPS_REMOVE, (_event, id: string) => removeKnownApp(String(id ?? '')))
+  ipcMain.handle(IPC_CHANNELS.APPS_OPEN, (_event, id: string) => openKnownApp(String(id ?? '')))
+  onKnownAppsChanged(() => windowManager.broadcast(IPC_CHANNELS.APPS_CHANGED, listKnownApps()))
   ipcMain.handle(IPC_CHANNELS.LLM_GET_SETTINGS, () => getLlmSettings())
   ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))

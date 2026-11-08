@@ -377,7 +377,30 @@ export const en = {
   mem_thread: 'The last conversation is saved ({n} messages), so you can pick it up after a restart.',
   mem_noThread: 'No conversation saved.',
   mem_clearAll: 'Clear all',
-  mem_clearConfirm: 'Click again to erase everything'
+  mem_clearConfirm: 'Click again to erase everything',
+
+  // Apps window and the user's name
+  deck_apps: 'Apps',
+  deck_appsTitle: 'The apps Capri knows by name',
+  apps_title: 'Capri // Apps',
+  apps_hint: 'Say "open" and the name to open any of them, by voice or in the chat. The name is how you ask her for it: change it to whatever you call it. Apps she finds on her own work too, these are the ones she knows by your names.',
+  apps_empty: 'No apps yet. Add one, or ask her to open an app she can’t find and show her where it is.',
+  apps_rename: 'Rename',
+  apps_saveName: 'Save name',
+  apps_open: 'Open',
+  apps_openFailed: 'Could not open it, the file may have moved:',
+  apps_remove: 'Remove',
+  apps_removeConfirm: 'Remove?',
+  apps_add: 'Add app',
+  apps_count: '{n} apps',
+  apps_problemEmpty: 'The name can’t be empty.',
+  apps_problemDuplicate: 'Another app already has that name.',
+  apps_problemMissing: 'That file doesn’t exist anymore.',
+  you_title: 'Your name',
+  you_placeholder: 'How Capri should call you',
+  you_save: 'Save',
+  you_saved: 'Saved',
+  you_hint: 'Capri calls you by this name everywhere: chat, voice and games.'
 }
 
 export type Messages = typeof en

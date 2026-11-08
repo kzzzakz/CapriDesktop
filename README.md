@@ -174,7 +174,7 @@ Adapter contributors can follow the [short guide](docs/game-adapters.md).
 
 Everything lives on your PC, in `%APPDATA%\Capri Desktop` (or `%APPDATA%\Cyber Companion`, if you installed her before the rename):
 
-- **`capri_consciousness.json`**: boot/shutdown counters (she comments on them), your name, language settings and onboarding state.
+- **`capri_consciousness.json`**: boot/shutdown counters (she comments on them), your name (change it in Dev Deck → **Capri // Brain**), the apps she knows by name, language settings and onboarding state.
 - **`capri_macros.json`**: your voice macros.
 - **`capri_memory.json`**: what she remembers about you and the latest conversation, so she can pick it up after a restart. You can see, delete or turn off her memory in Dev Deck → **Capri // Brain**.
 - **`capri_voice/`**: voice configuration, API keys (`voice_config.local.json`) and the audio cache.
@@ -222,7 +222,7 @@ Capri understands commands in both English and Spanish.
 | Hold `Ctrl` in Game Mode | In Game Mode Capri lets clicks pass through to the game; hold `Ctrl` over her to move or touch her. |
 | `Ctrl+Alt+G` in Game Mode (Linux) | Same as holding `Ctrl`, which Linux can't detect in that mode. |
 
-> **Note:** while another app has the focus, those arrows are reserved for her. You can change those keys or turn them off in the voice settings; `Ctrl+Alt+V` always works. In her own windows the arrows work normally in text fields.
+> **Note:** while another app has the focus, those arrows are reserved for her. You can change those keys, and the Gaming Mode one, or turn the arrows off in the voice settings; `Ctrl+Alt+V` and the Gaming Mode key always work. In her own windows the arrows work normally in text fields.
 
 ### Mouse
 | Action | What it does |
@@ -295,6 +295,9 @@ The drawing, League of Legends and Cyberpunk 2077 commands are in [section 8](#8
 | `open cyberpunk` | Launches Cyberpunk 2077 through Steam or GOG. |
 | `open steam` / `open discord` / `open obs` | Launches Steam, Discord or OBS Studio. |
 | `open blender` / `abrí la epic games store` | Opens any installed app. If she can't find it, she asks you where it is and remembers it. |
+| `what apps do you know?` / `¿qué apps conocés?` | She lists the apps she knows by name. |
+
+Dev Deck → **Apps** lists the apps she knows by name: add any program, rename it to whatever you call it, open or remove it. Ask her to open one by that name, even said a little differently ("abrí el editor de Valen").
 | `close league` / `close chrome` / `cerrá discord` | Closes the process. |
 
 ### Desktop interaction

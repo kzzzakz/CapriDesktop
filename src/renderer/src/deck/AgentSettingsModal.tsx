@@ -27,6 +27,10 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
   // Simple presets for who doesn't want to write a prompt, saved as soon as they change
   const [tone, setTone] = useState<SystemPromptPayload['tone']>('default')
   const [teasing, setTeasing] = useState<SystemPromptPayload['teasing']>('default')
+  // How she calls the user, saved on its own button
+  const [userName, setUserName] = useState('')
+  const [nameDraft, setNameDraft] = useState('')
+  const [nameSaved, setNameSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   // Regenerating asks for a second click, since it throws away a prompt of her own
   const [confirmReset, setConfirmReset] = useState(false)
@@ -49,6 +53,15 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
   // Load the current system prompt every time the window opens
   useEffect(() => {
     if (!isOpen) return
+    setNameSaved(false)
+    window.api.companion
+      .getUserProfile()
+      .then((profile) => {
+        const current = profile.hasName ? profile.name : ''
+        setUserName(current)
+        setNameDraft(current)
+      })
+      .catch(() => {})
     setPromptLoaded(false)
     setSaveError(false)
     setConfirmReset(false)
@@ -113,6 +126,15 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
     }
   }
 
+  const saveName = async () => {
+    const clean = nameDraft.trim()
+    if (!clean || clean === userName) return
+    const saved = await window.api.companion.setUserName(clean)
+    setUserName(saved)
+    setNameDraft(saved)
+    setNameSaved(true)
+  }
+
   if (!isOpen) return null
 
   // True when the text in the box is not the built-in prompt
@@ -165,6 +187,35 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
               )}
             </div>
           )}
+
+          {/* How she calls the user */}
+          <div className="space-y-1">
+            <span className="cp-label">{t('you_title')}</span>
+            <div className="flex gap-2">
+              <div className="cp-frame flex-1">
+                <input
+                  value={nameDraft}
+                  maxLength={40}
+                  onChange={(e) => {
+                    setNameDraft(e.target.value)
+                    setNameSaved(false)
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && void saveName()}
+                  placeholder={t('you_placeholder')}
+                  className="cp-input w-full px-3 py-1.5 text-[14px]"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void saveName()}
+                disabled={!nameDraft.trim() || nameDraft.trim() === userName}
+                className="cp-frame cp-btn-ghost px-4 py-1.5 text-[13px] disabled:opacity-40"
+              >
+                {nameSaved ? t('you_saved') : t('you_save')}
+              </button>
+            </div>
+            <p className="text-[12px] text-[var(--cp-muted)]">{t('you_hint')}</p>
+          </div>
 
           {/* System prompt editor */}
           <div className="space-y-2">

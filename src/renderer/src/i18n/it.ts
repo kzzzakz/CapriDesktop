@@ -379,5 +379,28 @@ export const it: Messages = {
   mem_thread: 'L’ultima conversazione è salvata ({n} messaggi), così puoi riprenderla dopo un riavvio.',
   mem_noThread: 'Nessuna conversazione salvata.',
   mem_clearAll: 'Cancella tutto',
-  mem_clearConfirm: 'Clicca di nuovo per cancellare tutto'
+  mem_clearConfirm: 'Clicca di nuovo per cancellare tutto',
+
+  // Apps window and the user's name
+  deck_apps: 'App',
+  deck_appsTitle: 'Le app che Capri conosce per nome',
+  apps_title: 'Capri // App',
+  apps_hint: 'Di’ "apri" e il nome per aprirne una, a voce o in chat. Il nome è come gliela chiedi: mettici quello che usi tu. Anche le app che trova da sola funzionano, queste sono quelle che conosce con i tuoi nomi.',
+  apps_empty: 'Ancora nessuna app. Aggiungine una, o chiedile di aprire un’app che non trova e mostrale dov’è.',
+  apps_rename: 'Rinomina',
+  apps_saveName: 'Salva nome',
+  apps_open: 'Apri',
+  apps_openFailed: 'Impossibile aprirla, il file potrebbe essere stato spostato:',
+  apps_remove: 'Rimuovi',
+  apps_removeConfirm: 'Rimuovere?',
+  apps_add: 'Aggiungi app',
+  apps_count: '{n} app',
+  apps_problemEmpty: 'Il nome non può essere vuoto.',
+  apps_problemDuplicate: 'Un’altra app ha già questo nome.',
+  apps_problemMissing: 'Quel file non esiste più.',
+  you_title: 'Il tuo nome',
+  you_placeholder: 'Come deve chiamarti Capri',
+  you_save: 'Salva',
+  you_saved: 'Salvato',
+  you_hint: 'Capri ti chiama così ovunque: chat, voce e giochi.'
 }

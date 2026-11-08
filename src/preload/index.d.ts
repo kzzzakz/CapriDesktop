@@ -1,5 +1,6 @@
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
+import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
   CompanionEmotionState,
@@ -121,6 +122,13 @@ export interface IElectronAPI {
     deleteMemory: (id: string) => Promise<MemorySnapshot>
     clearMemory: () => Promise<MemorySnapshot>
     onMemoryChanged: (callback: (memory: MemorySnapshot) => void) => () => void
+    // The apps she knows by name (Dev Deck > Apps)
+    listApps: () => Promise<KnownApp[]>
+    pickApp: () => Promise<KnownAppResult | null>
+    renameApp: (id: string, name: string) => Promise<KnownAppResult>
+    removeApp: (id: string) => Promise<KnownApp[]>
+    openApp: (id: string) => Promise<boolean>
+    onAppsChanged: (callback: (apps: KnownApp[]) => void) => () => void
     getLlmSettings: () => Promise<LlmPublicSettings>
     setLlmSettings: (update: LlmSettingsUpdate) => Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }>
     listLlmModels: (baseUrl: string, apiKey?: string) => Promise<{ ok: boolean; models: string[]; error?: string }>

@@ -127,6 +127,30 @@ const WHATS_NEW = phrases([
   '有什么新', '更新了什么', '有什麼新'
 ])
 
+/** "What apps do you know?": the ones in Dev Deck > Apps, by the names she is asked for them */
+const KNOWN_APPS = phrases([
+  // en
+  'what apps do you know', 'which apps do you know', 'what apps can you open', 'which apps can you open', 'list my apps', 'list your apps', 'show my apps', 'my apps', 'your apps',
+  // es
+  'que apps conoces', 'que apps conocés', 'cuales apps conoces', 'cuales apps conocés', 'que aplicaciones conoces', 'que aplicaciones conocés', 'que apps podes abrir', 'que apps podés abrir', 'que apps puedes abrir', 'mostrame mis apps', 'mostrame las apps', 'decime mis apps', 'mis apps', 'tus apps',
+  // pt
+  'quais apps voce conhece', 'que apps voce conhece', 'quais aplicativos voce conhece', 'quais apps voce pode abrir', 'meus apps', 'mostra meus apps',
+  // fr
+  'quelles applis connais tu', 'quelles apps connais tu', 'quelles applications connais tu', 'quelles applis peux tu ouvrir', 'mes applis', 'mes apps',
+  // de
+  'welche apps kennst du', 'welche programme kennst du', 'welche apps kannst du offnen', 'meine apps', 'zeig meine apps',
+  // it
+  'quali app conosci', 'che app conosci', 'quali app puoi aprire', 'le mie app', 'mostra le mie app',
+  // ru
+  'какие приложения ты знаешь', 'какие программы ты знаешь', 'какие приложения ты можешь открыть', 'мои приложения',
+  // ja
+  'どのアプリを知ってる', '知ってるアプリは', 'アプリ一覧', '開けるアプリは', '私のアプリ',
+  // ko
+  '어떤 앱 알아', '아는 앱 뭐야', '열 수 있는 앱', '내 앱 목록', '앱 목록',
+  // zh
+  '你知道哪些应用', '你认识哪些应用', '你能打开哪些应用', '我的应用', '应用列表', '你知道哪些軟體'
+])
+
 const containsPhrase = (key: string, set: Set<string>) => Array.from(set).some((p) => key === p || (/[^\x00-\x7f]/.test(p) ? key.includes(p) : ` ${key} `.includes(` ${p} `)))
 
 // Both ways: a polite word in one language can be part of the command in another ("che" in Italian)
@@ -134,6 +158,7 @@ const isExactly = (text: string, set: Set<string>) => set.has(commandKey(text)) 
 const mentions = (text: string, set: Set<string>) => containsPhrase(commandKey(text), set) || containsPhrase(plain(text), set)
 
 export const isHoldStillRequest = (text: string) => isExactly(text, HOLD_STILL)
+export const isKnownAppsRequest = (text: string) => isExactly(text, KNOWN_APPS)
 export const isMoveAgainRequest = (text: string) => isExactly(text, MOVE_AGAIN)
 export const isVersionRequest = (text: string) => mentions(text, ASK_VERSION) || isExactly(text, CHECK_VERSION)
 export const isUpdateInOtherLanguage = (text: string) => mentions(text, UPDATE)

@@ -379,5 +379,28 @@ export const ja: Messages = {
   mem_thread: '前回の会話を保存しています（{n}件）。再起動後も続けられます。',
   mem_noThread: '保存された会話はありません。',
   mem_clearAll: 'すべて消去',
-  mem_clearConfirm: 'もう一度クリックですべて消去'
+  mem_clearConfirm: 'もう一度クリックですべて消去',
+
+  // Apps window and the user's name
+  deck_apps: 'アプリ',
+  deck_appsTitle: 'Capriが名前で知っているアプリ',
+  apps_title: 'Capri // アプリ',
+  apps_hint: '「開いて」と名前を言えば、声でもチャットでも開けます。名前はあなたが呼ぶときの名前です。自分が使う呼び方に変えてください。彼女が自分で見つけるアプリも使えますが、ここにあるのはあなたの名前で覚えているものです。',
+  apps_empty: 'まだアプリがありません。追加するか、見つからないアプリを開くように頼んで場所を教えてください。',
+  apps_rename: '名前を変更',
+  apps_saveName: '名前を保存',
+  apps_open: '開く',
+  apps_openFailed: '開けませんでした。ファイルが移動したかもしれません：',
+  apps_remove: '削除',
+  apps_removeConfirm: '削除する？',
+  apps_add: 'アプリを追加',
+  apps_count: '{n}個のアプリ',
+  apps_problemEmpty: '名前を空にはできません。',
+  apps_problemDuplicate: '別のアプリがすでにその名前です。',
+  apps_problemMissing: 'そのファイルはもうありません。',
+  you_title: 'あなたの名前',
+  you_placeholder: 'Capriにどう呼ばれたいか',
+  you_save: '保存',
+  you_saved: '保存しました',
+  you_hint: 'Capriはどこでもこの名前で呼びます：チャット、声、ゲーム。'
 }

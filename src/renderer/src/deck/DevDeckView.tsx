@@ -4,10 +4,11 @@ import { CodeEditorView } from './CodeEditorView'
 import { AgentSettingsModal } from './AgentSettingsModal'
 import { VoiceSettingsModal } from '../companion/VoiceSettingsModal'
 import { LanguageSettingsModal } from './LanguageSettingsModal'
+import { AppsModal } from './AppsModal'
 import { useCompanionStore } from '../stores/useCompanionStore'
 import { useAgentStore } from '../stores/useAgentStore'
 import { useT } from '../utils/useUiLang'
-import {
+import { AppWindow,
   Minus,
   X,
   Settings,
@@ -29,6 +30,7 @@ export const DevDeckView: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false)
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false)
+  const [isAppsModalOpen, setIsAppsModalOpen] = useState(false)
   const { setEmotion, setSpeech } = useCompanionStore()
   const t = useT()
   const [configLoaded, setConfigLoaded] = useState(false)
@@ -200,6 +202,17 @@ export const DevDeckView: React.FC = () => {
             </button>
           </div>
 
+          {/* The apps she knows by name */}
+          <button
+            type="button"
+            onClick={() => setIsAppsModalOpen(true)}
+            className="cp-cut flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[14px] font-semibold border border-[#3c1c1d] bg-[#210f10] text-stone-400 hover:text-cyan-300 hover:border-cyan-500/50 transition-all cursor-pointer"
+            title={t('deck_appsTitle')}
+          >
+            <AppWindow size={12} className="text-cyan-400" />
+            <span className="text-[12px] uppercase font-bold text-stone-300">{t('deck_apps')}</span>
+          </button>
+
           {/* Language Settings Button */}
           <button
             type="button"
@@ -276,6 +289,7 @@ export const DevDeckView: React.FC = () => {
       )}
 
       <LanguageSettingsModal isOpen={isLanguageModalOpen} onClose={() => setIsLanguageModalOpen(false)} />
+      <AppsModal isOpen={isAppsModalOpen} onClose={() => setIsAppsModalOpen(false)} />
 
       {/* Voice TTS Settings Modal */}
       <VoiceSettingsModal

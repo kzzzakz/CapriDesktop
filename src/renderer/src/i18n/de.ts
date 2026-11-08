@@ -379,5 +379,28 @@ export const de: Messages = {
   mem_thread: 'Das letzte Gespräch ist gespeichert ({n} Nachrichten), damit du es nach einem Neustart fortsetzen kannst.',
   mem_noThread: 'Kein Gespräch gespeichert.',
   mem_clearAll: 'Alles löschen',
-  mem_clearConfirm: 'Zum Löschen von allem erneut klicken'
+  mem_clearConfirm: 'Zum Löschen von allem erneut klicken',
+
+  // Apps window and the user's name
+  deck_apps: 'Apps',
+  deck_appsTitle: 'Die Apps, die Capri beim Namen kennt',
+  apps_title: 'Capri // Apps',
+  apps_hint: 'Sag „öffne“ und den Namen, um eine davon zu öffnen, per Stimme oder im Chat. Der Name ist das, womit du sie danach fragst: nimm den, den du benutzt. Apps, die sie selbst findet, gehen auch, das hier sind die, die sie unter deinen Namen kennt.',
+  apps_empty: 'Noch keine Apps. Füg eine hinzu, oder bitte sie, eine App zu öffnen, die sie nicht findet, und zeig ihr, wo sie ist.',
+  apps_rename: 'Umbenennen',
+  apps_saveName: 'Namen speichern',
+  apps_open: 'Öffnen',
+  apps_openFailed: 'Ließ sich nicht öffnen, die Datei wurde vielleicht verschoben:',
+  apps_remove: 'Entfernen',
+  apps_removeConfirm: 'Entfernen?',
+  apps_add: 'App hinzufügen',
+  apps_count: '{n} Apps',
+  apps_problemEmpty: 'Der Name darf nicht leer sein.',
+  apps_problemDuplicate: 'Eine andere App hat schon diesen Namen.',
+  apps_problemMissing: 'Diese Datei gibt es nicht mehr.',
+  you_title: 'Dein Name',
+  you_placeholder: 'Wie Capri dich nennen soll',
+  you_save: 'Speichern',
+  you_saved: 'Gespeichert',
+  you_hint: 'Capri nennt dich überall so: im Chat, mit der Stimme und in Spielen.'
 }

@@ -379,5 +379,28 @@ export const fr: Messages = {
   mem_thread: 'La dernière conversation est enregistrée ({n} messages), pour la reprendre après un redémarrage.',
   mem_noThread: 'Aucune conversation enregistrée.',
   mem_clearAll: 'Tout effacer',
-  mem_clearConfirm: 'Clique encore pour tout effacer'
+  mem_clearConfirm: 'Clique encore pour tout effacer',
+
+  // Apps window and the user's name
+  deck_apps: 'Apps',
+  deck_appsTitle: 'Les applis que Capri connaît par leur nom',
+  apps_title: 'Capri // Apps',
+  apps_hint: 'Dis « ouvre » et le nom pour en ouvrir une, à la voix ou dans le chat. Le nom, c’est comme ça que tu la lui demandes : mets celui que tu utilises. Les applis qu’elle trouve seule marchent aussi, celles-ci sont celles qu’elle connaît par tes noms.',
+  apps_empty: 'Pas encore d’applis. Ajoutes-en une, ou demande-lui d’ouvrir une appli qu’elle ne trouve pas et montre-lui où elle est.',
+  apps_rename: 'Renommer',
+  apps_saveName: 'Enregistrer le nom',
+  apps_open: 'Ouvrir',
+  apps_openFailed: 'Impossible de l’ouvrir, le fichier a peut-être bougé :',
+  apps_remove: 'Retirer',
+  apps_removeConfirm: 'Retirer ?',
+  apps_add: 'Ajouter une appli',
+  apps_count: '{n} applis',
+  apps_problemEmpty: 'Le nom ne peut pas être vide.',
+  apps_problemDuplicate: 'Une autre appli porte déjà ce nom.',
+  apps_problemMissing: 'Ce fichier n’existe plus.',
+  you_title: 'Ton nom',
+  you_placeholder: 'Comment Capri doit t’appeler',
+  you_save: 'Enregistrer',
+  you_saved: 'Enregistré',
+  you_hint: 'Capri t’appelle ainsi partout : chat, voix et jeux.'
 }

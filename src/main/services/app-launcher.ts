@@ -9,8 +9,8 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { localizeLine } from '../../shared/lines'
-import { appKey, bestAppMatch, looksLikeAppName } from './app-finder'
-import { consciousnessService } from './consciousness-service'
+import { bestAppMatch, cleanAppRequest, looksLikeAppName } from './app-finder'
+import { addKnownApp, findKnownApp, getKnownApp } from './known-apps'
 import { exec, spawn } from './hidden-process'
 import { findOnPath, isWindows, launchDesktopEntry, listDesktopEntries, type DesktopEntry } from './platform'
 import { speak, speechLang } from './update-service'
@@ -94,7 +94,7 @@ function openWindowsAppId(appId: string): void {
 }
 
 /** Starts a file: an executable, or whatever the system opens that kind of file with */
-async function startFile(file: string): Promise<boolean> {
+export async function startFile(file: string): Promise<boolean> {
   if (!fs.existsSync(file)) return false
   if (!isWindows && !file.endsWith('.desktop')) {
     try {
@@ -115,14 +115,12 @@ async function startFile(file: string): Promise<boolean> {
 
 /** Opens an installed app by name. Returns the name it found, or null if it isn't anywhere */
 export async function openInstalledApp(request: string): Promise<string | null> {
-  const key = appKey(request)
-  if (!key) return null
+  if (!cleanAppRequest(request)) return null
 
-  const remembered = consciousnessService.getAppPath(key)
-  if (remembered) {
-    if (await startFile(remembered)) return path.parse(remembered).name
-    consciousnessService.forgetAppPath(key) // it was moved or uninstalled
-  }
+  // Her own list first (Dev Deck > Apps): the user's names, even when said a little differently.
+  // An app whose file is gone stays on the list for the user to fix, and the system search goes on
+  const known = findKnownApp(request)
+  if (known && (await startFile(known.path))) return known.name
 
   if (isWindows) {
     const found = bestAppMatch(request, await windowsApps())
@@ -160,8 +158,14 @@ export async function askWhereAppIs(request: string): Promise<string | null> {
   })
   const file = picked.filePaths[0]
   if (picked.canceled || !file || !(await startFile(file))) return null
-  consciousnessService.setAppPath(appKey(request), file)
-  return path.parse(file).name
+  // Saved under the name it was asked by, so it shows up in Dev Deck > Apps
+  return addKnownApp(cleanAppRequest(request), file).app?.name ?? path.parse(file).name
+}
+
+/** Opens a known app from the Apps window */
+export async function openKnownApp(id: string): Promise<boolean> {
+  const known = getKnownApp(id)
+  return !!known && (await startFile(known.path))
 }
 
 /** Whether something on this PC answers a link like steam:// . Starting one that doesn't shows an error window */

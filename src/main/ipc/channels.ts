@@ -91,6 +91,13 @@ export const IPC_CHANNELS = {
   MEMORY_DELETE: 'memory:delete',
   MEMORY_CLEAR: 'memory:clear',
   MEMORY_CHANGED: 'memory:changed',
+  // The apps she knows by name (Dev Deck > Apps)
+  APPS_LIST: 'apps:list',
+  APPS_PICK: 'apps:pick',
+  APPS_RENAME: 'apps:rename',
+  APPS_REMOVE: 'apps:remove',
+  APPS_OPEN: 'apps:open',
+  APPS_CHANGED: 'apps:changed',
   LLM_GET_SETTINGS: 'llm:getSettings',
   LLM_SET_SETTINGS: 'llm:setSettings',
   LLM_LIST_MODELS: 'llm:listModels',

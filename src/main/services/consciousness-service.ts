@@ -7,6 +7,14 @@ import { clampGamingOpacity, normalizeHotkeys, type Hotkeys } from '../../shared
 
 export type MusicPlatform = 'youtube_music' | 'spotify'
 
+/** An app she knows: the name she is asked for it by, and the file it opens */
+export interface KnownApp {
+  id: string
+  name: string
+  path: string
+  addedAt: number
+}
+
 export interface ConsciousnessData {
   musicPlatform?: MusicPlatform
   shutdownCount: number
@@ -40,6 +48,8 @@ export interface ConsciousnessData {
   lastRunVersion?: string
   /** Apps she couldn't find and the user showed her, by the name they were asked for */
   appPaths?: Record<string, string>
+  /** Apps she knows by name (Dev Deck > Apps). Undefined until appPaths is moved here the first time */
+  knownApps?: KnownApp[]
   /** League champions the user asked Capri to pick, counted per role (top, jungle, middle, bottom, utility, any) */
   lolChampionRequests?: Record<string, Record<string, number>>
   /** UI language settings: 'auto' or an ISO code (es, en, pt, fr, de, it, ja, ko, zh, ru) */
@@ -370,6 +380,19 @@ class ConsciousnessService {
     return Object.entries(bucket)
       .map(([champion, count]) => ({ champion, count }))
       .sort((a, b) => b.count - a.count)
+  }
+
+  public getAppPaths(): Record<string, string> {
+    return { ...this.data.appPaths }
+  }
+
+  public getKnownApps(): KnownApp[] | null {
+    return this.data.knownApps ? this.data.knownApps.map((a) => ({ ...a })) : null
+  }
+
+  public setKnownApps(apps: KnownApp[]): void {
+    this.data.knownApps = apps
+    this.save()
   }
 
   public getAppPath(key: string): string | null {

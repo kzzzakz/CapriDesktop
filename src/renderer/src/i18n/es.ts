@@ -379,5 +379,28 @@ export const es: Messages = {
   mem_thread: 'La última conversación está guardada ({n} mensajes), así la podés retomar después de reiniciar.',
   mem_noThread: 'No hay ninguna conversación guardada.',
   mem_clearAll: 'Borrar todo',
-  mem_clearConfirm: 'Hacé clic de nuevo para borrar todo'
+  mem_clearConfirm: 'Hacé clic de nuevo para borrar todo',
+
+  // Apps window and the user's name
+  deck_apps: 'Apps',
+  deck_appsTitle: 'Las apps que Capri conoce por nombre',
+  apps_title: 'Capri // Apps',
+  apps_hint: 'Decí "abrí" y el nombre para abrir cualquiera, por voz o en el chat. El nombre es cómo se la pedís: cambialo por el que uses vos. Las apps que encuentra sola también funcionan, estas son las que conoce con tus nombres.',
+  apps_empty: 'Todavía no hay apps. Agregá una, o pedile que abra una app que no encuentra y mostrale dónde está.',
+  apps_rename: 'Renombrar',
+  apps_saveName: 'Guardar nombre',
+  apps_open: 'Abrir',
+  apps_openFailed: 'No se pudo abrir, puede que el archivo se haya movido:',
+  apps_remove: 'Quitar',
+  apps_removeConfirm: '¿Quitar?',
+  apps_add: 'Agregar app',
+  apps_count: '{n} apps',
+  apps_problemEmpty: 'El nombre no puede estar vacío.',
+  apps_problemDuplicate: 'Otra app ya tiene ese nombre.',
+  apps_problemMissing: 'Ese archivo ya no existe.',
+  you_title: 'Tu nombre',
+  you_placeholder: 'Cómo te tiene que llamar Capri',
+  you_save: 'Guardar',
+  you_saved: 'Guardado',
+  you_hint: 'Capri te llama así en todos lados: chat, voz y juegos.'
 }
