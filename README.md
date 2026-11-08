@@ -218,6 +218,7 @@ Capri understands commands in both English and Spanish.
 | `→` (Right arrow) | Toggle always-listening mode. |
 | `←` (Left arrow) | Open / close Capri's chat (same as `Ctrl + Click` on her). |
 | `Ctrl+Alt+S` | Open the optical scanner / scan. |
+| `Ctrl+Alt+M` | Gaming Mode on / off. Works inside games too. |
 | Hold `Ctrl` in Game Mode | In Game Mode Capri lets clicks pass through to the game; hold `Ctrl` over her to move or touch her. |
 | `Ctrl+Alt+G` in Game Mode (Linux) | Same as holding `Ctrl`, which Linux can't detect in that mode. |
 

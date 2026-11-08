@@ -264,6 +264,7 @@ export const en = {
   vs_hotkeyTalk: 'Talk to her',
   vs_hotkeyListen: 'Always listening',
   vs_hotkeyChat: 'Open her chat',
+  vs_hotkeyGaming: 'Gaming Mode on/off (works inside games)',
   vs_hotkeyPress: 'Press a key...',
   vs_hotkeyReset: 'Back to the arrow keys',
   vs_hotkeyNeedsModifier: 'A letter, number or Enter on its own would stop working everywhere else: combine it with Ctrl or Alt.',

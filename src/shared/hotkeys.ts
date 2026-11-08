@@ -3,12 +3,13 @@
  * text the global shortcuts take, so the main process and the windows compare the same thing.
  */
 
-export type HotkeyAction = 'talk' | 'listen' | 'chat'
+export type HotkeyAction = 'talk' | 'listen' | 'chat' | 'gaming'
 export type Hotkeys = Record<HotkeyAction, string>
 export type HotkeyProblem = 'needsModifier' | 'reserved' | 'inUse' | 'taken'
 
-export const DEFAULT_HOTKEYS: Hotkeys = { talk: 'Down', listen: 'Right', chat: 'Left' }
-export const HOTKEY_ACTIONS: HotkeyAction[] = ['talk', 'listen', 'chat']
+/** Gaming Mode has a modifier: it works inside games, so it can't take a key games use */
+export const DEFAULT_HOTKEYS: Hotkeys = { talk: 'Down', listen: 'Right', chat: 'Left', gaming: 'Control+Alt+M' }
+export const HOTKEY_ACTIONS: HotkeyAction[] = ['talk', 'listen', 'chat', 'gaming']
 
 /** Her fixed shortcuts, and Escape, which cancels a recording and a key being chosen */
 const RESERVED = new Set(['Control+Alt+V', 'Control+Alt+S', 'Control+Alt+G', 'Escape'])
@@ -66,6 +67,8 @@ export function acceleratorFromEvent(e: KeyPress): string | null {
 /** Why a key can't be used for an action, or null if it can */
 export function hotkeyProblem(accelerator: string, action: HotkeyAction, current: Hotkeys): HotkeyProblem | null {
   if (RESERVED.has(accelerator)) return 'reserved'
+  // Inside a game every plain key is taken: Gaming Mode needs Ctrl, Alt, Shift or Win, or an F key
+  if (action === 'gaming' && !accelerator.includes('+') && !/^F\d+$/.test(accelerator)) return 'needsModifier'
   // Global shortcuts swallow the key in every app: a plain letter would stop you typing it anywhere
   if (/^(?:[A-Z0-9]|Space|Return|Tab|Backspace|Delete)$/.test(accelerator)) return 'needsModifier'
   if (HOTKEY_ACTIONS.some((other) => other !== action && current[other] === accelerator)) return 'inUse'
@@ -79,7 +82,7 @@ export function normalizeHotkeys(saved: unknown): Hotkeys {
     const value = source[action]
     return typeof value === 'string' && value ? value : DEFAULT_HOTKEYS[action]
   }
-  return { talk: pick('talk'), listen: pick('listen'), chat: pick('chat') }
+  return { talk: pick('talk'), listen: pick('listen'), chat: pick('chat'), gaming: pick('gaming') }
 }
 
 const SYMBOLS: Record<string, string> = { Up: '↑', Down: '↓', Left: '←', Right: '→', Control: 'Ctrl', Super: 'Win', Return: 'Enter' }

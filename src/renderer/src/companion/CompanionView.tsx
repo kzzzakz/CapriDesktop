@@ -450,7 +450,8 @@ export const CompanionView: React.FC = () => {
     const unsub = window.api?.voice?.onHotkeysChanged?.((saved) => (hotkeys = saved))
     const handleKeyDown = (e: KeyboardEvent) => {
       const pressed = acceleratorFromEvent(e)
-      if (!pressed || !HOTKEY_ACTIONS.some((action) => hotkeys[action] === pressed)) return
+      // The Gaming Mode key is global all the time, also with her window focused: nothing to do here
+      if (!pressed || !HOTKEY_ACTIONS.some((action) => action !== 'gaming' && hotkeys[action] === pressed)) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
       e.preventDefault()

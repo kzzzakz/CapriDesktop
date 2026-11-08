@@ -266,6 +266,7 @@ export const ja: Messages = {
   vs_hotkeyTalk: '話しかける',
   vs_hotkeyListen: '常に聞く',
   vs_hotkeyChat: 'チャットを開く',
+  vs_hotkeyGaming: 'ゲームモードのオン/オフ（ゲーム中も使える）',
   vs_hotkeyPress: 'キーを押して...',
   vs_hotkeyReset: '矢印キーに戻す',
   vs_hotkeyNeedsModifier: '文字、数字、Enter を単独で使うと他の場所で使えなくなります。Ctrl か Alt と組み合わせてください。',

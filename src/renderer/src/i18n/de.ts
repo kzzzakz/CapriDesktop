@@ -266,6 +266,7 @@ export const de: Messages = {
   vs_hotkeyTalk: 'Mit ihr sprechen',
   vs_hotkeyListen: 'Dauerhaft zuhören',
   vs_hotkeyChat: 'Ihren Chat öffnen',
+  vs_hotkeyGaming: 'Spielmodus an/aus (geht auch im Spiel)',
   vs_hotkeyPress: 'Taste drücken...',
   vs_hotkeyReset: 'Zurück zu den Pfeiltasten',
   vs_hotkeyNeedsModifier: 'Ein Buchstabe, eine Zahl oder Enter allein würden überall sonst nicht mehr funktionieren: kombiniere sie mit Strg oder Alt.',

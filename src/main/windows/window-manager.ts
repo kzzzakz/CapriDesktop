@@ -159,6 +159,8 @@ export class WindowManager {
       }
     }
 
+    this.registerGamingHotkey()
+
     // The arrows are global only while another app has the focus: in her own windows they belong to
     // the text fields, and those windows handle them on their own
     this.syncArrowKeys()
@@ -188,6 +190,27 @@ export class WindowManager {
   }
 
   private registeredHotkeys: string[] = []
+  /** The Gaming Mode key: registered all the time, the arrows only while another app has the focus */
+  private gamingHotkey: string | null = null
+
+  private registerGamingHotkey(): void {
+    this.releaseGamingHotkey()
+    const key = consciousnessService.getHotkeys().gaming
+    try {
+      if (globalShortcut.register(key, () => this.setGamingMode(!this.isGamingMode))) this.gamingHotkey = key
+      else console.warn(`[WindowManager] The Gaming Mode shortcut ${key} belongs to another app`)
+    } catch (err) {
+      console.warn(`[WindowManager] Could not register the Gaming Mode shortcut ${key}:`, err)
+    }
+  }
+
+  private releaseGamingHotkey(): void {
+    if (!this.gamingHotkey) return
+    try {
+      globalShortcut.unregister(this.gamingHotkey)
+    } catch {}
+    this.gamingHotkey = null
+  }
 
   private releaseHotkeys(): void {
     for (const key of this.registeredHotkeys) {
@@ -232,6 +255,7 @@ export class WindowManager {
     let problem = hotkeyProblem(accelerator, action, current)
     if (!problem) {
       this.releaseHotkeys()
+      if (action === 'gaming') this.releaseGamingHotkey()
       problem = this.canRegister(accelerator) ? null : 'taken'
     }
     if (!problem) {
@@ -239,6 +263,7 @@ export class WindowManager {
       this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, consciousnessService.getHotkeys())
     }
     this.syncArrowKeys()
+    if (action === 'gaming') this.registerGamingHotkey()
     return { hotkeys: consciousnessService.getHotkeys(), problem }
   }
 
@@ -247,6 +272,7 @@ export class WindowManager {
     consciousnessService.setHotkeys(DEFAULT_HOTKEYS)
     this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, DEFAULT_HOTKEYS)
     this.syncArrowKeys()
+    this.registerGamingHotkey()
     return DEFAULT_HOTKEYS
   }
 

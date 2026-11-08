@@ -266,6 +266,7 @@ export const zh: Messages = {
   vs_hotkeyTalk: '和她说话',
   vs_hotkeyListen: '持续聆听',
   vs_hotkeyChat: '打开她的聊天',
+  vs_hotkeyGaming: '游戏模式开/关（游戏中也能用）',
   vs_hotkeyPress: '请按一个键...',
   vs_hotkeyReset: '恢复方向键',
   vs_hotkeyNeedsModifier: '单独的字母、数字或 Enter 会在其他地方失效:请与 Ctrl 或 Alt 组合。',
