@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { AppWindow, Check, Pencil, Play, Plus, Trash2, X } from 'lucide-react'
 import type { KnownApp, KnownAppProblem } from '../../../main/services/known-apps'
 import { useT } from '../utils/useUiLang'
+import { CyberpunkFolders } from './CyberpunkFolders'
 
 interface AppsModalProps {
   isOpen: boolean
@@ -149,6 +150,9 @@ export const AppsModal: React.FC<AppsModalProps> = ({ isOpen, onClose }) => {
               ))}
             </ul>
           )}
+
+          {/* Games she reads in any folder, or under Mod Organizer */}
+          <CyberpunkFolders />
         </div>
 
         <div className="px-5 py-3.5 border-t border-[var(--cp-red-line)] flex justify-between items-center gap-2 shrink-0">

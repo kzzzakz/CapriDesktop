@@ -2,6 +2,7 @@ import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { ModelPullProgress } from '../main/services/ollama-service'
+import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -294,6 +295,11 @@ const api = {
         ipcRenderer.removeListener(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, subscription)
       }
     },
+
+    // Where Cyberpunk 2077 and her mod are
+    getCyberpunkFolders: (): Promise<CyberpunkFoldersState> => ipcRenderer.invoke(IPC_CHANNELS.CYBERPUNK_FOLDERS_GET),
+    pickCyberpunkFolder: (): Promise<{ state: CyberpunkFoldersState; info: CyberpunkFolderInfo } | null> => ipcRenderer.invoke(IPC_CHANNELS.CYBERPUNK_FOLDER_PICK),
+    removeCyberpunkFolder: (folder: string): Promise<CyberpunkFoldersState> => ipcRenderer.invoke(IPC_CHANNELS.CYBERPUNK_FOLDER_REMOVE, folder),
 
     getLlmSettings: (): Promise<LlmPublicSettings> => ipcRenderer.invoke(IPC_CHANNELS.LLM_GET_SETTINGS),
 

@@ -413,5 +413,16 @@ export const ko: Messages = {
   pull_failed: '다운로드 실패:',
   pull_offline: 'Ollama가 실행 중이 아니에요.',
   pull_badName: '모델 이름이 아니에요. gemma3:4b 같은 이름을 입력해 보세요.',
-  pull_hint: 'Ollama 라이브러리(ollama.com/library)의 어떤 모델이든 쓸 수 있어요. Gemma 3 4b 이상은 스캐너용으로 이미지도 볼 수 있어요. 큰 모델일수록 답이 좋지만 메모리가 더 필요해요.'
+  pull_hint: 'Ollama 라이브러리(ollama.com/library)의 어떤 모델이든 쓸 수 있어요. Gemma 3 4b 이상은 스캐너용으로 이미지도 볼 수 있어요. 큰 모델일수록 답이 좋지만 메모리가 더 필요해요.',
+
+  // Cyberpunk 2077 folders (Apps window)
+  cp2077_pick: '폴더 선택',
+  cp2077_hint: '게임에서 일어나는 일을 Capri가 알아채지 못하면(게임이 특이한 폴더에 있거나 Mod Organizer를 쓰는 경우) 게임 폴더나 Mod Organizer 인스턴스를 알려주세요. 게임이 실행 중일 때도 폴더를 기억해요.',
+  cp2077_notFound: '그 폴더에는 Cyberpunk 2077, Mod Organizer, Capri 모드가 없어요. 게임 폴더(bin이 있는 곳), Mod Organizer 인스턴스, 또는 모드의 capri 폴더를 고르세요.',
+  cp2077_kindGame: '게임',
+  cp2077_kindMo2: 'Mod Organizer',
+  cp2077_kindMod: '모드',
+  cp2077_cet: 'CET',
+  cp2077_mod: 'Capri 모드',
+  cp2077_events: '이벤트 수신 중'
 }

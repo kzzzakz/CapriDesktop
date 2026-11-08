@@ -50,6 +50,10 @@ export interface ConsciousnessData {
   appPaths?: Record<string, string>
   /** Apps she knows by name (Dev Deck > Apps). Undefined until appPaths is moved here the first time */
   knownApps?: KnownApp[]
+  /** Folders the user marked for Cyberpunk 2077: the game's, a Mod Organizer instance's, or the mod's */
+  cyberpunkFolders?: string[]
+  /** The game's folder, learned while it was running */
+  cyberpunkSeenRoot?: string
   /** League champions the user asked Capri to pick, counted per role (top, jungle, middle, bottom, utility, any) */
   lolChampionRequests?: Record<string, Record<string, number>>
   /** UI language settings: 'auto' or an ISO code (es, en, pt, fr, de, it, ja, ko, zh, ru) */
@@ -384,6 +388,25 @@ class ConsciousnessService {
 
   public getAppPaths(): Record<string, string> {
     return { ...this.data.appPaths }
+  }
+
+  public getCyberpunkFolders(): string[] {
+    return [...(this.data.cyberpunkFolders ?? [])]
+  }
+
+  public setCyberpunkFolders(folders: string[]): void {
+    this.data.cyberpunkFolders = folders
+    this.save()
+  }
+
+  public getCyberpunkSeenRoot(): string | null {
+    return this.data.cyberpunkSeenRoot || null
+  }
+
+  public setCyberpunkSeenRoot(root: string): void {
+    if (this.data.cyberpunkSeenRoot === root) return
+    this.data.cyberpunkSeenRoot = root
+    this.save()
   }
 
   public getKnownApps(): KnownApp[] | null {

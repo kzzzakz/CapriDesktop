@@ -413,5 +413,16 @@ export const pt: Messages = {
   pull_failed: 'O download falhou:',
   pull_offline: 'O Ollama não está rodando.',
   pull_badName: 'Isso não é um nome de modelo. Tente algo como gemma3:4b.',
-  pull_hint: 'Qualquer modelo da biblioteca do Ollama (ollama.com/library). O Gemma 3 a partir do 4b também enxerga para o scanner. Os maiores respondem melhor, mas precisam de mais memória.'
+  pull_hint: 'Qualquer modelo da biblioteca do Ollama (ollama.com/library). O Gemma 3 a partir do 4b também enxerga para o scanner. Os maiores respondem melhor, mas precisam de mais memória.',
+
+  // Cyberpunk 2077 folders (Apps window)
+  cp2077_pick: 'Escolher pasta',
+  cp2077_hint: 'Se a Capri não percebe o que acontece no jogo (o jogo está numa pasta diferente, ou você usa o Mod Organizer), mostre a pasta do jogo ou sua instância do Mod Organizer. Ela também aprende a pasta do jogo enquanto ele está aberto.',
+  cp2077_notFound: 'Não encontrei Cyberpunk 2077, Mod Organizer nem o mod da Capri nessa pasta. Escolha a pasta do jogo (a que tem bin), sua instância do Mod Organizer ou a pasta capri do mod.',
+  cp2077_kindGame: 'Jogo',
+  cp2077_kindMo2: 'Mod Organizer',
+  cp2077_kindMod: 'Mod',
+  cp2077_cet: 'CET',
+  cp2077_mod: 'Mod da Capri',
+  cp2077_events: 'Eventos chegando'
 }

@@ -29,6 +29,7 @@ import { memoryService } from '../services/memory-service'
 import { addKnownApp, listKnownApps, onKnownAppsChanged, removeKnownApp, renameKnownApp, suggestedAppName } from '../services/known-apps'
 import { openKnownApp } from '../services/app-launcher'
 import { ollamaService } from '../services/ollama-service'
+import { cyberpunkFoldersState, markCyberpunkFolder, unmarkCyberpunkFolder } from '../services/game/adapters/cyberpunk/cyberpunk-folders'
 
 export function registerIpcHandlers(): void {
   // Deck window visibility
@@ -365,6 +366,21 @@ export function registerIpcHandlers(): void {
     ollamaService.pullModel(String(model ?? ''), (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
   )
   ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL_CANCEL, () => ollamaService.cancelPull())
+
+  // Cyberpunk 2077 in any folder, or under Mod Organizer: the user can show Capri where
+  ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDERS_GET, () => cyberpunkFoldersState())
+  ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDER_PICK, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const options: Electron.OpenDialogOptions = { properties: ['openDirectory'] }
+    const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const folder = picked.filePaths[0]
+    if (picked.canceled || !folder) return null
+    const result = markCyberpunkFolder(folder)
+    // With CET in that folder, her mod goes in right away
+    if (result.info.kind !== 'unknown') cyberpunkAdapter.installCetMod()
+    return { ...result, state: cyberpunkFoldersState() }
+  })
+  ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDER_REMOVE, (_event, folder: string) => unmarkCyberpunkFolder(String(folder ?? '')))
   ipcMain.handle(IPC_CHANNELS.LLM_GET_SETTINGS, () => getLlmSettings())
   ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))

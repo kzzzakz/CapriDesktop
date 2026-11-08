@@ -473,11 +473,20 @@ Two pieces are needed: **Cyber Engine Tweaks (CET)**, which loads mods, and **Ca
 1. Close the game.
 2. Install CET from [GitHub](https://github.com/maximegmd/CyberEngineTweaks/releases) or [Nexus Mods](https://www.nexusmods.com/cyberpunk2077/mods/107), in the version that matches your copy of the game, and extract it into the game folder. You should end up with `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks`. If CET doesn't start, install the [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 3. Open the game once. CET asks you to choose a key for its overlay. Close the game.
-4. Open Capri. When she finds CET in your Steam libraries or in the default GOG and Epic folders, she installs her mod and keeps it up to date.
+4. Open Capri. When she finds CET in your Steam libraries (wherever Steam is installed) or in the default GOG and Epic folders, she installs her mod and keeps it up to date. She also learns the game's folder while it's running.
 5. Check that this file exists: `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\capri\init.lua`.
 6. Open Capri first, then the game, and load a save. She reacts when you get into a fight.
 
-**Manual install**, if the file from step 5 isn't there (the game is in another folder, or Windows didn't let her write there): download `CapriCyberpunkMod-1.0.0.zip` from [Releases](https://github.com/nunezValen/CapriDesktop/releases/latest) and extract it into the `Cyberpunk 2077` folder, so `bin` merges with the one already there. CET is still needed.
+**If the game is in another folder**, open Dev Deck → **Apps** and, under **Cyberpunk 2077**, choose the game's folder (the one with `bin`). It shows whether CET and her mod are there and whether events are arriving.
+
+**With Mod Organizer 2**, the game sees a virtual folder, so Capri can't put her mod in the real one:
+
+1. Install CET as a mod in Mod Organizer, as usual.
+2. Add `CapriCyberpunkMod-1.0.0.zip` from [Releases](https://github.com/nunezValen/CapriDesktop/releases/latest) as another mod (**Install a new mod from an archive**) and enable it.
+3. Launch the game from Mod Organizer.
+4. If your instance isn't in the default place (`%LOCALAPPDATA%\ModOrganizer`), choose its folder in Dev Deck → **Apps** → **Cyberpunk 2077**. What the mod writes lands in the instance's `overwrite` folder, and that's where she reads it.
+
+**Manual install**, if the file from step 5 isn't there (Windows didn't let her write there): download `CapriCyberpunkMod-1.0.0.zip` from [Releases](https://github.com/nunezValen/CapriDesktop/releases/latest) and extract it into the `Cyberpunk 2077` folder, so `bin` merges with the one already there. CET is still needed.
 
 **On Linux**, the game runs through Proton and CET needs this in the game's Steam launch options:
 

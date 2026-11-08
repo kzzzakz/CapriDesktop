@@ -413,5 +413,16 @@ export const ru: Messages = {
   pull_failed: 'Загрузка не удалась:',
   pull_offline: 'Ollama не запущена.',
   pull_badName: 'Это не название модели. Попробуй, например, gemma3:4b.',
-  pull_hint: 'Любая модель из библиотеки Ollama (ollama.com/library). Gemma 3 от 4b умеет видеть и для сканера. Большие модели отвечают лучше, но им нужно больше памяти.'
+  pull_hint: 'Любая модель из библиотеки Ollama (ollama.com/library). Gemma 3 от 4b умеет видеть и для сканера. Большие модели отвечают лучше, но им нужно больше памяти.',
+
+  // Cyberpunk 2077 folders (Apps window)
+  cp2077_pick: 'Выбрать папку',
+  cp2077_hint: 'Если Capri не замечает, что происходит в игре (игра в необычной папке или ты используешь Mod Organizer), покажи ей папку игры или свой экземпляр Mod Organizer. Папку игры она также узнаёт, пока игра запущена.',
+  cp2077_notFound: 'В этой папке нет ни Cyberpunk 2077, ни Mod Organizer, ни мода Capri. Выбери папку игры (с папкой bin), свой экземпляр Mod Organizer или папку capri мода.',
+  cp2077_kindGame: 'Игра',
+  cp2077_kindMo2: 'Mod Organizer',
+  cp2077_kindMod: 'Мод',
+  cp2077_cet: 'CET',
+  cp2077_mod: 'Мод Capri',
+  cp2077_events: 'События приходят'
 }

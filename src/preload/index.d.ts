@@ -2,6 +2,7 @@ import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { ModelPullProgress } from '../main/services/ollama-service'
+import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
   CompanionEmotionState,
@@ -134,6 +135,10 @@ export interface IElectronAPI {
     pullModel: (model: string) => Promise<boolean>
     cancelPullModel: () => Promise<void>
     onPullProgress: (callback: (progress: ModelPullProgress) => void) => () => void
+    // Where Cyberpunk 2077 and her mod are
+    getCyberpunkFolders: () => Promise<CyberpunkFoldersState>
+    pickCyberpunkFolder: () => Promise<{ state: CyberpunkFoldersState; info: CyberpunkFolderInfo } | null>
+    removeCyberpunkFolder: (folder: string) => Promise<CyberpunkFoldersState>
     getLlmSettings: () => Promise<LlmPublicSettings>
     setLlmSettings: (update: LlmSettingsUpdate) => Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }>
     listLlmModels: (baseUrl: string, apiKey?: string) => Promise<{ ok: boolean; models: string[]; error?: string }>

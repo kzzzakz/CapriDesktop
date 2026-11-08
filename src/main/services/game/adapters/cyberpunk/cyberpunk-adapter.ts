@@ -7,10 +7,11 @@ import { EventEmitter } from 'events'
 import * as http from 'http'
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from '../../../hidden-process'
+import { exec, execFile } from '../../../hidden-process'
 import { app } from 'electron'
 import { GameAdapter, GameEvent, GameEventPriority, GameEventType } from '../../types'
 import { CyberpunkRawEvent, CyberpunkGig } from './types'
+import { CAPRI_MOD_RELATIVE, extraCyberpunkModDirs, forgetCyberpunkFolderCache } from './cyberpunk-folders'
 import { consciousnessService } from '../../../consciousness-service'
 import { windowManager } from '../../../../windows/window-manager'
 
@@ -55,7 +56,8 @@ export class CyberpunkAdapter extends EventEmitter implements GameAdapter {
    */
   public getCandidateTelemetryDirs(): string[] {
     const relative = path.join('Cyberpunk 2077', 'bin', 'x64', 'plugins', 'cyber_engine_tweaks', 'mods', 'capri')
-    const dirs: string[] = windowsSteamAppsDirs().map((apps) => path.join(apps, 'common', relative))
+    // A folder the user marked, the game seen running and Mod Organizer come first: they're the real ones
+    const dirs: string[] = [...extraCyberpunkModDirs(), ...windowsSteamAppsDirs().map((apps) => path.join(apps, 'common', relative))]
     for (const root of ['C:\\GOG Games', 'D:\\GOG Games', 'C:\\Program Files (x86)\\GOG Galaxy\\Games', 'C:\\Program Files\\Epic Games', 'D:\\Epic Games']) {
       dirs.push(path.join(root, relative))
     }
@@ -63,6 +65,7 @@ export class CyberpunkAdapter extends EventEmitter implements GameAdapter {
     if (isLinux) {
       // Proton keeps the game in the normal Linux Steam library; the mod folder is the same as on Windows
       dirs.length = 0
+      dirs.push(...extraCyberpunkModDirs())
       for (const apps of linuxSteamAppsDirs()) dirs.push(path.join(apps, 'common', relative))
       dirs.push(path.join(os.homedir(), 'Games', 'Heroic', relative), path.join(os.homedir(), 'GOG Games', relative))
     }
@@ -112,6 +115,7 @@ export class CyberpunkAdapter extends EventEmitter implements GameAdapter {
     this.lastProcessedSeq = 0
     this.lastProcessedEventTime = 0
     console.log('[CyberpunkAdapter] Starting Cyberpunk 2077 adapter...')
+    void this.learnGameFolder()
 
     // Bookmark existing telemetry.json seq & timestamp so old match events are never replayed
     const candidateDirs = this.getCandidateTelemetryDirs()
@@ -634,6 +638,37 @@ export class CyberpunkAdapter extends EventEmitter implements GameAdapter {
    * Puts Capri's mod in every copy of the game that has Cyber Engine Tweaks, and keeps it up to date.
    * It runs when she starts, because the game only loads its mods when it opens.
    */
+  /**
+   * The game's folder, from the running process: it finds a Steam library in any folder, and is kept
+   * for next time. Under Mod Organizer the real folder is found too; the instance's own folders come
+   * from the Apps window or its default place.
+   */
+  private async learnGameFolder(): Promise<void> {
+    if (process.platform !== 'win32') return
+    const exe = await new Promise<string | null>((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', "(Get-CimInstance Win32_Process -Filter \"Name='Cyberpunk2077.exe'\" | Select-Object -First 1).ExecutablePath"],
+        { timeout: 6000, encoding: 'utf8' },
+        (err, stdout) => resolve(err ? null : String(stdout).trim() || null)
+      )
+    })
+    if (!exe) return
+    // ...\Cyberpunk 2077\bin\x64\Cyberpunk2077.exe
+    const root = path.dirname(path.dirname(path.dirname(exe)))
+    if (consciousnessService.getCyberpunkSeenRoot() === root) return
+    console.log(`[CyberpunkAdapter] Game folder learned from the running game: ${root}`)
+    consciousnessService.setCyberpunkSeenRoot(root)
+    forgetCyberpunkFolderCache()
+    // What the mod wrote there before isn't news: start reading from the end
+    const events = path.join(root, CAPRI_MOD_RELATIVE, 'events.jsonl')
+    try {
+      if (fs.existsSync(events)) this.fileOffsets.set(events, fs.statSync(events).size)
+    } catch {}
+    // With CET there, her mod goes in now: it loads the next time the game opens
+    this.installCetMod()
+  }
+
   public installCetMod(): void {
     try {
       const source = assetPath('game_data', 'cyberpunk_mod', 'init.lua')

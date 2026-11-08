@@ -5,6 +5,7 @@
  * answer "nothing" and the features that need them stay quiet instead of failing.
  */
 
+import { execFileSync } from 'child_process'
 import { exec, execFile, spawn } from './hidden-process'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -519,26 +520,50 @@ export async function linuxClickSpotifyTopResult(): Promise<boolean> {
 
 // Game libraries
 
-/** Steam's "steamapps" folders on Windows: the usual installs and any extra library they list */
+/** Where Steam is installed, from the registry: it can be anywhere, and its libraries are listed there */
+let steamFromRegistry: string[] | null = null
+function steamRootsFromRegistry(): string[] {
+  if (steamFromRegistry) return steamFromRegistry
+  steamFromRegistry = []
+  const keys = [
+    ['HKCU\\Software\\Valve\\Steam', 'SteamPath'],
+    ['HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam', 'InstallPath'],
+    ['HKLM\\SOFTWARE\\Valve\\Steam', 'InstallPath']
+  ]
+  for (const [key, value] of keys) {
+    try {
+      const out = execFileSync('reg', ['query', key, '/v', value], { encoding: 'utf8', timeout: 3000, windowsHide: true })
+      const m = out.match(/REG_\w+\s+(.+?)\s*$/m)
+      if (m) steamFromRegistry.push(path.normalize(m[1].replace(/\//g, '\\')))
+    } catch {
+      // not there
+    }
+  }
+  return steamFromRegistry
+}
+
+/** Steam's "steamapps" folders on Windows: wherever Steam is installed, and any extra library it lists */
 export function windowsSteamAppsDirs(): string[] {
-  const roots = ['C:\\Program Files (x86)\\Steam', 'C:\\Program Files\\Steam']
+  const roots = [...(isWindows ? steamRootsFromRegistry() : []), 'C:\\Program Files (x86)\\Steam', 'C:\\Program Files\\Steam']
   for (const letter of ['C', 'D', 'E', 'F', 'G']) roots.push(`${letter}:\\Steam`, `${letter}:\\SteamLibrary`)
-  const dirs = new Set<string>()
+  // Windows paths ignore case: the registry writes them in lowercase
+  const dirs = new Map<string, string>()
+  const add = (dir: string) => dirs.set(path.resolve(dir).toLowerCase(), dir)
   for (const root of roots) {
     const apps = path.join(root, 'steamapps')
     if (!fs.existsSync(apps)) continue
-    dirs.add(apps)
+    add(apps)
     try {
       const vdf = fs.readFileSync(path.join(apps, 'libraryfolders.vdf'), 'utf-8')
       for (const m of vdf.matchAll(/"path"\s+"([^"]+)"/g)) {
         const extra = path.join(m[1].replace(/\\\\/g, '\\'), 'steamapps')
-        if (fs.existsSync(extra)) dirs.add(extra)
+        if (fs.existsSync(extra)) add(extra)
       }
     } catch {
       // no extra libraries
     }
   }
-  return Array.from(dirs)
+  return Array.from(dirs.values())
 }
 
 /** Steam's "steamapps" folders: the default installs (native and Flatpak) and any extra library */

@@ -413,5 +413,16 @@ export const ja: Messages = {
   pull_failed: 'ダウンロードに失敗しました：',
   pull_offline: 'Ollamaが起動していません。',
   pull_badName: 'モデル名ではありません。gemma3:4b のように入力してください。',
-  pull_hint: 'Ollamaのライブラリ（ollama.com/library）のどのモデルでも使えます。Gemma 3 の4b以上はスキャナー用に画像も見られます。大きいモデルほど賢いですが、メモリを多く使います。'
+  pull_hint: 'Ollamaのライブラリ（ollama.com/library）のどのモデルでも使えます。Gemma 3 の4b以上はスキャナー用に画像も見られます。大きいモデルほど賢いですが、メモリを多く使います。',
+
+  // Cyberpunk 2077 folders (Apps window)
+  cp2077_pick: 'フォルダーを選ぶ',
+  cp2077_hint: 'ゲーム内の出来事にCapriが気づかない場合（ゲームが珍しい場所にある、またはMod Organizerを使っている）、ゲームのフォルダーかMod Organizerのインスタンスを教えてください。ゲームの起動中にもフォルダーを覚えます。',
+  cp2077_notFound: 'そのフォルダーにはCyberpunk 2077、Mod Organizer、Capriのmodのどれもありません。ゲームのフォルダー（binがある場所）、Mod Organizerのインスタンス、またはmodのcapriフォルダーを選んでください。',
+  cp2077_kindGame: 'ゲーム',
+  cp2077_kindMo2: 'Mod Organizer',
+  cp2077_kindMod: 'Mod',
+  cp2077_cet: 'CET',
+  cp2077_mod: 'Capriのmod',
+  cp2077_events: 'イベント受信中'
 }
