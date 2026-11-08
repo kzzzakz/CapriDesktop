@@ -15,6 +15,7 @@ import { consciousnessService } from './consciousness-service'
 import { ollamaService } from './ollama-service'
 import { isLinux, isWindows, linuxForegroundWindow } from './platform'
 import { windowManager } from '../windows/window-manager'
+import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
 import {
   detectGameName,
   fallbackGameComment,
@@ -43,7 +44,7 @@ function isAlive(pid: number): boolean {
   }
 }
 
-function foregroundApp(): Promise<ForegroundApp | null> {
+export function foregroundApp(): Promise<ForegroundApp | null> {
   if (isLinux) return linuxForegroundWindow()
   return new Promise((resolve) => {
     exec(
@@ -53,7 +54,7 @@ function foregroundApp(): Promise<ForegroundApp | null> {
         if (err) return resolve(null)
         try {
           const parsed = JSON.parse(stdout.trim())
-          resolve({ title: parsed.Title || '', process: parsed.Process || '', path: parsed.Path || '', pid: Number(parsed.Pid) || 0 })
+          resolve({ title: parsed.Title || '', process: parsed.Process || '', path: parsed.Path || '', pid: Number(parsed.Pid) || 0, windowId: String(parsed.WindowId || '') })
         } catch {
           resolve(null)
         }
@@ -90,7 +91,7 @@ export class GamePresenceService {
 
     if (this.game && !isAlive(this.game.pid)) {
       console.log(`[GamePresence] ${this.game.name} closed.`)
-      if (this.game.engagedGamingMode) windowManager.setGamingMode(false)
+      if (this.game.engagedGamingMode && !valorantAdapter.isRunning()) windowManager.setGamingMode(false)
       this.game = null
     }
 

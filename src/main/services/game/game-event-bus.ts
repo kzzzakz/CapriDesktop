@@ -4,12 +4,14 @@ import { reactionEngine } from './reaction-engine'
 import { mockGameAdapter } from './adapters/mock-game-adapter'
 import { lolLiveAdapter } from './adapters/lol'
 import { cyberpunkAdapter } from './adapters/cyberpunk'
+import { valorantAdapter } from './adapters/valorant/valorant-adapter'
 
 export class GameEventBus extends EventEmitter {
   private static instance: GameEventBus
   private adapters: Map<string, GameAdapter> = new Map()
   private pollTimer: NodeJS.Timeout | null = null
   private running = false
+  private checking = false
 
   public static getInstance(): GameEventBus {
     if (!GameEventBus.instance) {
@@ -24,6 +26,7 @@ export class GameEventBus extends EventEmitter {
     this.registerAdapter(mockGameAdapter)
     this.registerAdapter(lolLiveAdapter)
     this.registerAdapter(cyberpunkAdapter)
+    this.registerAdapter(valorantAdapter)
   }
 
   public registerAdapter(adapter: GameAdapter): void {
@@ -112,22 +115,29 @@ export class GameEventBus extends EventEmitter {
   }
 
   private async checkAdapters(): Promise<void> {
-    for (const adapter of this.adapters.values()) {
-      // Don't auto-stop or auto-start the mock adapter; it is user/test controlled
-      if (adapter.id === 'mock') continue
+    if (!this.running || this.checking) return
+    this.checking = true
+    try {
+      for (const adapter of this.adapters.values()) {
+        // Don't auto-stop or auto-start the mock adapter; it is user/test controlled
+        if (adapter.id === 'mock') continue
 
-      try {
-        const detected = await adapter.detect()
-        if (detected && !adapter.isRunning()) {
-          console.log(`[GameEventBus] Detected active game for adapter: ${adapter.name}. Starting...`)
-          await adapter.start()
-        } else if (!detected && adapter.isRunning()) {
-          console.log(`[GameEventBus] Game closed for adapter: ${adapter.name}. Stopping...`)
-          await adapter.stop()
+        try {
+          const detected = await adapter.detect()
+          if (!this.running) return
+          if (detected && !adapter.isRunning()) {
+            console.log(`[GameEventBus] Detected active game for adapter: ${adapter.name}. Starting...`)
+            await adapter.start()
+          } else if (!detected && adapter.isRunning()) {
+            console.log(`[GameEventBus] Game closed for adapter: ${adapter.name}. Stopping...`)
+            await adapter.stop()
+          }
+        } catch (err: any) {
+          console.warn(`[GameEventBus] Detection error for ${adapter.id}:`, err.message)
         }
-      } catch (err: any) {
-        console.warn(`[GameEventBus] Detection error for ${adapter.id}:`, err.message)
       }
+    } finally {
+      this.checking = false
     }
   }
 }

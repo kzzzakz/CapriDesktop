@@ -26,18 +26,19 @@ const KNOWN_GAME_PROCESS = /^(?:cs2|csgo|dota2|palworld(?:-win64-shipping)?|robl
 const NOT_A_GAME = /wallpaper\s*engine|soundpad|steamvr|steamworks|redistributable|proton|launcher|crash\s*report|anticheat|easyanticheat|unins\d*|setup|rpg\s*maker|blender|riot client|install/i
 
 /** These already have their own in-match commentary */
-const HAS_OWN_ADAPTER = /league of legends|cyberpunk\s*2077/i
+const HAS_OWN_ADAPTER = /league of legends|cyberpunk\s*2077|valorant/i
 
 export interface ForegroundApp {
   title: string
   process: string
   path: string
   pid: number
+  windowId?: string
 }
 
 export function detectGameName(app: ForegroundApp): string | null {
   const exe = app.path.split(/[\\/]/).pop() || ''
-  if (NOT_A_GAME.test(exe) || NOT_A_GAME.test(app.process)) return null
+  if (NOT_A_GAME.test(exe) || NOT_A_GAME.test(app.process) || HAS_OWN_ADAPTER.test(app.process)) return null
 
   let name: string | null = null
   for (const pattern of GAME_FOLDER_PATTERNS) {
