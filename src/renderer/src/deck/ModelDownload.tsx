@@ -1,26 +1,52 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Download, FileInput, X } from 'lucide-react'
 import type { ModelPullProgress } from '../../../main/services/ollama-service'
+import type { MessageKey } from '../i18n'
 import { useT } from '../utils/useUiLang'
 
 /** Local models that work well with her, for who doesn't know the names */
-const SUGGESTED = ['gemma3:4b', 'gemma3:12b', 'llama3.2:3b', 'qwen3:8b', 'mistral:7b', 'phi4-mini']
+export const TEXT_MODEL_SUGGESTIONS = ['gemma3:4b', 'gemma3:12b', 'llama3.2:3b', 'qwen3:8b', 'mistral:7b', 'phi4-mini']
+/** Models that can see, for the scanner and reading the screen */
+export const VISION_MODEL_SUGGESTIONS = ['qwen2.5vl:3b', 'qwen2.5vl:7b', 'gemma3:4b', 'llava:7b', 'minicpm-v', 'moondream']
 
 interface ModelDownloadProps {
   /** Called when a download finishes, with the model's name */
   onDownloaded: (model: string) => void
+  suggestions?: string[]
+  /** A distinct id per box: there is one for thinking models and one for vision models */
+  listId?: string
+  titleKey?: MessageKey
+  hintKey?: MessageKey
+  /** Offer importing a .gguf file too */
+  allowGguf?: boolean
 }
 
+const sameModel = (a: string, b: string): boolean => a.replace(/:latest$/, '') === b.replace(/:latest$/, '')
+const GGUF = '*gguf*'
+
 /** Any model from the Ollama library, downloaded from here: Gemma, Llama, Qwen, Mistral... */
-export const ModelDownload: React.FC<ModelDownloadProps> = ({ onDownloaded }) => {
+export const ModelDownload: React.FC<ModelDownloadProps> = ({
+  onDownloaded,
+  suggestions = TEXT_MODEL_SUGGESTIONS,
+  listId = 'capri-model-suggestions',
+  titleKey = 'pull_title',
+  hintKey = 'pull_hint',
+  allowGguf = true
+}) => {
   const t = useT()
   const [name, setName] = useState('')
   const [progress, setProgress] = useState<ModelPullProgress | null>(null)
+  // Only the download this box started: the other box hears the same progress
+  const mine = useRef<string | null>(null)
 
   useEffect(
     () =>
       window.api.agent.onPullProgress((p) => {
+        if (!mine.current) return
+        if (mine.current === GGUF) mine.current = p.model
+        if (!sameModel(p.model, mine.current)) return
         setProgress(p)
+        if (p.state !== 'downloading') mine.current = null
         if (p.state === 'done') onDownloaded(p.model)
       }),
     [onDownloaded]
@@ -30,26 +56,27 @@ export const ModelDownload: React.FC<ModelDownloadProps> = ({ onDownloaded }) =>
   const start = () => {
     const model = name.trim()
     if (!model || downloading) return
+    mine.current = model
     setProgress({ model, state: 'downloading' })
     void window.api.agent.pullModel(model)
   }
 
   return (
     <div className="space-y-1.5">
-      <span className="cp-label block">{t('pull_title')}</span>
+      <span className="cp-label block">{t(titleKey)}</span>
       <div className="flex gap-2">
         <div className="cp-frame flex-1">
           <input
             value={name}
-            list="capri-model-suggestions"
+            list={listId}
             disabled={downloading}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && start()}
-            placeholder="gemma3:4b"
+            placeholder={suggestions[0]}
             className="cp-input w-full px-3 py-1.5 text-[14px]"
           />
-          <datalist id="capri-model-suggestions">
-            {SUGGESTED.map((m) => (
+          <datalist id={listId}>
+            {suggestions.map((m) => (
               <option key={m} value={m} />
             ))}
           </datalist>
@@ -80,16 +107,21 @@ export const ModelDownload: React.FC<ModelDownloadProps> = ({ onDownloaded }) =>
           </p>
         </div>
       )}
-      <p className="text-[12px] text-[var(--cp-muted)]">{t('pull_hint')}</p>
-      {/* A .gguf file already on this PC, added to Ollama as its own model */}
-      <button
-        type="button"
-        disabled={downloading}
-        onClick={() => void window.api.agent.importGgufModel()}
-        className="flex items-center gap-1.5 text-[13px] text-[var(--cp-red)] hover:text-[var(--cp-red-hi)] cursor-pointer disabled:opacity-40"
-      >
-        <FileInput size={13} /> {t('pull_importGguf')}
-      </button>
+      <p className="text-[12px] text-[var(--cp-muted)]">{t(hintKey)}</p>
+      {allowGguf && (
+        // A .gguf file already on this PC, added to Ollama as its own model
+        <button
+          type="button"
+          disabled={downloading}
+          onClick={() => {
+            mine.current = GGUF
+            void window.api.agent.importGgufModel()
+          }}
+          className="flex items-center gap-1.5 text-[13px] text-[var(--cp-red)] hover:text-[var(--cp-red-hi)] cursor-pointer disabled:opacity-40"
+        >
+          <FileInput size={13} /> {t('pull_importGguf')}
+        </button>
+      )}
     </div>
   )
 }

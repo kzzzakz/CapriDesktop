@@ -2,6 +2,7 @@ import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { ModelPullProgress } from '../main/services/ollama-service'
+import type { InstalledPart, LocalModelInfo } from '../main/services/installed-parts'
 import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -83,6 +84,8 @@ export interface IElectronAPI {
     onGamingModeChanged: (callback: (enabled: boolean) => void) => () => void
     getGamingOpacity: () => Promise<number>
     getScale: () => Promise<{ desktop: number; gaming: number }>
+    getAdminMode: () => Promise<{ enabled: boolean; elevated: boolean }>
+    setAdminMode: (enabled: boolean) => Promise<{ enabled: boolean; elevated: boolean; relaunching: boolean }>
     setScale: (kind: 'desktop' | 'gaming', value: number) => Promise<number>
     setGamingOpacity: (value: number) => Promise<number>
     onGamingOpacityChanged: (callback: (value: number) => void) => () => void
@@ -137,6 +140,13 @@ export interface IElectronAPI {
     pullModel: (model: string) => Promise<boolean>
     cancelPullModel: () => Promise<void>
     importGgufModel: () => Promise<boolean>
+    // Local models and installed parts
+    listLocalModels: () => Promise<LocalModelInfo[]>
+    deleteLocalModel: (name: string) => Promise<LocalModelInfo[] | null>
+    getVisionModel: () => Promise<string>
+    setVisionModel: (model: string) => Promise<string>
+    listInstalledParts: () => Promise<InstalledPart[]>
+    removeInstalledPart: (id: InstalledPart['id']) => Promise<InstalledPart[]>
     onPullProgress: (callback: (progress: ModelPullProgress) => void) => () => void
     // Where Cyberpunk 2077 and her mod are
     getCyberpunkFolders: () => Promise<CyberpunkFoldersState>

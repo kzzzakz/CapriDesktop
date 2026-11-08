@@ -275,6 +275,10 @@ export const en = {
   vs_gamingOpacity: 'Her opacity in Gaming Mode',
   vs_size: "Capri's size",
   vs_gamingSize: 'Size in Gaming Mode',
+  vs_runAsAdmin: 'Open Capri as administrator',
+  vs_runAsAdminHint: 'For games that run as administrator: without it, her keys and Gaming Mode don’t work inside them. Windows asks for permission when she starts.',
+  vs_adminNow: 'Right now she is running as administrator.',
+  vs_adminNotNow: 'Right now she is not running as administrator.',
   vs_sound: 'Sound',
   vs_voiceVolume: 'Voice volume',
   vs_effectsVolume: 'Effects volume',
@@ -433,7 +437,24 @@ export const en = {
   llm_lmStudioHint: 'Open LM Studio, load a .gguf model and start its local server (Developer tab). Capri talks to it on this PC: nothing leaves your computer.',
   pull_importGguf: 'Import a .gguf file into Ollama',
   pull_importing: 'Importing {model} into Ollama…',
-  pull_missingFile: 'Choose a .gguf file.'
+  pull_missingFile: 'Choose a .gguf file.',
+  vision_title: 'Vision and screen-reading models',
+  vision_hint: 'Models that can look at images: the scanner and reading your screen use them. They are separate from the thinking model above.',
+  vision_use: 'Model for seeing',
+  vision_auto: 'Automatic (the best one installed)',
+  vision_none: 'No model that can see is installed yet.',
+  vision_download: 'Download a vision model',
+  vision_downloadHint: 'qwen2.5vl:3b is light and reads text on screen well; gemma3:4b also sees.',
+  models_installed: 'Downloaded models',
+  models_delete: 'Delete model',
+  models_deleteConfirm: 'Delete {model}? It can be downloaded again later.',
+  parts_title: 'Installed parts',
+  parts_hint: 'What the first setup installed. Removing a part frees space; running the setup again puts it back.',
+  parts_remove: 'Remove',
+  parts_removeConfirm: 'Remove {part}? Running the setup again puts it back.',
+  parts_voiceEnv: 'Voice environment (Python)',
+  parts_whisper: 'Hearing model (Whisper)',
+  parts_ffmpeg: 'FFmpeg'
 }
 
 export type Messages = typeof en

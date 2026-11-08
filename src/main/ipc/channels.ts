@@ -101,6 +101,15 @@ export const IPC_CHANNELS = {
   // Downloading local models (Capri // Brain)
   OLLAMA_PULL: 'ollama:pull',
   COMPANION_SCALE_GET: 'companion:getScale',
+  ADMIN_GET: 'admin:get',
+  // Local models and installed parts (Capri // Brain)
+  MODELS_LIST: 'models:list',
+  MODEL_DELETE: 'models:delete',
+  VISION_MODEL_GET: 'models:getVision',
+  VISION_MODEL_SET: 'models:setVision',
+  PARTS_LIST: 'parts:list',
+  PART_REMOVE: 'parts:remove',
+  ADMIN_SET: 'admin:set',
   COMPANION_SCALE_SET: 'companion:setScale',
   // Where Cyberpunk 2077 and Capri's mod are (Apps window)
   CYBERPUNK_FOLDERS_GET: 'cyberpunk:getFolders',

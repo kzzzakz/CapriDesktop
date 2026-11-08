@@ -15,6 +15,7 @@ import { updateService } from './services/update-service'
 import { legacyUserDataDir } from './services/legacy-data'
 import fs from 'fs'
 import path from 'path'
+import { isElevated, relaunchElevated } from './services/admin-mode'
 
 // Log unhandled exceptions to crash.log
 process.on('uncaughtException', (err) => {
@@ -63,9 +64,13 @@ if (!gotTheLock) {
     app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal')
   }
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // Initialize consciousness & persistent self-awareness
     consciousnessService.init()
+
+    // Asked to run as administrator and not yet: she restarts that way (Windows asks). If the user
+    // says no, she goes on as she is
+    if (consciousnessService.getRunAsAdmin() && !isElevated() && (await relaunchElevated())) return
 
     // Register all IPC handlers
     registerIpcHandlers()

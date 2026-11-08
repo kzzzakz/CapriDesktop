@@ -2,6 +2,7 @@ import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { ModelPullProgress } from '../main/services/ollama-service'
+import type { InstalledPart, LocalModelInfo } from '../main/services/installed-parts'
 import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
@@ -155,6 +156,10 @@ const api = {
 
     getScale: (): Promise<{ desktop: number; gaming: number }> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SCALE_GET),
 
+    getAdminMode: (): Promise<{ enabled: boolean; elevated: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.ADMIN_GET),
+
+    setAdminMode: (enabled: boolean): Promise<{ enabled: boolean; elevated: boolean; relaunching: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.ADMIN_SET, enabled),
+
     setScale: (kind: 'desktop' | 'gaming', value: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SCALE_SET, kind, value),
 
     setGamingOpacity: (value: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.GAMING_OPACITY_SET, value),
@@ -293,6 +298,14 @@ const api = {
     pullModel: (model: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL, model),
     cancelPullModel: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL_CANCEL),
     importGgufModel: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_IMPORT_GGUF),
+
+    // Local models and installed parts
+    listLocalModels: (): Promise<LocalModelInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.MODELS_LIST),
+    deleteLocalModel: (name: string): Promise<LocalModelInfo[] | null> => ipcRenderer.invoke(IPC_CHANNELS.MODEL_DELETE, name),
+    getVisionModel: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.VISION_MODEL_GET),
+    setVisionModel: (model: string): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.VISION_MODEL_SET, model),
+    listInstalledParts: (): Promise<InstalledPart[]> => ipcRenderer.invoke(IPC_CHANNELS.PARTS_LIST),
+    removeInstalledPart: (id: InstalledPart['id']): Promise<InstalledPart[]> => ipcRenderer.invoke(IPC_CHANNELS.PART_REMOVE, id),
     onPullProgress: (callback: (progress: ModelPullProgress) => void): (() => void) => {
       const subscription = (_event: IpcRendererEvent, progress: ModelPullProgress): void => callback(progress)
       ipcRenderer.on(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, subscription)

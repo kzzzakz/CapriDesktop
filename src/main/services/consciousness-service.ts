@@ -44,6 +44,8 @@ export interface ConsciousnessData {
   companionScale?: number
   /** Sent away with her key: she stays hidden, even after a restart, until it's pressed again */
   away?: boolean
+  /** Start as administrator, for games that run as administrator */
+  runAsAdmin?: boolean
   gamingScale?: number
   hotkeys?: Hotkeys
   gamingOpacity?: number
@@ -334,6 +336,15 @@ class ConsciousnessService {
   public setCompanionScale(kind: 'desktop' | 'gaming', value: number): void {
     if (kind === 'gaming') this.data.gamingScale = clampCompanionScale(value)
     else this.data.companionScale = clampCompanionScale(value)
+    this.save()
+  }
+
+  public getRunAsAdmin(): boolean {
+    return !!this.data.runAsAdmin
+  }
+
+  public setRunAsAdmin(enabled: boolean): void {
+    this.data.runAsAdmin = enabled
     this.save()
   }
 
