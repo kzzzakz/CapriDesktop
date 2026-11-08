@@ -402,5 +402,16 @@ export const ru: Messages = {
   you_placeholder: 'Как Capri должна тебя называть',
   you_save: 'Сохранить',
   you_saved: 'Сохранено',
-  you_hint: 'Capri называет тебя так везде: в чате, голосом и в играх.'
+  you_hint: 'Capri называет тебя так везде: в чате, голосом и в играх.',
+
+  // Downloading local models
+  pull_title: 'Скачать другую модель',
+  pull_start: 'Скачать',
+  pull_progress: 'Скачиваю {model}… {n}%',
+  pull_done: '{model} готова. Она уже выбрана: сохрани, чтобы использовать.',
+  pull_cancelled: 'Загрузка отменена.',
+  pull_failed: 'Загрузка не удалась:',
+  pull_offline: 'Ollama не запущена.',
+  pull_badName: 'Это не название модели. Попробуй, например, gemma3:4b.',
+  pull_hint: 'Любая модель из библиотеки Ollama (ollama.com/library). Gemma 3 от 4b умеет видеть и для сканера. Большие модели отвечают лучше, но им нужно больше памяти.'
 }

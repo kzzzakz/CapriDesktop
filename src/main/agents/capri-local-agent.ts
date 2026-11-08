@@ -189,6 +189,9 @@ const MAX_CONTINUATIONS = 2
  */
 const LOCAL_REPLY_TIMEOUT_MS = 5 * 60_000
 
+/** Models that turned tools down once (Gemma, many small ones): asked without them from then on */
+const MODELS_WITHOUT_TOOLS = new Set<string>()
+
 class ReplyTimeoutError extends Error {
   constructor() {
     super('The model did not answer in time')
@@ -1473,7 +1476,7 @@ export class CapriLocalAgent extends EventEmitter {
     const effectiveLang = fixedTextLang ? textLang : consciousnessService.getSpokenLanguage() || 'unknown'
     const detectedLang = effectiveLang
     let retriedLanguage = false
-    let toolsUnsupported = false
+    let toolsUnsupported = MODELS_WITHOUT_TOOLS.has(String(config.model || ''))
     let continuations = 0
     let partialReply = ''
     const spokenText = prompt
@@ -1717,6 +1720,7 @@ LANGUAGE RULE: ${langDirective}`
           if (!toolsUnsupported && /does not support tools|tools? (?:is|are) not supported/i.test(errText)) {
             console.warn(`[Capri Agent] ${model} has no tool support, going on without tools`)
             toolsUnsupported = true
+            MODELS_WITHOUT_TOOLS.add(model)
             continue
           }
           throw new Error(`HTTP ${response.status}: ${errText}`)

@@ -13,6 +13,21 @@ export interface OllamaStatus {
   models: string[]
 }
 
+/** How a model download is going, for the settings window */
+export interface ModelPullProgress {
+  model: string
+  state: 'downloading' | 'done' | 'failed' | 'cancelled'
+  /** 0-100 while the size is known */
+  percent?: number
+  status?: string
+  error?: string
+}
+
+/** A name from the Ollama library: "gemma3", "gemma3:4b", "hf.co/user/model:Q4_K_M" */
+export function isValidModelName(name: string): boolean {
+  return /^[a-z0-9][\w.\-/:]{0,120}$/i.test(name) && !name.includes('..')
+}
+
 export class OllamaService {
   private static instance: OllamaService
   private isStarting = false
@@ -212,6 +227,70 @@ export class OllamaService {
     } finally {
       this.isStarting = false
     }
+  }
+
+  private pulling: { model: string; controller: AbortController } | null = null
+
+  /**
+   * Downloads a model from the Ollama library (Gemma, Llama, Qwen, Mistral...). One at a time.
+   * Always from the local Ollama, also in cloud mode: it is the model on this PC.
+   */
+  public async pullModel(model: string, onProgress: (p: ModelPullProgress) => void): Promise<boolean> {
+    const name = model.trim()
+    if (!isValidModelName(name)) return onProgress({ model: name, state: 'failed', error: 'invalid-name' }), false
+    if (this.pulling) return onProgress({ model: name, state: 'failed', error: 'busy' }), false
+    const status = await this.ensureRunning()
+    if (!status.running) return onProgress({ model: name, state: 'failed', error: 'offline' }), false
+    const controller = new AbortController()
+    this.pulling = { model: name, controller }
+    onProgress({ model: name, state: 'downloading', status: 'starting' })
+    try {
+      const res = await fetch('http://127.0.0.1:11434/api/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: name, stream: true }),
+        signal: controller.signal
+      })
+      if (!res.ok || !res.body) {
+        onProgress({ model: name, state: 'failed', error: (await res.text().catch(() => '')).slice(0, 200) || `HTTP ${res.status}` })
+        return false
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let lastSent = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const event = JSON.parse(line) as { status?: string; total?: number; completed?: number; error?: string }
+          if (event.error) return onProgress({ model: name, state: 'failed', error: event.error }), false
+          const percent = event.total ? Math.floor(((event.completed ?? 0) / event.total) * 100) : undefined
+          // A few updates a second are plenty for a progress bar
+          if (Date.now() - lastSent > 250) {
+            lastSent = Date.now()
+            onProgress({ model: name, state: 'downloading', percent, status: event.status })
+          }
+        }
+      }
+      this.cachedModels = []
+      onProgress({ model: name, state: 'done', percent: 100 })
+      return true
+    } catch (err) {
+      const cancelled = controller.signal.aborted
+      onProgress({ model: name, state: cancelled ? 'cancelled' : 'failed', error: cancelled ? undefined : String((err as Error)?.message || err).slice(0, 200) })
+      return false
+    } finally {
+      this.pulling = null
+    }
+  }
+
+  public cancelPull(): void {
+    this.pulling?.controller.abort()
   }
 }
 

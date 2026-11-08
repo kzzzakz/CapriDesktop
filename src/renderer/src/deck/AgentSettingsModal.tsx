@@ -4,6 +4,7 @@ import { LlmProviderForm, LlmProviderFormHandle } from '../components/LlmProvide
 import { useAgentStore } from '../stores/useAgentStore'
 import { useT } from '../utils/useUiLang'
 import { MemorySettings } from './MemorySettings'
+import { ModelDownload } from './ModelDownload'
 import type { SystemPromptPayload } from '../../../main/ipc/channels'
 
 interface AgentSettingsModalProps {
@@ -185,6 +186,13 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
                   </div>
                 </label>
               )}
+              {/* Gemma, Llama, Qwen, Mistral... from the Ollama library: picked as soon as it arrives */}
+              <ModelDownload
+                onDownloaded={(model) => {
+                  void scan()
+                  setModelInput(model)
+                }}
+              />
             </div>
           )}
 

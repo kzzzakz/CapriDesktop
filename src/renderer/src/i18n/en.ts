@@ -400,7 +400,18 @@ export const en = {
   you_placeholder: 'How Capri should call you',
   you_save: 'Save',
   you_saved: 'Saved',
-  you_hint: 'Capri calls you by this name everywhere: chat, voice and games.'
+  you_hint: 'Capri calls you by this name everywhere: chat, voice and games.',
+
+  // Downloading local models
+  pull_title: 'Download another model',
+  pull_start: 'Download',
+  pull_progress: 'Downloading {model}… {n}%',
+  pull_done: '{model} is ready. It is selected: save to use it.',
+  pull_cancelled: 'Download cancelled.',
+  pull_failed: 'The download failed:',
+  pull_offline: 'Ollama isn’t running.',
+  pull_badName: 'That isn’t a model name. Try something like gemma3:4b.',
+  pull_hint: 'Any model from the Ollama library (ollama.com/library). Gemma 3 from 4b up can also see for the scanner. Bigger models answer better but need more memory.'
 }
 
 export type Messages = typeof en

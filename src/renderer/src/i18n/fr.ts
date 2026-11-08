@@ -402,5 +402,16 @@ export const fr: Messages = {
   you_placeholder: 'Comment Capri doit t’appeler',
   you_save: 'Enregistrer',
   you_saved: 'Enregistré',
-  you_hint: 'Capri t’appelle ainsi partout : chat, voix et jeux.'
+  you_hint: 'Capri t’appelle ainsi partout : chat, voix et jeux.',
+
+  // Downloading local models
+  pull_title: 'Télécharger un autre modèle',
+  pull_start: 'Télécharger',
+  pull_progress: 'Téléchargement de {model}… {n} %',
+  pull_done: '{model} est prêt. Il est sélectionné : enregistre pour l’utiliser.',
+  pull_cancelled: 'Téléchargement annulé.',
+  pull_failed: 'Le téléchargement a échoué :',
+  pull_offline: 'Ollama ne tourne pas.',
+  pull_badName: 'Ce n’est pas un nom de modèle. Essaie par exemple gemma3:4b.',
+  pull_hint: 'N’importe quel modèle de la bibliothèque Ollama (ollama.com/library). Gemma 3 à partir de 4b peut aussi voir pour le scanner. Les plus gros répondent mieux mais demandent plus de mémoire.'
 }

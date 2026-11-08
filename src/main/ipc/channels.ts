@@ -98,6 +98,10 @@ export const IPC_CHANNELS = {
   APPS_REMOVE: 'apps:remove',
   APPS_OPEN: 'apps:open',
   APPS_CHANGED: 'apps:changed',
+  // Downloading local models (Capri // Brain)
+  OLLAMA_PULL: 'ollama:pull',
+  OLLAMA_PULL_CANCEL: 'ollama:pullCancel',
+  OLLAMA_PULL_PROGRESS: 'ollama:pullProgress',
   LLM_GET_SETTINGS: 'llm:getSettings',
   LLM_SET_SETTINGS: 'llm:setSettings',
   LLM_LIST_MODELS: 'llm:listModels',

@@ -28,6 +28,7 @@ import { getSystemPromptInfo, setSystemPrompt, resetSystemPrompt, setPersonaStyl
 import { memoryService } from '../services/memory-service'
 import { addKnownApp, listKnownApps, onKnownAppsChanged, removeKnownApp, renameKnownApp, suggestedAppName } from '../services/known-apps'
 import { openKnownApp } from '../services/app-launcher'
+import { ollamaService } from '../services/ollama-service'
 
 export function registerIpcHandlers(): void {
   // Deck window visibility
@@ -358,6 +359,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.APPS_REMOVE, (_event, id: string) => removeKnownApp(String(id ?? '')))
   ipcMain.handle(IPC_CHANNELS.APPS_OPEN, (_event, id: string) => openKnownApp(String(id ?? '')))
   onKnownAppsChanged(() => windowManager.broadcast(IPC_CHANNELS.APPS_CHANGED, listKnownApps()))
+
+  // Any model from the Ollama library, downloaded from the settings, with progress
+  ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL, (_event, model: string) =>
+    ollamaService.pullModel(String(model ?? ''), (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
+  )
+  ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL_CANCEL, () => ollamaService.cancelPull())
   ipcMain.handle(IPC_CHANNELS.LLM_GET_SETTINGS, () => getLlmSettings())
   ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))

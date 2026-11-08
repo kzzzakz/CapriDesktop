@@ -1,6 +1,7 @@
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
+import type { ModelPullProgress } from '../main/services/ollama-service'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -280,6 +281,17 @@ const api = {
       ipcRenderer.on(IPC_CHANNELS.APPS_CHANGED, subscription)
       return (): void => {
         ipcRenderer.removeListener(IPC_CHANNELS.APPS_CHANGED, subscription)
+      }
+    },
+
+    // Downloading local models
+    pullModel: (model: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL, model),
+    cancelPullModel: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL_CANCEL),
+    onPullProgress: (callback: (progress: ModelPullProgress) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, progress: ModelPullProgress): void => callback(progress)
+      ipcRenderer.on(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, subscription)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, subscription)
       }
     },
 

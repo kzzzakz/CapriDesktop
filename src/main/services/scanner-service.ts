@@ -258,6 +258,8 @@ export class ScannerService {
         'bakllava',
         'cogvlm'
       ]
+      // Gemma 3 sees images from 4b up; the 1b one is text only
+      const gemmaVision = models.find((m: string) => /^gemma3(?::(?!1b)[\w.-]+)?$/i.test(m))
 
       for (const candidate of VISION_PRIORITIES) {
         const match = models.find((m: string) => m === candidate || m.startsWith(candidate + ':') || m.includes(candidate))
@@ -266,6 +268,7 @@ export class ScannerService {
 
       const genericMatch = models.find((m: string) => /(-vl|vision|llava|minicpm|moondream|bakllava)/i.test(m))
       if (genericMatch) return genericMatch
+      if (gemmaVision) return gemmaVision
 
       return null
     } catch {

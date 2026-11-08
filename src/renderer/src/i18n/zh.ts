@@ -402,5 +402,16 @@ export const zh: Messages = {
   you_placeholder: 'Capri 应该怎么叫你',
   you_save: '保存',
   you_saved: '已保存',
-  you_hint: 'Capri 在所有地方都这样叫你：聊天、语音和游戏。'
+  you_hint: 'Capri 在所有地方都这样叫你：聊天、语音和游戏。',
+
+  // Downloading local models
+  pull_title: '下载其他模型',
+  pull_start: '下载',
+  pull_progress: '正在下载 {model}… {n}%',
+  pull_done: '{model} 已就绪，已经选中：保存后即可使用。',
+  pull_cancelled: '已取消下载。',
+  pull_failed: '下载失败：',
+  pull_offline: 'Ollama 没有运行。',
+  pull_badName: '这不是模型名称。试试 gemma3:4b 这样的名字。',
+  pull_hint: 'Ollama 模型库（ollama.com/library）里的任何模型都可以。Gemma 3 的 4b 及以上版本还能为扫描器看图。模型越大回答越好，但需要更多内存。'
 }

@@ -402,5 +402,16 @@ export const ja: Messages = {
   you_placeholder: 'Capriにどう呼ばれたいか',
   you_save: '保存',
   you_saved: '保存しました',
-  you_hint: 'Capriはどこでもこの名前で呼びます：チャット、声、ゲーム。'
+  you_hint: 'Capriはどこでもこの名前で呼びます：チャット、声、ゲーム。',
+
+  // Downloading local models
+  pull_title: '別のモデルをダウンロード',
+  pull_start: 'ダウンロード',
+  pull_progress: '{model} をダウンロード中… {n}%',
+  pull_done: '{model} の準備ができました。選択済みなので保存すると使えます。',
+  pull_cancelled: 'ダウンロードを中止しました。',
+  pull_failed: 'ダウンロードに失敗しました：',
+  pull_offline: 'Ollamaが起動していません。',
+  pull_badName: 'モデル名ではありません。gemma3:4b のように入力してください。',
+  pull_hint: 'Ollamaのライブラリ（ollama.com/library）のどのモデルでも使えます。Gemma 3 の4b以上はスキャナー用に画像も見られます。大きいモデルほど賢いですが、メモリを多く使います。'
 }
