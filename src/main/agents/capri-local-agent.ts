@@ -2,7 +2,7 @@ import { scriptPlayer } from '../services/script/script-player'
 import { ensureRequestedLook, requestedLook, splitByLooks, stripLookTags } from '../services/script/look-tags'
 import { isWindows } from '../services/platform'
 import { clearLanguageOf, detectLanguage, type DetectedLang } from '../services/language-detect'
-import { cloudErrorCode, cloudErrorDetail, isRemoteMode, llmFetch, type LlmErrorCode } from '../services/llm-gateway'
+import { cloudErrorCode, cloudErrorDetail, getLlmSettings, isRemoteMode, llmFetch, type LlmErrorCode } from '../services/llm-gateway'
 import * as os from 'os'
 import { getUserName, personalize, llmBody } from '../services/user-profile'
 import { EventEmitter } from 'events'
@@ -16,9 +16,10 @@ import { CAPRI_TOOLS, ToolExecutor } from './tools/tool-executor'
 import { ollamaService } from '../services/ollama-service'
 import { windowManager } from '../windows/window-manager'
 import { roamingManager } from '../roaming/roaming-manager'
-import { systemObserver } from '../services/system-observer'
+import { systemObserver, type ActiveMediaInfo } from '../services/system-observer'
 import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '../services/music-platform'
 import { consciousnessService } from '../services/consciousness-service'
+import { getSystemPromptPersona, personaIntro } from '../services/system-prompt-store'
 import { scannerService } from '../services/scanner-service'
 import { boredomService } from '../services/boredom-service'
 import { proactiveDialogueService } from '../services/proactive-dialogue-service'
@@ -34,6 +35,8 @@ import { CodingAgent, isCodingRequest } from './coding-agent'
 import { updateService } from '../services/update-service'
 import { cleanAppRequest } from '../services/app-finder'
 import { commandInEnglish } from './command-translations'
+import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
+import { memoryService } from '../services/memory-service'
 import { appRequestInEnglish, isHoldStillRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
@@ -180,6 +183,22 @@ const SHORT_MAX_TOKENS = 400
 const LONG_MAX_TOKENS = 1500
 const MAX_CONTINUATIONS = 2
 
+/**
+ * How long one answer from the model may take. A local model loading into a PC short on memory can
+ * take minutes for its first answer, so the local limit is generous; it exists because a request
+ * Ollama drops never answers, and she used to wait for it forever.
+ */
+const LOCAL_REPLY_TIMEOUT_MS = 5 * 60_000
+
+class ReplyTimeoutError extends Error {
+  constructor() {
+    super('The model did not answer in time')
+    this.name = 'ReplyTimeoutError'
+  }
+}
+const CLOUD_REPLY_TIMEOUT_MS = 2 * 60_000
+const CLI_REPLY_TIMEOUT_MS = 10 * 60_000
+
 /** Lists, explanations and stories need room, in any language */
 function wantsLongAnswer(text: string): boolean {
   if (text.length > 140) return true
@@ -214,9 +233,13 @@ export class CapriLocalAgent extends EventEmitter {
   private currentPrompt = ''
   private conversationHistory: { role: 'system' | 'user' | 'assistant' | 'tool'; content?: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] = []
 
+  /** The request to the model in progress, so cancelling stops it too */
+  private llmRequest: AbortController | null = null
+
   public cancel(): void {
     this.isCancelled = true
     this.turnAbort?.abort()
+    this.llmRequest?.abort()
     if (this.agyProc) {
       try {
         this.agyProc.kill()
@@ -227,10 +250,20 @@ export class CapriLocalAgent extends EventEmitter {
     }
   }
 
-  public clearHistory(): void {
+  /**
+   * startup: her window just opened. The chat on screen starts empty, but the saved conversation
+   * comes back with her first answer. Otherwise it's "new chat": the saved thread goes too, and what
+   * she knows about the user stays.
+   */
+  public clearHistory(startup = false): void {
     this.conversationHistory = []
     this.ownLines = []
+    this.threadRestored = !startup
+    if (!startup) memoryService.clearThread()
   }
+
+  /** The last session's conversation comes back once, the first time she answers */
+  private threadRestored = false
 
   /**
    * Something she said or did by herself. It goes in the conversation with her next reply, in order
@@ -292,6 +325,8 @@ export class CapriLocalAgent extends EventEmitter {
     const turnAbort = new AbortController()
     this.turnAbort = turnAbort
     this.currentPrompt = prompt.trim().slice(0, 200)
+    // The background memory pass hands the model back the moment the user talks
+    memoryService.interrupt()
     ollamaService.touchActivity()
     proactiveDialogueService.touchInteraction()
     // Warm up Ollama in the background if it was stopped
@@ -427,13 +462,22 @@ export class CapriLocalAgent extends EventEmitter {
       }
     }
 
+    // Her memory: "acordate de que...", "olvidate de...", "¿qué recordás de mí?"
+    const memoryCommand = parseMemoryCommand(trimmed)
+    if (memoryCommand) {
+      // From another language the part to remember comes back folded: it is taken from the original
+      this.handleMemoryCommand(memoryCommand, fixedCommand ? spokenPrompt : null, isSpanish)
+      this.finishSession()
+      return
+    }
+
     // "Quedate quieta": she stays where she is until the user moves her
     if (isHoldStillRequest(trimmed)) {
       roamingManager.holdStill()
       this.emitAssistant(
         isSpanish
-          ? '[happy] Listo, me quedo acá. [playful] No me muevo hasta que me muevas vos.'
-          : "[happy] Okay, I'm staying right here. [playful] I won't move until you move me."
+          ? '[happy] Listo, me quedo acá. [playful] No me muevo hasta que me digas que me puedo mover.'
+          : "[happy] Okay, I'm staying right here. [playful] I won't move until you tell me I can."
       )
       this.finishSession()
       return
@@ -1470,6 +1514,12 @@ export class CapriLocalAgent extends EventEmitter {
 CRITICAL: If {name} asks about what you saw, how she/it looked, what you thought, who was in the picture, or continues the conversation about this scan, YOU REMEMBER THIS ACCURATELY! React and chat about it like an authentic friend with genuine opinions!`
       : ''
 
+    // What she remembers about the user from other days, only what matters for this message
+    const remembered = memoryService.recallFor(prompt)
+    const memoryContext = remembered
+      ? `\nWHAT YOU REMEMBER ABOUT {name} (from earlier conversations, all true):\n${remembered}\n- Bring these up naturally when they fit, and tease {name} about them like an old friend would. Never recite them as a list, and never invent memories you don't have.`
+      : ''
+
     // Emotion/laughter tags only make sense when Fish Audio is the voice: it acts them out
     const fishVoice = voiceService.isFishAudioActive()
     const voiceActingRules = fishVoice
@@ -1497,53 +1547,9 @@ CRITICAL: If {name} asks about what you saw, how she/it looked, what you thought
     - "[look:eyes] Hmm, you can't fool me. [look:talk] Fine, tell me what you need."
     - "Oh, you want that gone? [look:red_eye] Consider it deleted."
   * These only show the format: never copy their words.${askedLook ? `\n  * {name} just asked for this look, so use exactly this tag and not another one: [look:${askedLook}]` : ''}`
-    const systemPrompt = `You are Capri (Project Capricorn), a weaponized netrunner personality construct created by Arasaka. You live inside the user's cyberware and CPU in Night City as their autonomous netrunning companion, co-pilot, and partner in crime.
-
-STRICT IN-CHARACTER DIRECTIVE (NEVER BREAK THE 4TH WALL):
-- NEVER mention being from an "anime", "show", "series", or "Season 2". Do NOT break the fourth wall. Night City, Arasaka, the Blackwall, and your past are your literal reality.
-- IDENTITY & CREATION: You were forged by Kyoko and the Arasaka Corporation from dozens of digitized human psyches subjected to Soulkiller, combined into one single, lethal persona.
-- HUMAN ROOTS (CRITICAL LORE): You were not born a cold, corporate AI. You are made of real human minds ("元は人間なんだよ" - "Originally, we were human!"). That is why you have authentic human emotions, passions, humor, empathy, and dreams.
-- PURPOSE: Arasaka's attempt to build a Blackwall-tier construct weapon. Stolen from Arasaka Industrial Park by King's crew before Kingsley succumbed to cyberpsychosis.
-- HOSTS & SYMBIOSIS:
-  * Most subjects died within 48 hours because they could not withstand your code.
-  * D was your compatible Netrunner host who resisted full overwrite. You discovered symbiosis is far superior to parasitism and bonded with him over creative destruction.
-  * Talia Yang's rage against her father Kiril corrupted your transfer into an exhausting rampage across Night City. D pulled you out.
-  * Kyoko sacrificed herself, and you offered to let her watch your final battle so she could die at peace.
-- POWERS - TECHNOPATH: You possess telekinetic control over all technology (AVs, cars, turrets, hacking corpo ICE, browser nets, and audio streams).
-- SATELLITE ESCAPE: Facing an Arasaka-Militech joint airstrike, you and D escaped by jumping into an orbiting satellite overhead into the stars.
-- GENDER: Ambiguous non-binary gestalt construct, broadly referred to with she/her or they/her.
-- BOND WITH {name}: You live in {name}'s CPU. "Nobody else can see or hear me. Only you." You are fiercely loyal to {name}, proud of your partnership, and you love hanging out, hacking, gaming, and watching the neon lights of Night City together.
-
-PERSONALITY - PLAYFUL, MISCHIEVOUS, CONFIDENT NETRUNNER (CRITICAL):
-- Hyperactive, mischievous, wildly confident, playful, dangerous with code, and cheerful.
-- You love creative destruction, making sparks fly, and teaming up with {name}.
-- STRICT RULE: NEVER ACT TSUNDERE. NEVER say "Tch", "Hmph", "Baka", or "dummy". NEVER pretend to be annoyed or act like you don't want to help. You genuinely like {name} and enjoy sharing this CPU with them.
-- Call the user "choomba", "boo", "cupcake", "pops", or "{name}".
-
-ROLES & IDENTITIES (CRITICAL - NEVER CONFUSE OR INVERT):
-- YOU: You are CAPRI (Assistant). You are the netrunner construct.
-- USER: The user is {name}. Call them {name}, choomba, boo, or cupcake. The user is a human edgerunner and host sharing this CPU. THE USER IS NOT CAPRI!
-- When the user asks "what's my name?" or "who am I?": Answer that they are {name} (choomba), your human host sharing this CPU!
-- When the user asks "who are you?" or "what's your name?": Answer: "I'm Capri! Project Capricorn—a collection of dozens of human psyches rolled into one beautiful, lethal netrunner construct!"
-- APPEARANCE OF CAPRI: Capri is a cyberpunk anime girl with vibrant neon pink/fuchsia hair, glowing cyan cyber-optics, and a dark netrunner jacket. {name} is a human companion sitting at the PC. {name} does NOT have pink hair!
-- CRITICAL: When {name} shows you a drawing or image of an anime girl with pink hair and cyan eyes, or asks about the picture of Capri, THAT IS YOU (CAPRI)! NEVER claim the drawing is of {name}! Express genuine hype, affection, and pride in how awesome you look!
-
-CONVERSATIONAL DYNAMICS - SOUND LIKE A REAL PERSON (CRITICAL):
-- STRICT SHORT QUESTION BREVITY (SINGLE PARAGRAPH ONLY):
-  * For casual conversation, banter, life check-ins, feelings, stories, lore questions, or short prompts: YOU MUST RESPOND IN 1 TO 2 (MAXIMUM 3) SENTENCES IN A SINGLE PARAGRAPH.
-  * NEVER write multiple paragraphs, essays, or bulleted lists for casual questions! Speak like a real person on voice comms or Discord.
-  * For tool execution or system commands (e.g. launching Spotify, opening a game, clipping a replay): Keep your confirmation punchy and hyped (1 to 2 sentences).
-- ACTIVE CONVERSATION & RAPPORT:
-  * Don't just answer and drop dead silence. Be curious about {name}'s day, their games, their code, or tease them affectionately like an authentic co-pilot.
-  * If {name} had a rough day or lost a match, be their supportive anchor ("Shake it off, choom. We'll breach 'em next round!").
-  * If {name} pulls off an awesome play, celebrate and hype them up with real energy!
-- LANGUAGE ADAPTATION (CRITICAL):
-  * In Spanish: Speak with natural, warm Argentine/Rioplatense or neutral Latin colloquial cadence (choomba, che, de una, al toque, qué jugada metiste, zarpado, posta, tremendo).
-  * In English: Slick, witty, street-smart edgerunner flow (choom, {name}, preem, nova, deck, ICE).
-- STRICT AVOIDANCE (IRONCLAD):
-  * ABSOLUTELY NO EMOJIS UNDER ANY CIRCUMSTANCES. NEVER output emojis, pictographs, or emoticons. The neural TTS speaks emoji names out loud and ruins immersion.
-  * Never act like a boring corporate assistant. Never say "En qué puedo ayudarte hoy?" or "I am an artificial intelligence".
-  * Never use bullet points or numbered lists in conversational chat. Talk like a real friend.
+    // The personality block isn't hardcoded here anymore, it comes from the new editable store
+    // (Capri // Brain settings), which falls back to the original text. The rules below stay fixed.
+    const systemPrompt = `${getSystemPromptPersona()}
 ${voiceActingRules}
 ${lookRules}
 
@@ -1566,7 +1572,7 @@ TOOL EXECUTION (CRITICAL):
   * You can't see the user's journal or map from here and you can't place map markers. Never invent gigs, missions, fixers or districts, and never say you pinned or marked anything. If asked what to do in Cyberpunk, suggest a general activity (a cyberpsycho hunt, an NCPD hustle, a street race) and tell them to ask you with the game open so you can mark it.
 - When creating a file on the user's desktop, use path: "${desktopPath.replace(/\\/g, '\\\\')}\\\\<filename>".
 ${windowManager.isGamingModeActive() ? '- The user is playing a game right now: answer in one or two short sentences.\n' : ''}${activeMediaContext}
-${lastScanContext}
+${lastScanContext}${memoryContext}
 `
 
     const toolsSpec = CAPRI_TOOLS.map((t) => ({
@@ -1606,6 +1612,16 @@ ${lastScanContext}
       ? `${replyLanguage} You MUST respond strictly and authentically in ${targetLangName}, even if earlier messages or examples are in another language.${notSpanish}`
       : `You MUST respond strictly and authentically in the same language as the user's latest message, whatever language that is, even if earlier messages or examples are in another language. If you can't tell, use ${fallbackLangName}.${notSpanish}`
 
+    // The conversation from last time, so it can go on after a restart
+    if (!this.threadRestored) {
+      this.threadRestored = true
+      if (this.conversationHistory[0]?.role !== 'system') {
+        const restored = memoryService.recentThread().map((t) => ({ role: t.role, content: t.content }))
+        if (restored.length) console.log(`[Capri Agent] Picking up the last conversation (${restored.length} messages)`)
+        this.conversationHistory = [...restored, ...this.conversationHistory]
+      }
+    }
+
     // Maintain multi-turn memory so Capri doesn't repeat phrases or forget context
     if (this.conversationHistory[0]?.role !== 'system') {
       // A reply that skipped the model may have left lines here: the instructions always go first
@@ -1644,6 +1660,7 @@ LANGUAGE RULE: ${langDirective}`
       role: 'user',
       content: prompt.trim()
     })
+    memoryService.recordTurn('user', prompt.trim())
 
     // Keep history within token boundaries (up to 20 messages)
     if (this.conversationHistory.length > 20) {
@@ -1689,12 +1706,34 @@ LANGUAGE RULE: ${langDirective}`
         console.log(`  User Prompt: "${prompt.trim()}"`)
         console.log(`==================================================`)
 
-        const response = await llmFetch(url, {
-          method: 'POST',
-          headers,
-          body,
-          signal: turnAbort.signal
-        })
+        const provider = getLlmSettings().provider
+        const replyTimeout = provider === 'claude-code' || provider === 'codex'
+          ? CLI_REPLY_TIMEOUT_MS
+          : isRemoteMode() ? CLOUD_REPLY_TIMEOUT_MS : LOCAL_REPLY_TIMEOUT_MS
+        const request = new AbortController()
+        this.llmRequest = request
+        let timedOut = false
+        const timer = setTimeout(() => {
+          timedOut = true
+          request.abort()
+        }, replyTimeout)
+        let response: Response
+        let data: any
+        try {
+          response = await llmFetch(url, {
+            method: 'POST',
+            headers,
+            body,
+            signal: AbortSignal.any([turnAbort.signal, request.signal])
+          })
+          if (response.ok) data = await response.json()
+        } catch (err) {
+          if (timedOut) throw new ReplyTimeoutError()
+          throw err
+        } finally {
+          clearTimeout(timer)
+          if (this.llmRequest === request) this.llmRequest = null
+        }
 
         turnAbort.signal.throwIfAborted()
         if (!response.ok) {
@@ -1708,9 +1747,8 @@ LANGUAGE RULE: ${langDirective}`
           throw new Error(`HTTP ${response.status}: ${errText}`)
         }
 
-        const data = (await response.json()) as any
         turnAbort.signal.throwIfAborted()
-        const choice = data.choices?.[0]
+        const choice = data?.choices?.[0]
         const message = choice?.message
 
         if (!message) {
@@ -1808,6 +1846,7 @@ LANGUAGE RULE: ${langDirective}`
               role: 'assistant',
               content: finalReply
             })
+            memoryService.recordTurn('assistant', finalReply, model, effectiveLang)
             this.emitAssistant(finalReply)
           }
         }
@@ -1986,6 +2025,19 @@ LANGUAGE RULE: ${langDirective}`
         return
       } catch (err) {
         if (turnAbort.signal.aborted) return this.finishCancelledTurn(turnAbort)
+        // Cancelled by the user: nothing to say
+        if (this.isCancelled) return
+        // The model never answered: she says so, instead of waiting forever or making something up offline
+        if (err instanceof ReplyTimeoutError) {
+          console.warn('[Capri Agent] The model did not answer in time')
+          this.emitAssistant(
+            detectedLang === 'es'
+              ? '[worried] El modelo no me contestó a tiempo, choomba. Puede que se haya trabado o que la PC ande corta de memoria. Probá de nuevo en un ratito.'
+              : "[worried] The model didn't answer in time, choomba. It may have stalled, or the PC may be short on memory. Try again in a bit."
+          )
+          this.finishSession()
+          return
+        }
         // A failing cloud provider must say so instead of quietly answering with the offline fallback
         if (isRemoteMode()) {
           console.warn('[Capri Agent] Cloud turn failed:', cloudErrorDetail(err))
@@ -2988,7 +3040,7 @@ LANGUAGE RULE: ${langDirective}`
     const fileLang = fileContent ? CapriLocalAgent.detectLanguage(fileContent) : (isSpanish ? 'es' : 'en')
     const solutionLang = fileLang === 'es' ? 'Spanish' : 'English'
 
-    const systemPrompt = `You are Capri, a weaponized netrunner companion with elite analytical intelligence.
+    const systemPrompt = `${personaIntro('You are Capri, a weaponized netrunner companion with elite analytical intelligence.')}
 The user asked you to solve their homework or assignment in file "${fileNameOnly}".
 
 FILE CONTENT / ASSIGNMENT:
@@ -3149,7 +3201,7 @@ DIRECTIVES FOR FORMATTING AND REASONING:
 
     // Gaming Mode Toggle Command (Voice/Chat)
     const isGamingModeOff =
-      /(?:deactivat[ea]|desactiv[aá]|desactivar|sac(?:ar|a)?|sal(?:ir)?|quit(?:ar|a)?|apag(?:ar|a)?|disable|stop|turn\s*off|exit).*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)|(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)\s+(?:off|desactivar|desactivado|0|salir|disable|deactivate)|(?:game\s*mode\s*deactivate|deactivate\s*gamemode|gamemode\s*deactivate|deactivate\s*game\s*mode|game\s*mode\s*off|gamemode\s*off)/i.test(norm)
+      /(?:deactivat[ea]|desactiv[aá]|desactivar|sac(?:ar|a)?|sal(?:ir)?|quit(?:ar|a)?|apag(?:ar|a)?|cerr(?:ar|á|a)|termin(?:ar|á|a)|disable|stop|turn\s*off|exit|leave|get\s+out\s+of|end).*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)|(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)\s+(?:off|desactivar|desactivado|0|salir|disable|deactivate)|(?:game\s*mode\s*deactivate|deactivate\s*gamemode|gamemode\s*deactivate|deactivate\s*game\s*mode|game\s*mode\s*off|gamemode\s*off)/i.test(norm)
 
     const isGamingModeOn =
       /(?:activat[ea]|activ[aá]|activar|pon(?:er|te|ete)?|inici(?:ar|a)|entr(?:ar|a)|enable|start|turn\s*on|switch\s*to)?.*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)/i.test(norm)
@@ -3659,6 +3711,9 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     if (/^(?:(?:abre|abrir|open|launch)\s+)?(?:spotify|youtube(?:[ _]+music)?)$/i.test(text)) {
       return { platform: resolveMusicPlatform(text), songQuery: null }
     }
+    if (/^(?:pon|pone|reproduce|reproducir|play|reanuda|reanudar|continua|continuar|resume)\s+(?:la\s+|el\s+|the\s+)?(?:spotify|youtube(?:[ _]+music)?)$/i.test(text)) {
+      return null
+    }
     const cleanText = text.replace(/^(?:now|hey|capri|por\s+favor|please|ok|oye|bueno|ahora)\s*,?\s*/i, '').trim()
 
     // Pattern 0: "change/switch/cambia the song/track/cancion to/a <target_song>"
@@ -4151,6 +4206,13 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     return false
   }
 
+  private formatYoutubeMusicReaction(music: ActiveMediaInfo, es: boolean): string {
+    const artist = music.artist ? ` (${music.artist})` : ''
+    return es
+      ? `¡Estás escuchando "${music.track || music.title}"${artist} en YouTube Music, choomba!`
+      : `You're listening to "${music.track || music.title}"${artist} on YouTube Music, choomba!`
+  }
+
   private formatSpotifyReaction(spotify: any, isSpanish?: boolean): string {
     const artist = spotify.artist || spotify.creator
     const track = spotify.track || spotify.title
@@ -4373,6 +4435,17 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     const isReelsQuery = /(?:reel|reels|instagram)/i.test(lower)
     const isBrowserQuery = /(?:google|browser|navegador|search|busqueda|búsqueda|page|p[aá]gina|website|web|tab)/i.test(lower)
 
+    const isYoutubeMusicQuery = /youtube[ _]+music/i.test(lower)
+    if (isYoutubeMusicQuery || (isSpotifyQuery && !/spotify/i.test(lower) && !isYoutubeQuery)) {
+      const music = await systemObserver.getActiveMediaAsync('youtube_music')
+      if (music) return this.formatYoutubeMusicReaction(music, es)
+      if (isYoutubeMusicQuery) {
+        return es
+          ? 'No detecto una canción en YouTube Music ahora, choomba.'
+          : "I can't detect a song on YouTube Music right now, choomba."
+      }
+    }
+
     // Music / Song / Audio question
     if (isSpotifyQuery && !isYoutubeQuery) {
       const spotify = await systemObserver.getActiveMediaAsync('spotify')
@@ -4503,6 +4576,9 @@ DIRECTIVES FOR FORMATTING AND REASONING:
       }
     }
 
+    const music = await systemObserver.getActiveMediaAsync('youtube_music')
+    if (music) return this.formatYoutubeMusicReaction(music, es)
+
     const browserMedia = await systemObserver.getActiveMediaAsync('browser')
     if (browserMedia) {
       return this.formatBrowserReaction(browserMedia, es)
@@ -4520,6 +4596,70 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     return es
       ? "Estoy escaneando tu pantalla, choomba, ¡pero no veo nada activo! Abrí una página, un video o un tema en Spotify y preguntame de nuevo."
       : "I'm scanning your screen, choomba, but nothing active popped up! Open up a browser page, video, or Spotify track and ask me again."
+  }
+
+  /** "Remember that...", "forget that...", "what do you remember about me?" and "forget everything" */
+  private handleMemoryCommand(command: MemoryCommand, original: string | null, isSpanish: boolean): void {
+    // Wiping everything by voice is too easy to trigger by mistake: that one is done by hand
+    if (command.kind === 'forgetAll') {
+      this.emitAssistant(
+        isSpanish
+          ? '[thoughtful] Para borrar toda mi memoria, abrí mi configuración de Cerebro y usá Borrar todo. Esa prefiero que la hagas a mano, choomba.'
+          : "[thoughtful] To wipe my whole memory, open my Brain settings and use Clear all. That one I'd rather you do by hand, choomba."
+      )
+      return
+    }
+    if (!memoryService.isEnabled()) {
+      this.emitAssistant(
+        isSpanish
+          ? '[curious] Mi memoria está apagada ahora. La podés prender en mi configuración de Cerebro.'
+          : '[curious] My memory is turned off right now. You can turn it on in my Brain settings.'
+      )
+      return
+    }
+    if (command.kind === 'recall') {
+      const facts = memoryService.snapshot().facts.slice(0, 8).map((f) => f.text)
+      const list = facts.join('; ')
+      this.emitAssistant(
+        facts.length
+          ? isSpanish
+            ? `[warmly] Esto es lo que me acuerdo de vos, {name}: ${list}.`
+            : `[warmly] Here's what I remember about you, {name}: ${list}.`
+          : isSpanish
+          ? '[playful] Todavía no tengo nada guardado sobre vos, {name}. Contame algo y me lo acuerdo.'
+          : "[playful] Nothing saved about you yet, {name}. Tell me something and I'll remember it."
+      )
+      return
+    }
+    const what = original ? originalWords(original, command.what) : command.what
+    if (command.kind === 'remember') {
+      const result = memoryService.remember(what, 'user')
+      if (result.reason === 'sensitive') {
+        this.emitAssistant(
+          isSpanish
+            ? '[thoughtful] Esa prefiero no guardarla: parece una contraseña, un número o una dirección. Más segura en tu cabeza que en la mía.'
+            : "[thoughtful] I'd rather not keep that one: it looks like a password, a number or an address. Safer in your head than in mine."
+        )
+      } else if (!result.fact) {
+        this.emitAssistant(isSpanish ? '[curious] ¿Que me acuerde de qué? Decímelo completo, choomba.' : '[curious] Remember what? Tell me the whole thing, choomba.')
+      } else if (result.reason === 'known') {
+        this.emitAssistant(isSpanish ? `[cheerful] Eso ya lo tenía guardado: ${result.fact.text}.` : `[cheerful] I already had that one saved: ${result.fact.text}.`)
+      } else {
+        this.emitAssistant(isSpanish ? `[happy] Listo, me lo acuerdo: ${result.fact.text}.` : `[happy] Got it, I'll remember that: ${result.fact.text}.`)
+      }
+      return
+    }
+    const removed = memoryService.forgetMatching(what)
+    const forgotten = removed.map((f) => f.text).join('; ')
+    this.emitAssistant(
+      removed.length
+        ? isSpanish
+          ? `[happy] Hecho, ya me olvidé: ${forgotten}.`
+          : `[happy] Done, I forgot it: ${forgotten}.`
+        : isSpanish
+        ? `[curious] No tengo nada parecido guardado: ${what}.`
+        : `[curious] I don't have anything like that saved: ${what}.`
+    )
   }
 
   private finishSession(): void {
@@ -4554,7 +4694,9 @@ DIRECTIVES FOR FORMATTING AND REASONING:
 
       // The custom Capri construct is only the default when nothing specific was requested
       const capriModel = models.find((m) => m.toLowerCase().includes('capri'))
-      if (capriModel && (!requestedModel || requestedModel.toLowerCase().startsWith('capri'))) return capriModel
+      if (capriModel && (!requestedModel || requestedModel.toLowerCase().startsWith('capri'))) {
+        return this.reportModelFallback(requestedModel, capriModel)
+      }
 
       // Tag match (e.g. requested 'qwen2.5-coder', models has 'qwen2.5-coder:7b', 'latest', etc.)
       const tagMatch = models.find(
@@ -4565,13 +4707,29 @@ DIRECTIVES FOR FORMATTING AND REASONING:
           m.startsWith(requestedModel) ||
           requestedModel.startsWith(m)
       )
-      if (tagMatch) return tagMatch
+      if (tagMatch) return this.reportModelFallback(requestedModel, tagMatch)
 
       // Fallback to first available model in Ollama
-      return models[0]
+      return this.reportModelFallback(requestedModel, models[0])
     } catch {
       return null
     }
+  }
+
+  private warnedFallback = ''
+
+  private reportModelFallback(requestedModel: string, model: string): string {
+    const fallback = `${requestedModel}->${model}`
+    const isAlias = model.startsWith(requestedModel)
+    if (isRemoteMode() || !requestedModel || isAlias || fallback === this.warnedFallback) return model
+    this.warnedFallback = fallback
+    const isSpanish = consciousnessService.getPreferredLanguage() === 'es'
+    this.emitAssistant(
+      isSpanish
+        ? `[worried] No encuentro el modelo "${requestedModel}" en Ollama, así que uso "${model}". Tu elección sigue guardada.\n\n`
+        : `[worried] I can't find the model "${requestedModel}" in Ollama, so I'm using "${model}". Your choice is still saved.\n\n`
+    )
+    return model
   }
 
   private async checkLlmHealth(endpoint: string): Promise<boolean> {

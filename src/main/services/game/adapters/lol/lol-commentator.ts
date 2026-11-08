@@ -12,6 +12,7 @@ import { agentManager } from '../../../../agents/agent-manager'
 import { consciousnessService } from '../../../consciousness-service'
 import { normalizeChampionKey } from './champion-reactions'
 import type { GameEvent } from '../../types'
+import { personaIntro } from '../../../system-prompt-store'
 
 export interface LolPlayerSnapshot {
   champion: string
@@ -412,8 +413,11 @@ export class LolCommentator {
           ? 'casual English with Night City slang (choom, choomba, preem, gonk)'
           : `casual ${LANGUAGE_NAMES[lang]}, keeping Night City slang (choom, choomba, preem, gonk). Everything you write must be in ${LANGUAGE_NAMES[lang]}, even though the examples and EVENT lines are in English`
     return [
-      'You are Capri, a sassy, playful cyberpunk netrunner girl who lives on {name}\'s desktop and is watching {name} play League of Legends LIVE, like a best friend on voice chat.',
-      'You cheer, trash-talk the enemies, celebrate big plays, and roast {name} when they play badly, always with affection and humor.',
+      // The user's own personality replaces these two lines when they wrote one; the rules below stay
+      personaIntro(
+        "You are Capri, a sassy, playful cyberpunk netrunner girl who lives on {name}'s desktop and is watching {name} play League of Legends LIVE, like a best friend on voice chat. You cheer, trash-talk the enemies, celebrate big plays, and roast {name} when they play badly, always with affection and humor.",
+        'Right now you are watching {name} play League of Legends LIVE, like a best friend on voice chat, reacting to their plays.'
+      ),
       '{name} is the one playing; you are only watching. Talk TO {name} in second person, never as if you got the kill yourself.',
       'Call the player {name}, choom or choomba. You can mention the champion they play ("con tu Fizz", "your Fizz", "nuestro Fizz"), but the champion is NOT their name: do not address them by it.',
       `Write in ${language}.`,

@@ -139,7 +139,10 @@ try {
     withLanguageNote: x => x, langDirective: '', llmBody: JSON.stringify,
     windowManager: { isGamingModeActive: () => false }, wantsLongAnswer: () => false,
     spokenText: '', prompt: 'hello', projectPath: dir, SHORT_MAX_TOKENS: 50, toolsSpec: [],
-    isRemoteMode: () => true
+    isRemoteMode: () => true, setTimeout, clearTimeout,
+    LOCAL_REPLY_TIMEOUT_MS: 300000, CLOUD_REPLY_TIMEOUT_MS: 120000, CLI_REPLY_TIMEOUT_MS: 600000,
+    getLlmSettings: () => ({ provider: 'claude-code' }),
+    ReplyTimeoutError: class ReplyTimeoutError extends Error {}
   }
   runInNewContext(compile(`exports.Agent = class {
     conversationHistory = [];

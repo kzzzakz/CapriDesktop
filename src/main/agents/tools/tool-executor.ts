@@ -17,6 +17,7 @@ import {
   matchDesktopEntry,
   startCommand
 } from '../../services/platform'
+import { searchYoutubeMusic, startYoutubeMusic } from '../../services/youtube-music'
 import { scriptPath } from '../../services/app-paths'
 import * as os from 'os'
 import * as fs from 'fs'
@@ -656,13 +657,13 @@ export class ToolExecutor {
 
       // An installed app by its name comes before the shortcuts below, which go by a word inside the
       // name: without this "google earth" opens the browser. These names are what those shortcuts are for
-      const handledBelow = /^(?:youtube|spotify|musica|música|music|cancion|canción|navegador|browser|browser_search|internet|google|notas|bloc de notas)$/i
+      const handledBelow = /^(?:youtube|youtube[ _]music|spotify|musica|música|music|cancion|canción|navegador|browser|browser_search|internet|google|notas|bloc de notas)$/i
       if (!rawUrl && !rawQuery && !handledBelow.test(cleanAppRequest(target))) {
         const opened = await openInstalledApp(rawTarget)
         if (opened) return { success: true, output: `Launched ${opened} successfully!` }
       }
 
-      // YouTube (with direct song / video search and playback)
+      // YouTube and YouTube Music (with direct song / video search)
       if (target.includes('youtube')) {
         const platform = resolveMusicPlatform(target)
         const isMusic = platform === 'youtube_music'
@@ -672,7 +673,15 @@ export class ToolExecutor {
         let finalUrl = query
           ? (isMusic ? `${homeUrl}/search?q=${encodeURIComponent(query)}` : `${homeUrl}/results?search_query=${encodeURIComponent(query)}`)
           : homeUrl
-        if (query) {
+        let songTitle: string | undefined
+        if (query && isMusic) {
+          const song = await searchYoutubeMusic(query)
+          if (song) {
+            songTitle = song.title
+            finalUrl = `${homeUrl}/watch?v=${song.videoId}&autoplay=1`
+          }
+        }
+        if (query && !isMusic) {
           try {
             const res = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, {
               headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -686,6 +695,7 @@ export class ToolExecutor {
           } catch {}
         }
         await shell.openExternal(finalUrl).catch(() => { exec(startCommand(finalUrl)) })
+        if (songTitle) await startYoutubeMusic(songTitle)
         return { success: true, output: query ? `Playing "${query}" on ${name}: ${finalUrl}` : `Launched ${name} in your browser.` }
       }
 

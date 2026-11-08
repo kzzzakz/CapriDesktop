@@ -2,6 +2,7 @@
   "provider": "fish-audio",
   "fish_audio": {
     "api_key": "YOUR_FISH_AUDIO_API_KEY",
+    "reference_id": "f6f9169f53244cbfb3bd8ce69bf2db10",
     "model": "s2.1-pro-free",
     "format": "mp3"
   },

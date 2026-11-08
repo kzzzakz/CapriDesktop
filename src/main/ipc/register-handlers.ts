@@ -25,6 +25,8 @@ import { cyberpunkAdapter } from '../services/game'
 import { CYBERPUNK_GIGS, getNextGig } from '../services/game/adapters/cyberpunk/gigs'
 import { clipService } from '../services/clip-service'
 import { welcomeSpeech } from '../services/welcome-speech'
+import { getSystemPromptInfo, setSystemPrompt, resetSystemPrompt, setPersonaStyle } from '../services/system-prompt-store'
+import { memoryService } from '../services/memory-service'
 
 export function registerIpcHandlers(): void {
   // Deck window visibility
@@ -268,7 +270,7 @@ export function registerIpcHandlers(): void {
       const lang = s.textLang && s.textLang !== 'auto' ? s.textLang : consciousnessService.getPreferredLanguage()
       setTimeout(() => {
         agentManager.setCompanionState('talking')
-        agentManager.setCompanionSpeech(welcomeSpeech(lang), 22000, true)
+        agentManager.setCompanionSpeech(welcomeSpeech(lang, consciousnessService.getHotkeys().talk), 22000, true)
       }, 1500)
     }
     return true
@@ -329,6 +331,19 @@ export function registerIpcHandlers(): void {
     }
     return confirmClaudeBypassPermissions(win, consciousnessService.getPreferredLanguage())
   })
+  // read, save and reset Capri's editable system prompt
+  ipcMain.handle(IPC_CHANNELS.AGENT_GET_SYSTEM_PROMPT, () => getSystemPromptInfo())
+  ipcMain.handle(IPC_CHANNELS.AGENT_SET_SYSTEM_PROMPT, (_event, text: string) => setSystemPrompt(text))
+  ipcMain.handle(IPC_CHANNELS.AGENT_RESET_SYSTEM_PROMPT, () => resetSystemPrompt())
+  ipcMain.handle(IPC_CHANNELS.AGENT_SET_PERSONA_STYLE, (_event, style: { tone?: string; teasing?: string }) => setPersonaStyle(style ?? {}))
+
+  // Her memory: the settings window sees what she learns while it is open
+  ipcMain.handle(IPC_CHANNELS.MEMORY_GET, () => memoryService.snapshot())
+  ipcMain.handle(IPC_CHANNELS.MEMORY_SET_ENABLED, (_event, enabled: boolean) => memoryService.setEnabled(!!enabled))
+  ipcMain.handle(IPC_CHANNELS.MEMORY_ADD, (_event, text: string) => ({ ...memoryService.remember(String(text ?? ''), 'user'), memory: memoryService.snapshot() }))
+  ipcMain.handle(IPC_CHANNELS.MEMORY_DELETE, (_event, id: string) => memoryService.deleteFact(String(id ?? '')))
+  ipcMain.handle(IPC_CHANNELS.MEMORY_CLEAR, () => memoryService.clearAll())
+  memoryService.onChanged(() => windowManager.broadcast(IPC_CHANNELS.MEMORY_CHANGED, memoryService.snapshot()))
   ipcMain.handle(IPC_CHANNELS.LLM_GET_SETTINGS, () => getLlmSettings())
   ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))
@@ -347,8 +362,8 @@ export function registerIpcHandlers(): void {
     return await agentManager.detectOllama()
   })
 
-  ipcMain.handle(IPC_CHANNELS.AGENT_CLEAR_HISTORY, () => {
-    agentManager.clearHistory()
+  ipcMain.handle(IPC_CHANNELS.AGENT_CLEAR_HISTORY, (_event, options?: { startup?: boolean }) => {
+    agentManager.clearHistory(!!options?.startup)
     return true
   })
 

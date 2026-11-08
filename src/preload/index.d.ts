@@ -1,4 +1,5 @@
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
+import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
   CompanionEmotionState,
@@ -6,6 +7,7 @@ import {
   RoamingStatusPayload,
   AgentMode,
   AgentConfigPayload,
+  SystemPromptPayload,
   ScannerBounds,
   ScannerStatusPayload,
   ScannerScanResult,
@@ -107,6 +109,18 @@ export interface IElectronAPI {
     setConfig: (config: Partial<AgentConfigPayload>) => Promise<AgentConfigPayload>
     detectOllama: () => Promise<{ running: boolean; models: string[] }>
     confirmClaudeBypass: () => Promise<boolean>
+    // Editable system prompt
+    getSystemPrompt: () => Promise<SystemPromptPayload>
+    setSystemPrompt: (text: string) => Promise<SystemPromptPayload>
+    resetSystemPrompt: () => Promise<SystemPromptPayload>
+    setPersonaStyle: (style: { tone?: SystemPromptPayload['tone']; teasing?: SystemPromptPayload['teasing'] }) => Promise<SystemPromptPayload>
+    // Her long-term memory
+    getMemory: () => Promise<MemorySnapshot>
+    setMemoryEnabled: (enabled: boolean) => Promise<MemorySnapshot>
+    addMemory: (text: string) => Promise<MemoryAddResult>
+    deleteMemory: (id: string) => Promise<MemorySnapshot>
+    clearMemory: () => Promise<MemorySnapshot>
+    onMemoryChanged: (callback: (memory: MemorySnapshot) => void) => () => void
     getLlmSettings: () => Promise<LlmPublicSettings>
     setLlmSettings: (update: LlmSettingsUpdate) => Promise<{ success: boolean; error?: string; settings: LlmPublicSettings }>
     listLlmModels: (baseUrl: string, apiKey?: string) => Promise<{ ok: boolean; models: string[]; error?: string }>
@@ -114,7 +128,7 @@ export interface IElectronAPI {
     testCodex: (model: string) => Promise<{ ok: boolean; error?: string }>
     testClaude: (model: 'haiku' | 'sonnet' | 'opus') => Promise<{ ok: boolean; error?: string }>
     testLlm: (baseUrl: string, model: string, apiKey?: string) => Promise<{ ok: boolean; error?: string }>
-    clearHistory: () => Promise<boolean>
+    clearHistory: (options?: { startup?: boolean }) => Promise<boolean>
     respondPermission: (requestId: string, approved: boolean) => Promise<boolean>
     cancel: () => Promise<boolean>
     getStatus: () => Promise<{ isRunning: boolean; mode: string }>

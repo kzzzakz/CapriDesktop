@@ -1,10 +1,12 @@
-import { listProcessNames, mediaWindowTitles } from './platform'
+import { youtubeMusicTitle, windowsYoutubeMusic } from './youtube-music'
+import { isWindows, listProcessNames, mediaWindowTitles } from './platform'
 import os from 'os'
 import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
 import { windowManager } from '../windows/window-manager'
 import { cyberpunkAdapter, lolLiveAdapter } from './game'
 import { wutheringWavesAdapter } from './game/adapters/wuthering-waves/wuthering-waves-adapter'
+import { gamePresenceService } from './game-presence-service'
 import { valorantAdapter } from './game/adapters/valorant/valorant-adapter'
 
 interface TriggerConfig {
@@ -13,7 +15,7 @@ interface TriggerConfig {
 }
 
 export interface ActiveMediaInfo {
-  type: 'youtube' | 'tiktok' | 'reels' | 'twitch' | 'netflix' | 'spotify' | 'google' | 'browser' | 'game' | 'code' | 'other'
+  type: 'youtube_music' | 'youtube' | 'tiktok' | 'reels' | 'twitch' | 'netflix' | 'spotify' | 'google' | 'browser' | 'game' | 'code' | 'other'
   title: string
   creator?: string
   artist?: string
@@ -25,6 +27,7 @@ export interface ActiveMediaInfo {
 }
 
 export interface ActiveMediaRegistry {
+  youtube_music?: ActiveMediaInfo
   spotify?: ActiveMediaInfo
   youtube?: ActiveMediaInfo
   tiktok?: ActiveMediaInfo
@@ -50,7 +53,6 @@ export class SystemObserver {
     lol: { lastTriggered: 0, cooldownMs: 15 * 60 * 1000 }, // 15 mins
     ram: { lastTriggered: 0, cooldownMs: 15 * 60 * 1000 },
     cyberpunk: { lastTriggered: 0, cooldownMs: 20 * 60 * 1000 },
-    valorant: { lastTriggered: 0, cooldownMs: 20 * 60 * 1000 },
     steam: { lastTriggered: 0, cooldownMs: 30 * 60 * 1000 },
     spotify: { lastTriggered: 0, cooldownMs: 30 * 60 * 1000 },
     discord: { lastTriggered: 0, cooldownMs: 30 * 60 * 1000 },
@@ -164,10 +166,14 @@ export class SystemObserver {
         if (!this.initialScanDone) {
           this.previousProcesses = currentProcesses
           this.initialScanDone = true
+          if (currentProcesses.has('valorant-win64-shipping.exe') || currentProcesses.has('valorant.exe')) {
+            // Turned on by the game, so it ends by itself when Valorant closes
+            windowManager.setGamingMode(true, 'top-left', 'game')
+          }
           if (currentProcesses.has('cyberpunk2077.exe')) {
             console.log('[SystemObserver] Cyberpunk 2077 already active on startup. Engaging Gaming Mode.')
             try {
-              windowManager.setGamingMode(true)
+              windowManager.setGamingMode(true, 'top-left', 'game')
             } catch {}
             try {
               if (!cyberpunkAdapter.isRunning()) {
@@ -259,6 +265,14 @@ export class SystemObserver {
                   `Streaming "${detectedMedia.title}"? Looks like movie night in Night City, choomba!`
                 ]
             this.triggerCapriReaction(lines[Math.floor(Math.random() * lines.length)], 'talking')
+          } else if (detectedMedia.type === 'youtube_music') {
+            const artist = detectedMedia.artist ? ` (${detectedMedia.artist})` : ''
+            this.triggerCapriReaction(
+              isEs
+                ? `¿Escuchando "${detectedMedia.title}"${artist} en YouTube Music? ¡Temazo, choomba! Que siga sonando.`
+                : `Spinning "${detectedMedia.title}"${artist} on YouTube Music, choomba! Keep the music pumping.`,
+              'talking'
+            )
           } else if (detectedMedia.type === 'spotify') {
             const lines = isEs
               ? [
@@ -331,25 +345,8 @@ export class SystemObserver {
         if (isAnyGameNow && !wasAnyGameBefore) {
           console.log('[SystemObserver] Game detected. Engaging Gaming Mode.')
           try {
-            windowManager.setGamingMode(true)
+            windowManager.setGamingMode(true, 'top-left', 'game')
           } catch {}
-        }
-
-        // If all games closed, disengage Gaming Mode (with active adapter safeguard)
-        if (!isAnyGameNow && wasAnyGameBefore) {
-          let hasActiveTelemetry = false
-          try {
-            if (cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()) {
-              hasActiveTelemetry = true
-            }
-          } catch {}
-
-          if (!hasActiveTelemetry) {
-            console.log('[SystemObserver] All game processes closed. Exiting Gaming Mode.')
-            try {
-              windowManager.setGamingMode(false)
-            } catch {}
-          }
         }
 
         // Specific LoL adapter lifecycle
@@ -365,6 +362,22 @@ export class SystemObserver {
               lolLiveAdapter.stop().catch(() => {})
             }
           } catch {}
+        }
+
+        // Gaming Mode a game turned on ends once no game is left. Checked on every tick, not only on the
+        // one where the game closed: League's adapter takes a few seconds to notice the match is over,
+        // and a single check during that time used to leave her stuck in Gaming Mode (#21)
+        if (!isAnyGameNow && windowManager.isGamingModeFromGame()) {
+          let gameStillThere = false
+          try {
+            gameStillThere = !!(cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning() || gamePresenceService.isGameSessionActive())
+          } catch {}
+          if (!gameStillThere) {
+            console.log('[SystemObserver] No game left. Exiting Gaming Mode.')
+            try {
+              windowManager.setGamingMode(false)
+            } catch {}
+          }
         }
 
         // Specific Cyberpunk adapter lifecycle
@@ -417,22 +430,7 @@ export class SystemObserver {
           return resolve()
         }
 
-        // Check for Valorant
-        if (
-          (currentProcesses.has('valorant.exe') || currentProcesses.has('valorant-win64-shipping.exe')) &&
-          !this.previousProcesses.has('valorant.exe') &&
-          this.canTrigger('valorant')
-        ) {
-          this.markTriggered('valorant')
-          this.triggerCapriReaction(
-            isEs
-              ? "¡Valorant iniciado! Meté mocha y plantá la spike, choomba. ¡No dejes que los duelistas te ganen!"
-              : "Valorant booted up! Click heads and plant that spike, choomba! Don't let their duelists diff you!",
-            'curious'
-          )
-          this.previousProcesses = currentProcesses
-          return resolve()
-        }
+        // Valorant reactions are emitted by its read-only adapter.
 
         // Check for Spotify
         if (
@@ -509,8 +507,13 @@ export class SystemObserver {
   }
 
   public getActiveMedia(
-    filter?: 'spotify' | 'youtube' | 'tiktok' | 'reels' | 'video' | 'audio' | 'browser'
+    filter?: 'youtube_music' | 'spotify' | 'youtube' | 'tiktok' | 'reels' | 'video' | 'audio' | 'browser'
   ): ActiveMediaInfo | null {
+    if (filter === 'audio' || filter === 'youtube_music') {
+      const music = this.mediaRegistry.youtube_music
+      if (music && Date.now() - music.lastSeen < 3 * 60 * 1000) return music
+      if (filter === 'youtube_music') return null
+    }
     if (filter === 'spotify' || filter === 'audio') {
       return this.mediaRegistry.spotify && Date.now() - this.mediaRegistry.spotify.lastSeen < 3 * 60 * 1000
         ? this.mediaRegistry.spotify
@@ -552,15 +555,17 @@ export class SystemObserver {
   }
 
   public async detectActiveMedia(
-    filter?: 'spotify' | 'youtube' | 'tiktok' | 'reels' | 'video' | 'audio' | 'browser'
+    filter?: 'youtube_music' | 'spotify' | 'youtube' | 'tiktok' | 'reels' | 'video' | 'audio' | 'browser'
   ): Promise<ActiveMediaInfo | null> {
     return new Promise((resolve) => {
-      void mediaWindowTitles().then((rows) => {
-        if (!rows) return resolve(this.getActiveMedia(filter))
+      void mediaWindowTitles().then(async (rows) => {
+        const hasYoutubeMusic = rows?.some((row) => /youtube music/i.test(row.title))
+        const sessions = isWindows && hasYoutubeMusic ? await windowsYoutubeMusic('status') : null
+        if (!rows && !Array.isArray(sessions)) return resolve(this.getActiveMedia(filter))
 
         const freshRegistry: ActiveMediaRegistry = {}
 
-        for (const row of rows) {
+        for (const row of rows || []) {
           {
             const proc = row.proc
             const rawTitle = row.title
@@ -570,6 +575,20 @@ export class SystemObserver {
             if (/^(?:Nueva pesta[ñn]a|New Tab|Sin t[ií]tulo)$/i.test(rawTitle)) continue
 
             const lowerTitle = rawTitle.toLowerCase()
+
+            const musicTitle = youtubeMusicTitle(rawTitle)
+            if (musicTitle && /chrome|msedge|brave|firefox|opera|youtube/i.test(proc)) {
+              freshRegistry.youtube_music = {
+                type: 'youtube_music',
+                title: musicTitle,
+                track: musicTitle,
+                rawTitle,
+                appName: 'YouTube Music',
+                lastSeen: Date.now()
+              }
+              continue
+            }
+            if (lowerTitle.includes('youtube music')) continue
 
             // YouTube Video
             if (lowerTitle.includes('youtube') && !lowerTitle.includes('youtube music') && !freshRegistry.youtube) {
@@ -774,8 +793,27 @@ export class SystemObserver {
           }
         }
 
+        if (Array.isArray(sessions)) {
+          const session = sessions.find((item) => item.status === 'Playing' && item.title)
+          if (session) {
+            freshRegistry.youtube_music = {
+              type: 'youtube_music',
+              title: session.title,
+              track: session.title,
+              artist: session.artist || undefined,
+              creator: session.artist || undefined,
+              rawTitle: session.title,
+              appName: 'YouTube Music',
+              lastSeen: Date.now()
+            }
+          } else if (sessions.length) {
+            delete freshRegistry.youtube_music
+          }
+        }
         this.mediaRegistry = freshRegistry
 
+        if (filter === 'youtube_music') return resolve(this.mediaRegistry.youtube_music || null)
+        if (filter === 'audio' && this.mediaRegistry.youtube_music) return resolve(this.mediaRegistry.youtube_music)
         if (filter === 'spotify' || filter === 'audio') {
           return resolve(this.mediaRegistry.spotify || null)
         }
@@ -803,6 +841,7 @@ export class SystemObserver {
         }
 
         this.latestActiveMedia =
+          this.mediaRegistry.youtube_music ||
           this.mediaRegistry.youtube ||
           this.mediaRegistry.tiktok ||
           this.mediaRegistry.reels ||
@@ -818,7 +857,7 @@ export class SystemObserver {
   }
 
   public async getActiveMediaAsync(
-    filter?: 'spotify' | 'youtube' | 'tiktok' | 'reels' | 'video' | 'audio' | 'browser'
+    filter?: 'youtube_music' | 'spotify' | 'youtube' | 'tiktok' | 'reels' | 'video' | 'audio' | 'browser'
   ): Promise<ActiveMediaInfo | null> {
     const fresh = await this.detectActiveMedia(filter)
     return fresh || this.getActiveMedia(filter)

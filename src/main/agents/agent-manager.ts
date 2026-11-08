@@ -1,5 +1,6 @@
+import { app } from 'electron'
 import { scriptPlayer } from '../services/script/script-player'
-import { getLlmSettings, isRemoteMode } from '../services/llm-gateway'
+import { getLlmSettings, getLocalModel, isRemoteMode, setLocalModel } from '../services/llm-gateway'
 import { personalize } from '../services/user-profile'
 import { consciousnessService } from '../services/consciousness-service'
 import { localizeLine } from '../../shared/lines'
@@ -45,6 +46,9 @@ export class AgentManager extends EventEmitter {
   constructor() {
     super()
     this.setupListeners(this.capriLocal)
+    app.whenReady().then(() => {
+      this.config.model = getLocalModel()
+    })
   }
 
   private setupListeners(adapter: EventEmitter): void {
@@ -216,7 +220,9 @@ export class AgentManager extends EventEmitter {
   }
 
   public setConfig(newConfig: Partial<AgentConfigPayload>): AgentConfigPayload {
-    this.config = { ...this.config, ...newConfig, mode: 'capri-local' }
+    const model = newConfig.model?.trim() || this.config.model
+    if (model !== this.config.model) setLocalModel(model)
+    this.config = { ...this.config, ...newConfig, model, mode: 'capri-local' }
     return { ...this.config }
   }
 
@@ -228,8 +234,8 @@ export class AgentManager extends EventEmitter {
     return await ollamaService.ensureRunning()
   }
 
-  public clearHistory(): void {
-    this.capriLocal.clearHistory()
+  public clearHistory(startup = false): void {
+    this.capriLocal.clearHistory(startup)
   }
 
   public async sendPrompt(

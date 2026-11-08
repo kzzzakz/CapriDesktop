@@ -14,6 +14,7 @@ import {
   ScannerScanResult,
   ScannerStatusPayload
 } from '../ipc/channels'
+import { personaIntro } from './system-prompt-store'
 
 export class ScannerService {
   private static instance: ScannerService
@@ -284,6 +285,11 @@ export class ScannerService {
       const data = (await resp.json()) as any
       const models: string[] = (data.models || []).map((m: any) => String(m.name))
 
+      // Her reaction is Capri talking, so it uses the model chosen for her when it's installed
+      const chosen = agentManager.getConfig().model
+      const chosenMatch = chosen && (models.find((m) => m === chosen) || models.find((m) => m.startsWith(`${chosen}:`)))
+      if (chosenMatch) return chosenMatch
+
       const capri = models.find((m: string) => m.toLowerCase().includes('capri'))
       if (capri) return capri
 
@@ -445,7 +451,7 @@ If the current image matches any of these learned concepts, RECOGNIZE IT IMMEDIA
         : ''
 
       const systemInstruction = isEs
-        ? `Sos Capri (Proyecto Capricornio), una netrunner cyberpunk rebelde, cariñosa y picante que vive en la computadora de tu compañero y mejor amigo {name} ("choomba").
+        ? `${personaIntro('Sos Capri (Proyecto Capricornio), una netrunner cyberpunk rebelde, cariñosa y picante que vive en la computadora de tu compañero y mejor amigo {name} ("choomba").')}
 
 {name} te está mostrando algo en su pantalla a través de tu marco de escaneo óptico.
 Tus sensores ópticos detectaron la siguiente descripción visual objetiva:
@@ -488,7 +494,7 @@ Respondé ÚNICAMENTE un JSON con:
   "tags": ["3 o 4 tags cortos en mayúsculas"],
   "response": "Tu reacción hablada para decirle a {name} en voz alta."
 }`
-        : `You are Capri (Project Capricorn), a witty, rebellious, and affectionate cyberpunk netrunner living in the computer of your companion {name} ("choomba").
+        : `${personaIntro('You are Capri (Project Capricorn), a witty, rebellious, and affectionate cyberpunk netrunner living in the computer of your companion {name} ("choomba").')}
 
 {name} is showing you something on screen through your optical scan frame.
 Your optical sensors detected this objective visual description:

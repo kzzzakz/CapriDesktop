@@ -145,7 +145,7 @@ export class CyberpunkAdapter extends EventEmitter implements GameAdapter {
 
     // Auto-engage Gaming Mode (docked in corner, still, screen-saver topmost)
     try {
-      windowManager.setGamingMode(true)
+      windowManager.setGamingMode(true, 'top-left', 'game')
     } catch {}
 
     // Emit Night City entrance event

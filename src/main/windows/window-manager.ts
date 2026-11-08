@@ -23,6 +23,8 @@ export class WindowManager {
   private savedGamingPosition: { x: number; y: number } | null = null
   private gamingKeepAliveInterval: NodeJS.Timeout | null = null
   private gamingModeListeners: Array<(enabled: boolean) => void> = []
+  /** 'game' when a running game turned it on: only then does it end by itself when the game is gone */
+  private gamingModeSource: 'game' | 'user' = 'user'
   private mouseForwardTimers = new Map<BrowserWindow, NodeJS.Timeout>()
 
   /**
@@ -71,6 +73,11 @@ export class WindowManager {
       win.webContents.send(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, { x, y, inside })
     }, 100)
     this.mouseForwardTimers.set(win, timer)
+  }
+
+  /** Gaming Mode that a detected game turned on, as opposed to the user */
+  public isGamingModeFromGame(): boolean {
+    return this.isGamingMode && this.gamingModeSource === 'game'
   }
 
   public onGamingModeChanged(cb: (enabled: boolean) => void): () => void {
@@ -508,9 +515,12 @@ export class WindowManager {
 
   public setGamingMode(
     enabled: boolean,
-    corner: 'bottom-right' | 'top-right' | 'bottom-left' | 'top-left' = 'top-left'
+    corner: 'bottom-right' | 'top-right' | 'bottom-left' | 'top-left' = 'top-left',
+    source: 'game' | 'user' = 'user'
   ): void {
     if (enabled && !this.isGamingMode) this.gameForeground = true
+    // Turned on by hand and then a game starts: it's still the user's, so it doesn't end with the game
+    if (enabled) this.gamingModeSource = this.isGamingMode && this.gamingModeSource === 'user' ? 'user' : source
     this.isGamingMode = enabled
 
     if (!this.companionWin || this.companionWin.isDestroyed()) return

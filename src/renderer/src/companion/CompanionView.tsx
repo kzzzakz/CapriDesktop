@@ -15,7 +15,8 @@ import { useAgentStore } from '../stores/useAgentStore'
 import dialogueBlipAudio from '../assets/dialogue_blip.wav'
 import patPatGif from '../assets/capri/pat-pat-pet-pet.gif'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
-import { acceleratorFromEvent, DEFAULT_HOTKEYS, HOTKEY_ACTIONS } from '../../../shared/hotkeys'
+import { acceleratorFromEvent, DEFAULT_HOTKEYS, HOTKEY_ACTIONS, spokenHotkey } from '../../../shared/hotkeys'
+import { useHotkeys, useHotkeyLabels } from '../utils/useHotkeys'
 import {
   X,
   Mic,
@@ -143,6 +144,10 @@ export const CompanionView: React.FC = () => {
     onHover: setIsWindowHovered
   })
   const tr = useT()
+  const hotkeyLabels = useHotkeyLabels()
+  const savedHotkeys = useHotkeys()
+  const savedHotkeysRef = useRef(savedHotkeys)
+  savedHotkeysRef.current = savedHotkeys
 
   // Language state synchronized with consciousnessService (default 'en')
   const [currentLang, setCurrentLang] = useState<string>('en')
@@ -225,13 +230,13 @@ export const CompanionView: React.FC = () => {
 
   // Welcome back greeting on application mount (aware of reboots and past shutdowns)
   useEffect(() => {
-    // Fresh chat session: clear past stored messages and backend LLM history
+    // Fresh chat session on screen. Her saved conversation is kept: it comes back with her first answer
     try {
       localStorage.removeItem(STORAGE_KEY)
     } catch {}
 
     if (window.api?.agent?.clearHistory) {
-      window.api.agent.clearHistory().catch(() => {})
+      window.api.agent.clearHistory({ startup: true }).catch(() => {})
     }
 
     if (window.api?.companion?.getConsciousness) {
@@ -934,7 +939,9 @@ export const CompanionView: React.FC = () => {
       setIsAlwaysListening(false)
       followUpUntilRef.current = 0
       try { localStorage.setItem('capri.alwaysListening', '0') } catch {}
-      setSpeech(isEs ? 'Listo, dejo de escucharte. Flecha derecha para volver a activarme.' : 'Okay, I stopped listening. Right arrow to turn me back on.', 3000)
+      // The key is said in the language the line will come out in, so the TTS can read it
+      const key = spokenHotkey(savedHotkeysRef.current.listen, isEs ? 'es' : getLineLanguage())
+      setSpeech(isEs ? `Listo, dejo de escucharte. Apretá ${key} para volver a activarme.` : `Okay, I stopped listening. Press ${key} to turn me back on.`, 3000)
       return
     }
 
@@ -2074,7 +2081,7 @@ export const CompanionView: React.FC = () => {
                           ? 'bg-[#ff003c] text-white animate-pulse'
                           : 'bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700'
                       }`}
-                      title={isRecordingVoice ? 'Stop recording' : 'Record voice (Down arrow)'}
+                      title={isRecordingVoice ? tr('mic_recording', hotkeyLabels) : tr('mic_talk', hotkeyLabels)}
                     >
                       {isProcessingVoice ? (
                         <div className="w-3.5 h-3.5 border-2 border-[#00f0ff] border-t-transparent rounded-full animate-spin" />
@@ -2210,7 +2217,7 @@ export const CompanionView: React.FC = () => {
                           ? 'bg-zinc-800 text-zinc-400'
                           : 'bg-[#00f0ff]/10 hover:bg-[#00f0ff]/20 text-[#00f0ff] border border-[#00f0ff]/50'
                       }`}
-                      title={isRecordingVoice ? 'Click para enviar (o Flecha abajo ↓)' : 'Hablar con Capri (Flecha abajo ↓ o clic)'}
+                      title={isRecordingVoice ? tr('mic_recording', hotkeyLabels) : tr('mic_talk', hotkeyLabels)}
                     >
                       {isProcessingVoice ? (
                         <Loader2 size={13} className="animate-spin text-[#00f0ff]" />
@@ -2432,7 +2439,7 @@ export const CompanionView: React.FC = () => {
                 toggleAlwaysListeningRef.current()
               }}
               className="cp-cut cp-font uppercase tracking-wider absolute top-1 right-3 z-30 flex items-center gap-1 px-2 py-0.5 bg-black/85 border border-cyan-300/70 text-cyan-300 text-[11px] font-bold cursor-pointer hover:bg-[#1a0d0e]"
-              title={tr('cp_listeningTitle')}
+              title={tr('cp_listeningTitle', hotkeyLabels)}
             >
               <span className="relative flex w-1.5 h-1.5">
                 <span className="absolute inline-flex w-full h-full bg-cyan-300 opacity-75 animate-ping" />

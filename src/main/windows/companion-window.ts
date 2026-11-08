@@ -31,7 +31,10 @@ export function createCompanionWindow(): BrowserWindow {
       preload: preloadPath,
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Out of the taskbar, Windows can take her for a hidden window and Chromium then slows her
+      // timers and drawing: the window kept moving while she barely repainted, so she seemed to teleport
+      backgroundThrottling: false
     }
   })
 

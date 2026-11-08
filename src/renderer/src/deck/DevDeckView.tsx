@@ -34,6 +34,7 @@ export const DevDeckView: React.FC = () => {
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false)
   const { setEmotion, setSpeech } = useCompanionStore()
   const t = useT()
+  const [configLoaded, setConfigLoaded] = useState(false)
   const [cloudModel, setCloudModel] = useState<string | null>(null)
   const {
     isRunning,
@@ -50,11 +51,16 @@ export const DevDeckView: React.FC = () => {
   // On mount: scan for local Ollama models and ensure Capri is in eyes mode in Dev Deck
   useEffect(() => {
     if (window.api) {
+      Promise.all([window.api.agent.getConfig(), window.api.agent.getLlmSettings()]).then(([config, settings]) => {
+        setLlmConfig(config)
+        setCloudModel(settings.provider === 'claude-code' ? `Claude Code (${settings.claudeModel})` : settings.provider === 'codex' ? `Codex (${settings.codexModel || 'default'})` : settings.provider === 'cloud' ? settings.model : null)
+        setConfigLoaded(true)
+      })
       window.api.agent.detectOllama().then((res) => {
         if (res) setOllamaStatus(res)
       })
     }
-  }, [setOllamaStatus])
+  }, [setLlmConfig, setOllamaStatus])
 
   // A cloud model is chosen in the settings: the top bar only shows it
   useEffect(() => {
@@ -283,7 +289,7 @@ export const DevDeckView: React.FC = () => {
       </div>
 
       {/* Settings Modal */}
-      {isSettingsOpen && (
+      {isSettingsOpen && configLoaded && (
         <AgentSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       )}
 

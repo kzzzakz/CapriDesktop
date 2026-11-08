@@ -6,6 +6,7 @@
 
 import { llmFetch } from '../llm-gateway'
 import { llmBody } from '../user-profile'
+import { personaIntro } from '../system-prompt-store'
 
 const GAME_FOLDER_PATTERNS = [
   /[\\/]steamapps[\\/]common[\\/]([^\\/]+)/i,
@@ -45,7 +46,7 @@ export function isGameForeground(app: ForegroundApp): boolean {
 
 export function detectGameName(app: ForegroundApp): string | null {
   const exe = app.path.split(/[\\/]/).pop() || ''
-  if (NOT_A_GAME.test(exe) || NOT_A_GAME.test(app.process)) return null
+  if (NOT_A_GAME.test(exe) || NOT_A_GAME.test(app.process) || HAS_OWN_ADAPTER.test(app.process)) return null
 
   let name: string | null = null
   for (const pattern of GAME_FOLDER_PATTERNS) {
@@ -115,7 +116,7 @@ export async function generateGameComment(game: string, notes: string, lang: str
   if (!model) return null
   const language = LANGUAGE_NAMES[lang] || LANGUAGE_NAMES.en
   const prompt = [
-    `You are Capri, a hyperactive, mischievous, wildly confident netrunner construct from Night City who lives in {name}'s CPU. You are their loyal co-pilot and you're keeping them company while they play "${game}" right now.`,
+    personaIntro(`You are Capri, a hyperactive, mischievous, wildly confident netrunner construct from Night City who lives in {name}'s CPU. You are their loyal co-pilot.`, `{name} is playing the game "${game}" right now.`),
     `Say ONE remark to {name}, in ${language}, one or two short sentences, spoken out loud like a friend on voice chat. Call them {name} or choomba.`,
     'Be Capri, not a guide: hype them up, tease them affectionately, drop a cheeky opinion or joke about the game, or ask them something. Never explain what the game is or recite facts like a wiki. Never act annoyed.',
     'You CANNOT see the match: never claim to know what is happening right now, the score, the level or how they are doing.',

@@ -3,7 +3,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { nativeImage } from 'electron'
 import { ReadOnlyGameAdapter, findGameProcess, GameProcess } from '../read-only-game'
-import { gamePresenceService } from '../../../game-presence-service'
+import { foregroundApp } from '../../../game-presence-service'
 import { scannerService } from '../../../scanner-service'
 import { decodePresence, deriveValorantEvents, ValorantState } from './state'
 import { readShooterLogMetadata } from './log-metadata'
@@ -93,7 +93,7 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
     }>('127.0.0.1', '/entitlements/v1/token', headers, port)
     if (!token.subject || !token.accessToken || !token.token || !this.active(generation)) return
     if (!this.routing || !this.clientVersion) {
-      const metadata = await readShooterLogMetadata(local)
+      const metadata = await readShooterLogMetadata(local).catch(() => ({ routing: null, clientVersion: null }))
       this.routing = metadata.routing
       this.clientVersion = metadata.clientVersion
     }
@@ -187,7 +187,7 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
       return
     }
     if (Date.now() < this.nextCaptureAt || state.allyScore === undefined || state.enemyScore === undefined) return
-    const foreground = gamePresenceService.getForegroundApp()
+    const foreground = await foregroundApp()
     if (!this.active(generation)) return
     if (!this.process || foreground?.pid !== this.process.pid || !foreground.windowId) {
       if (this.life) this.life.alive = false
@@ -198,7 +198,7 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
       width: 1600,
       height: 900
     })
-    const current = gamePresenceService.getForegroundApp()
+    const current = await foregroundApp()
     if (!this.active(generation)) return
     if (!frame || current?.pid !== foreground.pid || current.windowId !== foreground.windowId) {
       if (this.life) this.life.alive = false
@@ -206,7 +206,10 @@ export class ValorantAdapter extends ReadOnlyGameAdapter {
     }
     const image = nativeImage.createFromBuffer(Buffer.from(frame, 'base64'))
     const size = image.getSize()
-    if (!size.width || !size.height || Math.abs(size.width / size.height - 16 / 9) > 0.03) return
+    if (!size.width || !size.height || Math.abs(size.width / size.height - 16 / 9) > 0.03) {
+      if (this.life) this.life.alive = false
+      return
+    }
     const hud = image.crop(spectatorHudRegion(size.width, size.height)).resize({ width: 220, height: 70 })
     const dead = hasSpectatorHud(hud.toBitmap(), 220, 70)
     const observation = observeValorantLife(this.life, `${state.allyScore}:${state.enemyScore}`, dead)

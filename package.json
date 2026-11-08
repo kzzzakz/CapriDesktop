@@ -16,7 +16,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test:game-reactions": "node --test scripts/test-game-reactions.mjs",
+    "test:game-reactions": "node --test scripts/test-game-reactions.mjs scripts/test-game-capture.mjs scripts/test-valorant-integration.mjs",
     "test:valorant-agent": "node --test scripts/test-valorant-agent.mjs",
     "test:codex": "node scripts/test-codex.mjs",
     "test:deck-layout": "node scripts/test-deck-layout.cjs",

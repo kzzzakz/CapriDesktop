@@ -6,6 +6,7 @@ import { windowManager } from '../../windows/window-manager'
 import { CommentaryFrequency, GameEvent, GameEventPriority, GameEventType, ReactionConfig } from './types'
 import { getRandomReactionTemplate } from './templates'
 import { voiceService } from '../voice-service'
+import { valorantFallback } from './valorant-templates'
 import { lolCommentator } from './adapters/lol/lol-commentator'
 import { factualFallback, narrateFacts } from './factual-commentator'
 import { ALL_HACK_LINES, BEING_HACKED_LINES, PLAYER_QUICKHACK_LINES, hackKeyFromEffect, pickLine } from './hack-lines'
@@ -31,8 +32,10 @@ export class ReactionEngine {
   }
 
   private globalLastSpokenTimestamp = 0
-  private perEventLastSpoken: Map<GameEventType, number> = new Map()
   private sessionRevision = new Map<string, number>()
+  private reactionRevision = 0
+
+  private perEventLastSpoken: Map<GameEventType, number> = new Map()
 
   public static getInstance(): ReactionEngine {
     if (!ReactionEngine.instance) {
@@ -46,6 +49,7 @@ export class ReactionEngine {
   }
 
   public setSilenceMode(silence: boolean): boolean {
+    this.reactionRevision++
     this.config.silenceMode = silence
     console.log(`[ReactionEngine] Silence mode set to: ${silence}`)
     return this.config.silenceMode
@@ -56,6 +60,7 @@ export class ReactionEngine {
   }
 
   public setFrequency(frequency: CommentaryFrequency): CommentaryFrequency {
+    this.reactionRevision++
     this.config.frequency = frequency
     switch (frequency) {
       case 'low':
@@ -81,8 +86,12 @@ export class ReactionEngine {
    * Main entry point when a normalized game event is received
    */
   public handleGameEvent(event: GameEvent): boolean {
-    if (event.type === 'game_opened' || event.type === 'game_closed') this.sessionRevision.set(event.gameId, (this.sessionRevision.get(event.gameId) || 0) + 1)
-    const revision = this.sessionRevision.get(event.gameId)
+    if (event.type === 'game_opened' || event.type === 'game_closed') {
+      this.sessionRevision.set(event.gameId, (this.sessionRevision.get(event.gameId) || 0) + 1)
+    }
+    const sessionRevision = this.sessionRevision.get(event.gameId)
+    const reactionRevision = this.reactionRevision
+    const language = consciousnessService.getPreferredLanguage()
     // Pre-synthesize all quickhack lines with the selected voice once per session,
     // so combat reactions play instantly instead of waiting on the TTS provider.
     if (event.gameId === 'cyberpunk' && !this.hackLinesPrewarmed) {
@@ -133,6 +142,7 @@ export class ReactionEngine {
       effectiveGlobalCooldown = 3500
     }
 
+    if (event.gameId === 'valorant') effectiveGlobalCooldown = this.config.globalCooldownMs
     const valorantResult = event.gameId === 'valorant' && event.type === 'match_ended' && typeof event.payload?.isWin === 'boolean'
     if (!valorantResult && now - this.globalLastSpokenTimestamp < effectiveGlobalCooldown) {
       return false
@@ -293,7 +303,8 @@ export class ReactionEngine {
       const lang = event.gameId === 'cyberpunk' ? 'en' : (consciousnessService.getPreferredLanguage() === 'es' ? 'es' : 'en')
       phrase = getRandomReactionTemplate(event.type, lang, multikillCount)
     }
-    if (event.gameId === 'valorant' || event.gameId === 'wuthering-waves') phrase = factualFallback(event, phrase)
+    if (event.gameId === 'valorant') phrase = valorantFallback(event, language)
+    if (event.gameId === 'wuthering-waves') phrase = factualFallback(event, phrase)
     if (!phrase) return false
 
     // Optional interpolation
@@ -322,14 +333,18 @@ export class ReactionEngine {
 
     // Speak in character with voice
     const speak = (text: string) => {
-      if ((event.gameId === 'valorant' || event.gameId === 'wuthering-waves') && (this.isSilenced() || this.sessionRevision.get(event.gameId) !== revision || Date.now() - event.timestamp > 20000)) return
+      if ((event.gameId === 'valorant' || event.gameId === 'wuthering-waves') && (
+        this.isSilenced() || this.reactionRevision !== reactionRevision ||
+        this.sessionRevision.get(event.gameId) !== sessionRevision ||
+        consciousnessService.getPreferredLanguage() !== language || Date.now() - event.timestamp > 20000
+      )) return
       console.log(`[ReactionEngine] [${event.gameId}] [${event.type}] -> Capri says: "${text}"`)
       const speechDuration = Math.min(10000, Math.max(3000, text.length * 60))
       agentManager.setCompanionSpeech(text, speechDuration, true, describeEvent(event))
     }
 
     if (event.gameId === 'valorant' || event.gameId === 'wuthering-waves') {
-      void narrateFacts(event, phrase).then(speak)
+      void narrateFacts(event, phrase).then(speak).catch(() => speak(phrase))
       return true
     }
 
