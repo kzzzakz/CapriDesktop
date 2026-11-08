@@ -99,7 +99,7 @@ export class GamePresenceService {
       // Engaged once per game: if the user turns Gaming Mode off, it stays off for this session
       const engaged = !windowManager.isGamingModeActive()
       console.log(`[GamePresence] Playing ${name}.`)
-      if (engaged) windowManager.setGamingMode(true)
+      if (engaged) windowManager.setGamingMode(true, 'top-left', 'game')
       this.game = { name, pid: current.pid, engagedGamingMode: engaged }
       this.nextCommentAt = Date.now() + FIRST_COMMENT_MS
       this.recent = []

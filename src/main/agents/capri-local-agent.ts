@@ -3044,7 +3044,7 @@ DIRECTIVES FOR FORMATTING AND REASONING:
 
     // Gaming Mode Toggle Command (Voice/Chat)
     const isGamingModeOff =
-      /(?:deactivat[ea]|desactiv[aá]|desactivar|sac(?:ar|a)?|sal(?:ir)?|quit(?:ar|a)?|apag(?:ar|a)?|disable|stop|turn\s*off|exit).*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)|(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)\s+(?:off|desactivar|desactivado|0|salir|disable|deactivate)|(?:game\s*mode\s*deactivate|deactivate\s*gamemode|gamemode\s*deactivate|deactivate\s*game\s*mode|game\s*mode\s*off|gamemode\s*off)/i.test(norm)
+      /(?:deactivat[ea]|desactiv[aá]|desactivar|sac(?:ar|a)?|sal(?:ir)?|quit(?:ar|a)?|apag(?:ar|a)?|cerr(?:ar|á|a)|termin(?:ar|á|a)|disable|stop|turn\s*off|exit|leave|get\s+out\s+of|end).*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)|(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)\s+(?:off|desactivar|desactivado|0|salir|disable|deactivate)|(?:game\s*mode\s*deactivate|deactivate\s*gamemode|gamemode\s*deactivate|deactivate\s*game\s*mode|game\s*mode\s*off|gamemode\s*off)/i.test(norm)
 
     const isGamingModeOn =
       /(?:activat[ea]|activ[aá]|activar|pon(?:er|te|ete)?|inici(?:ar|a)|entr(?:ar|a)|enable|start|turn\s*on|switch\s*to)?.*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)/i.test(norm)

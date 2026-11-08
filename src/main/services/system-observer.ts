@@ -5,6 +5,7 @@ import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
 import { windowManager } from '../windows/window-manager'
 import { cyberpunkAdapter, lolLiveAdapter } from './game'
+import { gamePresenceService } from './game-presence-service'
 
 interface TriggerConfig {
   lastTriggered: number
@@ -167,7 +168,7 @@ export class SystemObserver {
           if (currentProcesses.has('cyberpunk2077.exe')) {
             console.log('[SystemObserver] Cyberpunk 2077 already active on startup. Engaging Gaming Mode.')
             try {
-              windowManager.setGamingMode(true)
+              windowManager.setGamingMode(true, 'top-left', 'game')
             } catch {}
             try {
               if (!cyberpunkAdapter.isRunning()) {
@@ -338,25 +339,8 @@ export class SystemObserver {
         if (isAnyGameNow && !wasAnyGameBefore) {
           console.log('[SystemObserver] Game detected. Engaging Gaming Mode.')
           try {
-            windowManager.setGamingMode(true)
+            windowManager.setGamingMode(true, 'top-left', 'game')
           } catch {}
-        }
-
-        // If all games closed, disengage Gaming Mode (with active adapter safeguard)
-        if (!isAnyGameNow && wasAnyGameBefore) {
-          let hasActiveTelemetry = false
-          try {
-            if (cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning()) {
-              hasActiveTelemetry = true
-            }
-          } catch {}
-
-          if (!hasActiveTelemetry) {
-            console.log('[SystemObserver] All game processes closed. Exiting Gaming Mode.')
-            try {
-              windowManager.setGamingMode(false)
-            } catch {}
-          }
         }
 
         // Specific LoL adapter lifecycle
@@ -372,6 +356,22 @@ export class SystemObserver {
               lolLiveAdapter.stop().catch(() => {})
             }
           } catch {}
+        }
+
+        // Gaming Mode a game turned on ends once no game is left. Checked on every tick, not only on the
+        // one where the game closed: League's adapter takes a few seconds to notice the match is over,
+        // and a single check during that time used to leave her stuck in Gaming Mode (#21)
+        if (!isAnyGameNow && windowManager.isGamingModeFromGame()) {
+          let gameStillThere = false
+          try {
+            gameStillThere = !!(cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || gamePresenceService.isGameSessionActive())
+          } catch {}
+          if (!gameStillThere) {
+            console.log('[SystemObserver] No game left. Exiting Gaming Mode.')
+            try {
+              windowManager.setGamingMode(false)
+            } catch {}
+          }
         }
 
         // Specific Cyberpunk adapter lifecycle
