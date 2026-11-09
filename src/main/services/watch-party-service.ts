@@ -1,4 +1,4 @@
-import { shell, screen } from 'electron'
+import { shell, screen, nativeImage } from 'electron'
 import { desktopController } from './desktop-controller-service'
 import { scannerService } from './scanner-service'
 import { windowManager } from '../windows/window-manager'
@@ -29,15 +29,6 @@ export class WatchPartyService {
     isClicking: false,
     isScrolling: false
   }
-
-  private static readonly FALLBACK_YOUTUBE_TITLES = [
-    'Curiosidades de Cyberpunk 2077 que seguro no sabías',
-    'Los mejores momentos y jugadas épicas del gaming',
-    'El misterio más bizarro de Internet explicado a fondo',
-    '¿Qué tan lejos llegó la Inteligencia Artificial hoy?',
-    'Top 10 secretos ocultos en videojuegos clásicos',
-    'Jugando con una build rota que rompe todo el juego'
-  ]
 
   public static getInstance(): WatchPartyService {
     if (!WatchPartyService.instance) {
@@ -257,6 +248,66 @@ export class WatchPartyService {
     return true
   }
 
+  private async extractCardTitle(pos: { x: number; y: number }): Promise<string> {
+    try {
+      const capture = await scannerService.captureFullScreenBase64()
+      if (!capture || !capture.rawBuffer) return ''
+
+      const display = screen.getPrimaryDisplay()
+      const scaleX = capture.width / display.bounds.width
+      const scaleY = capture.height / display.bounds.height
+
+      const cx = Math.round(pos.x * scaleX)
+      const cy = Math.round(pos.y * scaleY)
+
+      // YouTube desktop video card bounding box in downscaled coordinates
+      const cardW = Math.round(capture.width * 0.35)
+      const cardH = Math.round(capture.height * 0.32)
+      const cropX = Math.max(0, Math.min(capture.width - cardW, Math.round(cx - cardW / 2)))
+      const cropY = Math.max(0, Math.min(capture.height - cardH, Math.round(cy - cardH / 2)))
+
+      const cropped = nativeImage
+        .createFromBuffer(capture.rawBuffer)
+        .crop({ x: cropX, y: cropY, width: cardW, height: cardH })
+      const croppedBase64 = cropped.toJPEG(85).toString('base64')
+
+      const visionModel = await scannerService.detectVisionModel()
+      if (!visionModel) return ''
+
+      const prompt = `This is a cropped screenshot of a single YouTube video card.
+Read the video title written on this card.
+Output ONLY the video title inside double quotation marks like "Video Title", nothing else. If you cannot read the title clearly, output ""`
+
+      const resp = await llmFetch('http://127.0.0.1:11434/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: llmBody({
+          model: visionModel,
+          prompt,
+          images: [croppedBase64],
+          stream: false,
+          options: { temperature: 0.1, num_predict: 45 }
+        }),
+        signal: AbortSignal.timeout(6000)
+      })
+
+      if (resp.ok) {
+        const data = (await resp.json()) as any
+        const raw = String(data?.response || '')
+        const match = raw.match(/"([^"]+)"/) || raw.match(/“([^”]+)”/)
+        const title = match ? match[1].trim() : ''
+        if (title && title.length >= 3 && !/none|unknown|untitled|screenshot|video\s*title/i.test(title)) {
+          return title
+        }
+      }
+    } catch (err) {
+      console.warn('[WatchParty] Card title extraction error:', err)
+    }
+    return ''
+  }
+
+  // --- Mode 2A: Interactive YouTube Co-Browsing ("Let's watch YouTube together") ---
+
   public async proposeNextYoutubeVideo(onSay?: (msg: string) => void): Promise<void> {
     if (this.mode !== 'youtube' || !this.isBrowsingFeed) return
 
@@ -274,64 +325,148 @@ export class WatchPartyService {
     this.currentTarget = pos
     this.videoIndex++
 
-    const capture = await scannerService.captureFullScreenBase64()
-    const visionModel = await scannerService.detectVisionModel()
-    let extractedTitle = ''
+    // Move Capri's cyber cursor onto the target video card
+    this.moveCursor(pos.x, pos.y)
 
-    if (capture && visionModel) {
-      const prompt = `Analyze this YouTube feed screenshot.
-Identify ONE clear, prominent video title visible in the video grid.
-Output ONLY the video title inside quotation marks like "Video Title Here", nothing else.`
-
-      try {
-        const resp = await llmFetch('http://127.0.0.1:11434/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: llmBody({
-            model: visionModel,
-            prompt,
-            images: [capture.base64],
-            stream: false,
-            options: { temperature: 0.1, num_predict: 60 }
-          }),
-          signal: AbortSignal.timeout(15000)
-        })
-
-        if (resp.ok) {
-          const data = (await resp.json()) as any
-          const raw = String(data?.response || '')
-          const match = raw.match(/"([^"]+)"/) || raw.match(/“([^”]+)”/)
-          extractedTitle = match ? match[1].trim() : raw.replace(/^[*\s"]+|[*\s"]+$/g, '').trim()
-        }
-      } catch (err) {
-        console.warn('[WatchParty] Title extraction error:', err)
-      }
-    }
-
-    const isEs = consciousnessService.getPreferredLanguage() === 'es'
-
-    if (!extractedTitle || extractedTitle.length < 3) {
-      extractedTitle = WatchPartyService.FALLBACK_YOUTUBE_TITLES[(this.videoIndex - 1) % WatchPartyService.FALLBACK_YOUTUBE_TITLES.length]
-    }
+    // Attempt to extract real title from the cropped video card
+    const extractedTitle = await this.extractCardTitle(pos)
 
     this.candidateTitle = extractedTitle
     this.awaitingChoice = true
+    if (extractedTitle) {
+      this.moveCursor(pos.x, pos.y, extractedTitle)
+    }
 
-    // Move Capri's cyber cursor directly onto the target video card!
-    this.moveCursor(pos.x, pos.y, extractedTitle)
+    const isEs = consciousnessService.getPreferredLanguage() === 'es'
+    const proposal = extractedTitle
+      ? (isEs ? `¿Qué tal este video: "${extractedTitle}"? ¿Lo ponemos?` : `How about this video: "${extractedTitle}"? Want to watch it?`)
+      : (isEs ? '¿Qué tal este video que te estoy señalando? ¿Lo ponemos?' : "How about this video I'm pointing at? Want to watch it?")
 
-    const proposal = isEs
-      ? `¿Qué tal este video: "${extractedTitle}"? ¿Lo ponemos?`
-      : `How about this video: "${extractedTitle}"? Want to watch it?`
     this.say(proposal, 5000, onSay)
 
-    // Timeout: if no user response in 30s, scroll down and look for another
-    if (this.choiceTimer) clearTimeout(this.choiceTimer)
-    this.choiceTimer = setTimeout(() => {
-      if (this.mode === 'youtube' && this.isBrowsingFeed && this.awaitingChoice) {
-        void this.handleYoutubeChoice(false, onSay)
-      }
-    }, 30000)
+    // IMPORTANT: In co-browsing mode ("let's watch together"), NEVER auto-skip on a timer.
+    // She waits patiently for the user to say whether they want it, want another, or want her to choose.
+    if (this.choiceTimer) {
+      clearTimeout(this.choiceTimer)
+      this.choiceTimer = null
+    }
+  }
+
+  // --- Mode 2B: Capri Autonomous Video Picker ("Pick a video from YouTube and let's watch") ---
+
+  public async startYoutubeAutoPick(onSay?: (msg: string) => void, forceEnglish = false): Promise<boolean> {
+    this.stopParty(false)
+    this.mode = 'youtube'
+    this.isBrowsingFeed = true
+    this.awaitingChoice = false
+    this.videoIndex = 0
+
+    const isEs = !forceEnglish && consciousnessService.getPreferredLanguage() === 'es'
+    const introMsg = isEs
+      ? '¡De una! Dejame chusmear el feed a ver qué joyita encuentro...'
+      : 'On it! Let me explore your feed and pick something cool for us...'
+    this.say(introMsg, 4000, onSay)
+
+    // 1. Open YouTube in default browser
+    try {
+      await shell.openExternal('https://www.youtube.com')
+    } catch (e) {
+      console.warn('[WatchParty] Failed to open YouTube URL:', e)
+    }
+
+    // 2. Bring browser to front
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 800)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 2200)
+
+    // 3. Start full screen vision loop
+    await scannerService.startFullscreenWatch()
+
+    const display = screen.getPrimaryDisplay()
+    const { width, height } = display.bounds
+
+    // 4. Capri explores the feed like a human: glides mouse, scrolls, inspects
+    setTimeout(async () => {
+      if (this.mode !== 'youtube') return
+      this.moveCursor(width * 0.45, height * 0.35)
+
+      // First scroll
+      setTimeout(async () => {
+        if (this.mode !== 'youtube') return
+        this.animateScroll('down')
+        await desktopController.scroll('down', 420)
+
+        // Decide if she scrolls a second time to dig deeper into the feed
+        const scrollTwice = Math.random() > 0.35
+        if (scrollTwice) {
+          setTimeout(async () => {
+            if (this.mode !== 'youtube') return
+            this.animateScroll('down')
+            await desktopController.scroll('down', 320)
+            setTimeout(() => {
+              void this.pickAndPlayVideo(onSay, forceEnglish)
+            }, 1200)
+          }, 1400)
+        } else {
+          setTimeout(() => {
+            void this.pickAndPlayVideo(onSay, forceEnglish)
+          }, 1200)
+        }
+      }, 1500)
+    }, 3000)
+
+    this.broadcastStatus()
+    return true
+  }
+
+  public async pickAndPlayVideo(onSay?: (msg: string) => void, forceEnglish = false): Promise<void> {
+    if (this.mode !== 'youtube') return
+
+    const display = screen.getPrimaryDisplay()
+    const { width, height } = display.bounds
+
+    // Candidate slots across the grid
+    const slots = [
+      { x: width * 0.32, y: height * 0.42 },
+      { x: width * 0.62, y: height * 0.42 },
+      { x: width * 0.32, y: height * 0.72 },
+      { x: width * 0.62, y: height * 0.72 }
+    ]
+
+    // Pick a card randomly among the available slots (avoids always picking the first one)
+    const pickIndex = Math.floor(Math.random() * (slots.length - 1)) + 1 // chooses 1, 2, or 3
+    const target = slots[pickIndex] || slots[0]
+    this.currentTarget = target
+
+    // Move cyber cursor to target position
+    this.moveCursor(target.x, target.y)
+
+    // Attempt to extract title from cropped card
+    const title = await this.extractCardTitle(target)
+    if (title) {
+      this.moveCursor(target.x, target.y, title)
+    }
+
+    const isEs = !forceEnglish && consciousnessService.getPreferredLanguage() === 'es'
+    const announcement = title
+      ? (isEs ? `¡Elegí este: "${title}"! ¡Tiene toda la pinta, ahí lo pongo!` : `I picked this one: "${title}"! Looks sick, playing it now!`)
+      : (isEs ? '¡Elegí este video que tengo marcado! ¡Tiene toda la pinta, ahí lo pongo!' : "I picked this video I'm pointing at! Looks sick, playing it now!")
+
+    this.say(announcement, 4000, onSay)
+
+    // Click and play after giving announcement a moment
+    setTimeout(async () => {
+      if (this.mode !== 'youtube') return
+      this.animateClick(target.x, target.y)
+      await desktopController.click(target.x, target.y)
+
+      this.isBrowsingFeed = false
+      this.awaitingChoice = false
+      this.broadcastStatus()
+
+      setTimeout(() => {
+        this.hideCursor()
+      }, 1500)
+    }, 1800)
   }
 
   public async handleYoutubeChoice(agree: boolean, onSay?: (msg: string) => void): Promise<void> {
@@ -381,7 +516,7 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
         if (this.mode === 'youtube' && this.isBrowsingFeed) {
           void this.proposeNextYoutubeVideo(onSay)
         }
-      }, 2000)
+      }, 1500)
     }
   }
 
@@ -453,7 +588,21 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
       .replace(/[,:\s]*(?:capri|companion)[!.]*$/i, '')
       .trim()
 
-    // 1. Starting YouTube Watch Party & Co-Browsing
+    // 1. YouTube Autonomous Video Picker (Mode B) - e.g. "hey pick a video from youtube and lets watch it"
+    const isEnglishAutoPick =
+      /(?:pick|choose|find|select|surprise\s+me)\s+(?:a\s+|with\s+(?:a\s+)?)?(?:video|something)\s*(?:from\s+youtube|on\s+youtube|to\s+watch|for\s+us|and\s+let'?s\s+watch)?/i.test(clean) ||
+      /(?:pick\s+one\s+yourself|you\s+choose|pick\s+for\s+me)/i.test(clean)
+
+    const isSpanishAutoPick =
+      /(?:elegi|elige|elegite|busca|buscate|elegir|sorprendeme)\s+(?:vos\s+)?(?:con\s+(?:un\s+)?|un\s+)?(?:video|algo)\s*(?:en\s+youtube|de\s+youtube|para\s+ver|copado)?/i.test(clean) ||
+      /(?:elegi\s+vos|elegilo\s+vos|elegi\s+tu|elegilo\s+tu|elegi\s+uno)/i.test(clean)
+
+    if (isEnglishAutoPick || isSpanishAutoPick) {
+      await this.startYoutubeAutoPick(onSay, isEnglishAutoPick)
+      return { handled: true }
+    }
+
+    // 2. YouTube Co-Browsing (Mode A) - e.g. "lets watch youtube together", "veamos unos videos en youtube"
     const isEnglishYoutube =
       /\b(?:youtube|yt)\b/i.test(clean) &&
       (/(?:watch|watching|see|look|browse|browsing|explore|exploring|check|together|lets?\s*watch|let'?s\s*watch)/i.test(clean) ||
@@ -523,13 +672,25 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
 
       // YouTube Feed Co-browsing choice controls
       if (this.mode === 'youtube' && this.isBrowsingFeed && this.awaitingChoice) {
-        // Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok", "yes", "sure", "play it", "that one"
-        if (/(?:si\b|dale|ponelo|pone|abri\s+ese|abre\s+ese|ese\b|vamos|de\s+una|bueno|ok|okay|yes\b|sure|play|reproducilo|pongamos\s+ese|that\s+one|pick\s+that|let'?s\s+watch)/i.test(clean)) {
+        // 1. Delegate choice to Capri: "elegí vos", "you choose", "pick one"
+        if (/(?:elegi\s+vos|elegilo\s+vos|elegi\s+tu|elegilo\s+tu|you\s+choose|pick\s+one|pick\s+for\s+me|choose\s+one|decidi\s+vos)/i.test(clean)) {
+          const isEs = consciousnessService.getPreferredLanguage() === 'es'
+          this.say(isEs ? '¡De una, elijo yo entonces!' : "Alright, I'll pick one then!", 3000, onSay)
+          void this.pickAndPlayVideo(onSay)
+          return { handled: true }
+        }
+
+        // 2. Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok", "yes", "sure", "play it", "that one"
+        if (/(?:^si$|^si\b|dale|ponelo|pone\b|abri\s+ese|abre\s+ese|pone\s+ese|ese\b|vamos|de\s+una|bueno|ok\b|okay|yes\b|sure|play|reproducilo|pongamos\s+ese|that\s+one|pick\s+that|let'?s\s+watch|me\s+gusta)/i.test(clean)) {
           await this.handleYoutubeChoice(true, onSay)
           return { handled: true }
         }
-        // Reject / Search another: "otra cosa", "otro", "otra", "busca otro", "no", "siguiente", "pasá", "no me gusta", "another", "skip", "next"
-        if (/(?:otra\s+cosa|otro|otra|busca\s+otr[oa]|otro\s+video|otra\s+opcion|no\b|no\s+me\s+gusta|ese\s+no|siguiente|pasa|saltea|skip|next|nah|cambia|another|different|don'?t\s+like)/i.test(clean)) {
+
+        // 3. Reject / Search another: "otra cosa", "otro", "busca otro", "siguiente", "pasá", "no me gusta", "another", "skip", "next"
+        if (
+          /^(?:no|otro|otra|next|skip|nah|nope|pas[ao])$/i.test(clean) ||
+          /(?:otra\s+cosa|busca\s+otr[oa]|otro\s+video|otra\s+opcion|no\s+me\s+gusta|ese\s+no|siguiente\s+video|siguiente|saltea|cambia|another\s+one|different\s+video|don'?t\s+like|not\s+this)/i.test(clean)
+        ) {
           await this.handleYoutubeChoice(false, onSay)
           return { handled: true }
         }
