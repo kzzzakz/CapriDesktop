@@ -294,7 +294,7 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
           stream: false,
           options: { temperature: 0.1, num_predict: 250 }
         }),
-        signal: AbortSignal.timeout(12000)
+        signal: AbortSignal.timeout(25000)
       })
 
       if (resp.ok) {
@@ -352,6 +352,7 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
 
     // Move Capri's cyber cursor onto the target video card
     this.moveCursor(pos.x, pos.y)
+    agentManager.setCompanionState('curious')
 
     // Attempt to extract real title from the cropped video card
     const extractedTitle = await this.extractCardTitle(pos)
@@ -465,6 +466,7 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
 
     // Move cyber cursor to target position
     this.moveCursor(target.x, target.y)
+    agentManager.setCompanionState('curious')
 
     // Attempt to extract title from cropped card
     const title = await this.extractCardTitle(target)
