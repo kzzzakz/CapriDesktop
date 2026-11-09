@@ -261,11 +261,11 @@ export class WatchPartyService {
       const { width, height } = display.bounds
 
       // YouTube desktop video card bounding box in display virtual coordinates
-      // Width 36% and Height 42% centered around pos.x, pos.y
-      const cardW = Math.round(width * 0.36)
-      const cardH = Math.round(height * 0.42)
+      // Width 28% and Height 36% centered around pos.x, pos.y (focused on Row 1 regular videos)
+      const cardW = Math.round(width * 0.28)
+      const cardH = Math.round(height * 0.36)
       const cropX = Math.max(0, Math.min(width - cardW, Math.round(pos.x - cardW / 2)))
-      const cropY = Math.max(0, Math.min(height - cardH, Math.round(pos.y - cardH * 0.35)))
+      const cropY = Math.max(0, Math.min(height - cardH, Math.round(pos.y - cardH * 0.30)))
 
       const captured = await scannerService.captureDisplayRegion({
         x: cropX,
@@ -286,7 +286,8 @@ export class WatchPartyService {
       }
 
       const prompt = `You are an OCR assistant. Look at this cropped screenshot of a YouTube video card.
-Find the main video title (the bold headline text below or on the thumbnail).
+If this card is a YouTube Shorts reel, vertical video, or Shorts shelf, reply "SHORTS".
+Find the main regular video title (the bold headline text below or on the thumbnail).
 Reply with ONLY the video title in quotation marks, e.g. "Video Title Here".
 If there is no text or title visible, reply "NONE".`
 
@@ -321,10 +322,20 @@ If there is no text or title visible, reply "NONE".`
             .trim()
         }
 
+        // Clean up mojibake, non-standard symbols and emojis that break speech or prompt formatting
+        title = title
+          .replace(/[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]/gu, '')
+          .replace(/[≡ƒÆÇ┬íAS├ì]/g, '')
+          .replace(/["“”]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+
         if (
           title &&
           title.length >= 3 &&
-          !/^(none|unknown|untitled|n\/a|no title|screenshot|video\s*title)[.]?$/i.test(title)
+          !/^(none|unknown|untitled|n\/a|no title|screenshot|video\s*title|shorts)[.]?$/i.test(title) &&
+          !/#shorts\b/i.test(title) &&
+          !/^shorts$/i.test(title)
         ) {
           return title
         }
@@ -345,14 +356,17 @@ If there is no text or title visible, reply "NONE".`
     const display = screen.getPrimaryDisplay()
     const { width, height } = display.bounds
 
-    // Calculate grid coordinates for candidate video card
+    // YouTube homepage regular video cards are arranged in Row 1 at height * 0.35
+    // Avoid lower rows (height * 0.65+) where YouTube places the "Shorts" shelf.
+    const rowY = Math.round(height * 0.35)
     const positions = [
-      { x: width * 0.32, y: height * 0.38 },
-      { x: width * 0.62, y: height * 0.38 },
-      { x: width * 0.32, y: height * 0.72 },
-      { x: width * 0.62, y: height * 0.72 }
+      { x: Math.round(width * 0.28), y: rowY },
+      { x: Math.round(width * 0.52), y: rowY },
+      { x: Math.round(width * 0.76), y: rowY }
     ]
-    const pos = positions[this.videoIndex % positions.length]
+
+    const colIndex = this.videoIndex % positions.length
+    const pos = positions[colIndex]
     this.currentTarget = pos
     this.videoIndex++
 
@@ -436,26 +450,26 @@ If there is no text or title visible, reply "NONE".`
       setTimeout(async () => {
         if (this.mode !== 'youtube') return
         this.animateScroll('down')
-        await desktopController.scroll('down', 420)
+        await desktopController.scroll('down', 950)
 
         // Decide if she scrolls a second time to dig deeper into the feed
-        const scrollTwice = Math.random() > 0.35
+        const scrollTwice = Math.random() > 0.4
         if (scrollTwice) {
           setTimeout(async () => {
             if (this.mode !== 'youtube') return
             this.animateScroll('down')
-            await desktopController.scroll('down', 320)
+            await desktopController.scroll('down', 950)
             setTimeout(() => {
               void this.pickAndPlayVideo(onSay, forceEnglish)
-            }, 1200)
-          }, 1400)
+            }, 1000)
+          }, 1200)
         } else {
           setTimeout(() => {
             void this.pickAndPlayVideo(onSay, forceEnglish)
-          }, 1200)
+          }, 1000)
         }
-      }, 1500)
-    }, 3000)
+      }, 1200)
+    }, 2500)
 
     this.broadcastStatus()
     return true
@@ -467,16 +481,16 @@ If there is no text or title visible, reply "NONE".`
     const display = screen.getPrimaryDisplay()
     const { width, height } = display.bounds
 
-    // Candidate slots across the grid
+    // Candidate slots across regular video columns on Row 1 (never points at Shorts)
+    const rowY = Math.round(height * 0.35)
     const slots = [
-      { x: width * 0.32, y: height * 0.42 },
-      { x: width * 0.62, y: height * 0.42 },
-      { x: width * 0.32, y: height * 0.72 },
-      { x: width * 0.62, y: height * 0.72 }
+      { x: Math.round(width * 0.28), y: rowY },
+      { x: Math.round(width * 0.52), y: rowY },
+      { x: Math.round(width * 0.76), y: rowY }
     ]
 
     // Pick a card randomly among the available slots (avoids always picking the first one)
-    const pickIndex = Math.floor(Math.random() * (slots.length - 1)) + 1 // chooses 1, 2, or 3
+    const pickIndex = Math.floor(Math.random() * slots.length)
     const target = slots[pickIndex] || slots[0]
     this.currentTarget = target
 
@@ -513,6 +527,37 @@ If there is no text or title visible, reply "NONE".`
         void scannerService.startFullscreenWatch()
       }, 1500)
     }, 1800)
+  }
+
+  public async scrollFeedDown(onSay?: (msg: string) => void): Promise<void> {
+    if (this.mode !== 'youtube' || !this.isBrowsingFeed) return
+    if (this.choiceTimer) {
+      clearTimeout(this.choiceTimer)
+      this.choiceTimer = null
+    }
+    this.awaitingChoice = false
+    this.broadcastStatus()
+
+    const isEs = consciousnessService.getPreferredLanguage() === 'es'
+    const msg = isEs
+      ? '¡Dale, choomba! Scrolleo para abajo a ver qué más hay...'
+      : 'On it, choomba! Scrolling down to see more videos...'
+    this.say(msg, 2500, onSay)
+
+    const display = screen.getPrimaryDisplay()
+    const { width, height } = display.bounds
+    this.moveCursor(width * 0.5, height * 0.45)
+    this.animateScroll('down')
+    await desktopController.scroll('down', 950)
+
+    // Reset card index to first column in the new row
+    this.videoIndex = 0
+
+    setTimeout(() => {
+      if (this.mode === 'youtube' && this.isBrowsingFeed) {
+        void this.proposeNextYoutubeVideo(onSay)
+      }
+    }, 1000)
   }
 
   public async handleYoutubeChoice(agree: boolean, onSay?: (msg: string) => void): Promise<void> {
@@ -553,25 +598,25 @@ If there is no text or title visible, reply "NONE".`
         : 'Alright, looking for another video in your feed...'
       this.say(rejectMsg, 2500, onSay)
 
-      // Only scroll down after inspecting the 4 visible cards on screen to reveal fresh ones
-      const shouldScroll = this.videoIndex > 0 && this.videoIndex % 4 === 0
+      // Only scroll down after inspecting the 3 visible cards on screen to reveal fresh ones
+      const shouldScroll = this.videoIndex > 0 && this.videoIndex % 3 === 0
       if (shouldScroll) {
         const display = screen.getPrimaryDisplay()
         const { width, height } = display.bounds
-        this.moveCursor(width * 0.5, height * 0.5)
+        this.moveCursor(width * 0.5, height * 0.45)
         this.animateScroll('down')
-        await desktopController.scroll('down', 520)
+        await desktopController.scroll('down', 950)
         setTimeout(() => {
           if (this.mode === 'youtube' && this.isBrowsingFeed) {
             void this.proposeNextYoutubeVideo(onSay)
           }
-        }, 1200)
+        }, 1000)
       } else {
         setTimeout(() => {
           if (this.mode === 'youtube' && this.isBrowsingFeed) {
             void this.proposeNextYoutubeVideo(onSay)
           }
-        }, 800)
+        }, 600)
       }
     }
   }
@@ -728,34 +773,45 @@ If there is no text or title visible, reply "NONE".`
         }
       }
 
-      // YouTube Feed Co-browsing choice controls
-      if (this.mode === 'youtube' && this.isBrowsingFeed && this.awaitingChoice) {
-        // 1. Check REJECTION / SEARCH ANOTHER *FIRST* (takes precedence over accept)
-        // e.g. "nah, lets watch other video", "lets watch another", "otro", "otra cosa", "siguiente", "skip", "next"
-        const isReject =
-          /^(?:no|nah|nope|otro|otra|next|skip|pas[ao])$/i.test(clean) ||
-          /(?:nah\b|nope\b|not\s+this|don'?t\s+like|no\s+me\s+gusta|ese\s+no|otro\b|otra\b|other\s+video|another\s+video|different\s+video|something\s+else|different\s+one|another\s+one|otra\s+cosa|busca\s+otr|siguiente|saltea|cambia|skip\b|next\b)/i.test(clean)
+      // YouTube Feed Co-browsing choice and navigation controls
+      if (this.mode === 'youtube' && this.isBrowsingFeed) {
+        // 1. Explicit scroll down / see more request (active even while reading or awaiting choice)
+        const isScrollDown =
+          /(?:scroll\s*down|scroll\s*more|scrollea|scrolle|baja|scrollear|bajar|baja\s*mas|mas\s*abajo|para\s*abajo|ver\s*mas|mostrame\s*mas|show\s*more|see\s*more|show\s*me\s*more|more\s*videos|look\s*further)/i.test(clean)
 
-        if (isReject) {
-          await this.handleYoutubeChoice(false, onSay)
+        if (isScrollDown) {
+          await this.scrollFeedDown(onSay)
           return { handled: true }
         }
 
-        // 2. Delegate choice to Capri: "elegí vos", "you choose", "pick one", "pick for me"
-        if (/(?:elegi\s+vos|elegilo\s+vos|elegi\s+tu|elegilo\s+tu|you\s+choose|pick\s+one|pick\s+for\s+me|choose\s+one|decidi\s+vos)/i.test(clean)) {
-          const isEs = consciousnessService.getPreferredLanguage() === 'es'
-          this.say(isEs ? '¡De una, elijo yo entonces!' : "Alright, I'll pick one then!", 3000, onSay)
-          void this.pickAndPlayVideo(onSay)
-          return { handled: true }
-        }
+        if (this.awaitingChoice) {
+          // 2. Check REJECTION / SEARCH ANOTHER *FIRST* (takes precedence over accept)
+          // e.g. "nah, lets watch other video", "lets watch another", "otro", "otra cosa", "siguiente", "skip", "next"
+          const isReject =
+            /^(?:no|nah|nope|otro|otra|next|skip|pas[ao])$/i.test(clean) ||
+            /(?:nah\b|nope\b|not\s+this|don'?t\s+like|no\s+me\s+gusta|ese\s+no|otro\b|otra\b|other\s+video|another\s+video|different\s+video|something\s+else|different\s+one|another\s+one|otra\s+cosa|busca\s+otr|siguiente|saltea|cambia|skip\b|next\b)/i.test(clean)
 
-        // 3. Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok", "yes", "sure", "play it", "that one"
-        const isAccept =
-          /(?:^si$|^si\b|dale|ponelo|pone\b|abri\s+ese|abre\s+ese|pone\s+ese|ese\b|vamos|de\s+una|bueno|ok\b|okay|yes\b|sure|play\b|reproducilo|pongamos\s+ese|that\s+one|pick\s+that|let'?s\s+watch\s+(?:this|it|that)|me\s+gusta|yeah\b|yep\b)/i.test(clean)
+          if (isReject) {
+            await this.handleYoutubeChoice(false, onSay)
+            return { handled: true }
+          }
 
-        if (isAccept) {
-          await this.handleYoutubeChoice(true, onSay)
-          return { handled: true }
+          // 3. Delegate choice to Capri: "elegí vos", "you choose", "pick one", "pick for me"
+          if (/(?:elegi\s+vos|elegilo\s+vos|elegi\s+tu|elegilo\s+tu|you\s+choose|pick\s+one|pick\s+for\s+me|choose\s+one|decidi\s+vos)/i.test(clean)) {
+            const isEs = consciousnessService.getPreferredLanguage() === 'es'
+            this.say(isEs ? '¡De una, elijo yo entonces!' : "Alright, I'll pick one then!", 3000, onSay)
+            void this.pickAndPlayVideo(onSay)
+            return { handled: true }
+          }
+
+          // 4. Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok", "yes", "sure", "play it", "that one"
+          const isAccept =
+            /(?:^si$|^si\b|dale|ponelo|pone\b|abri\s+ese|abre\s+ese|pone\s+ese|ese\b|vamos|de\s+una|bueno|ok\b|okay|yes\b|sure|play\b|reproducilo|pongamos\s+ese|that\s+one|pick\s+that|let'?s\s+watch\s+(?:this|it|that)|me\s+gusta|yeah\b|yep\b)/i.test(clean)
+
+          if (isAccept) {
+            await this.handleYoutubeChoice(true, onSay)
+            return { handled: true }
+          }
         }
       }
     }

@@ -348,31 +348,36 @@ export class VoiceService {
     const pythonPath = this.findPythonPath()
     const tempOut = path.join(os.tmpdir(), `capri_tts_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.mp3`)
 
-    const isJapanese = /[\u3040-\u309F\u30A0-\u30FF]/.test(cleanText)
-    const isChinese = /[\u4E00-\u9FFF]/.test(cleanText) && !isJapanese
-    const isKorean = /[\uAC00-\uD7AF\u1100-\u11FF]/.test(cleanText)
-    const isCyrillic = /[\u0400-\u04FF]/.test(cleanText)
+    // Strip text inside quotes ("...", “...”, etc.) so that foreign quoted media/video titles
+    // do NOT alter the detected language of Capri's actual sentence framing
+    const textForLangDetection = cleanText.replace(/["“][^"”]*["”]|'[^']*'/g, ' ').replace(/\s+/g, ' ').trim()
+    const textToCheck = textForLangDetection.length >= 4 ? textForLangDetection : cleanText
+
+    const isJapanese = /[\u3040-\u309F\u30A0-\u30FF]/.test(textToCheck)
+    const isChinese = /[\u4E00-\u9FFF]/.test(textToCheck) && !isJapanese
+    const isKorean = /[\uAC00-\uD7AF\u1100-\u11FF]/.test(textToCheck)
+    const isCyrillic = /[\u0400-\u04FF]/.test(textToCheck)
 
     // Strictly English function words that never appear in authentic Spanish sentences (NOTE: 'choomba' is neutral slang)
-    const hasEnglishMarkers = /\b(the|what|doing|are|you|your|with|this|that|have|from|systems|online|jacked|neural|link|ready|catch|side|blackwall|construct|standing|powering|offline|reboot|shutdown|cupcake|boo|easy|desktop|homework|got\s+it|next\s+time|look|see|stop|dat|hack|hacking)\b/i.test(cleanText)
+    const hasEnglishMarkers = /\b(the|what|doing|are|you|your|with|this|that|have|from|systems|online|jacked|neural|link|ready|catch|side|blackwall|construct|standing|powering|offline|reboot|shutdown|cupcake|boo|easy|desktop|homework|got\s+it|next\s+time|look|see|stop|dat|hack|hacking|how|about|video|videos|want|watch|pointing)\b/i.test(textToCheck)
 
-    const hasPortugueseUnique = /[ãõêôçà]/i.test(cleanText)
-    const isPortuguese = hasPortugueseUnique || /\b(olá|ola|tudo|bem|obrigado|obrigada|voce|você|voces|vocês|não|nao|fazer|fazendo|fala|falando|legal|beleza|valeu|muito|muita|pra|pro|meu|minha|arquivo|tarefa|música|musica|bora|ajuda)\b/i.test(cleanText)
+    const hasPortugueseUnique = /[ãõêôçà]/i.test(textToCheck)
+    const isPortuguese = hasPortugueseUnique || /\b(olá|ola|tudo|bem|obrigado|obrigada|voce|você|voces|vocês|não|nao|fazer|fazendo|fala|falando|legal|beleza|valeu|muito|muita|pra|pro|meu|minha|arquivo|tarefa|música|musica|bora|ajuda)\b/i.test(textToCheck)
 
-    const hasSpanishUnique = /[ñ¿¡]/i.test(cleanText)
-    const hasSpanishWords = /\b(hola|buenas|estas|este|esto|bueno|dale|che|mira|mirá|posta|facha|zarpado|copado|hacer|podes|puedes|amigo|cancion|canción|musica|tarea|archivo|escritorio|estás|resolví|guardado|éxito|estoy|haciendo|pará|despeines|abriendo|cerrando|chau|adiós|dibuja|dibujá|dibujo|dibujar|dibújame|dibujame|perro|gato|casa|sol|arbol|árbol|monigote|aprende|aprendé|trazos|lienzo|paint|un|una|unos|unas|el|la|los|las|de|del|al|en|con|por|para|tambien|también|listo|lista|tranqui|de una|al toque|bienvenido|genial|espera|esperá)\b/i.test(cleanText)
-    const hasSpanishAccents = /[áéíóú]/.test(cleanText)
+    const hasSpanishUnique = /[ñ¿¡]/i.test(textToCheck)
+    const hasSpanishWords = /\b(hola|buenas|estas|este|esto|bueno|dale|che|mira|mirá|posta|facha|zarpado|copado|hacer|podes|puedes|amigo|cancion|canción|musica|tarea|archivo|escritorio|estás|resolví|guardado|éxito|estoy|haciendo|pará|despeines|abriendo|cerrando|chau|adiós|dibuja|dibujá|dibujo|dibujar|dibújame|dibujame|perro|gato|casa|sol|arbol|árbol|monigote|aprende|aprendé|trazos|lienzo|paint|un|una|unos|unas|el|la|los|las|de|del|al|en|con|por|para|tambien|también|listo|lista|tranqui|de una|al toque|bienvenido|genial|espera|esperá)\b/i.test(textToCheck)
+    const hasSpanishAccents = /[áéíóú]/.test(textToCheck)
     const isSpanish = !isPortuguese && (hasSpanishUnique || hasSpanishWords || (hasSpanishAccents && !hasEnglishMarkers))
 
-    const isFrench = /\b(bonjour|salut|merci|oui|non|comment|avec|pourquoi|mon|bien)\b/i.test(cleanText)
-    const isGerman = /\b(hallo|guten|morgen|danke|bitte|nicht|wie|was|ist)\b/i.test(cleanText)
-    const isItalian = /\b(ciao|grazie|bene|come|cosa|amico|fare)\b/i.test(cleanText)
+    const isFrench = /\b(bonjour|salut|merci|oui|non|comment|avec|pourquoi|mon|bien)\b/i.test(textToCheck)
+    const isGerman = /\b(hallo|guten|morgen|danke|bitte|nicht|wie|was|ist)\b/i.test(textToCheck)
+    const isItalian = /\b(ciao|grazie|bene|come|cosa|amico|fare)\b/i.test(textToCheck)
 
     const prefLang = consciousnessService.getPreferredLanguage()
     let targetLang = langOverride
     // Her own detector first: the checks below lean Spanish on words shared with other languages
     if (!targetLang) {
-      const found = detectLanguage(cleanText)
+      const found = detectLanguage(textToCheck)
       if (found !== 'unknown') targetLang = found
     }
     if (!targetLang) {
@@ -584,7 +589,8 @@ export class VoiceService {
       })
       if (!res.ok) return null
       const data = (await res.json()) as { message?: { content?: string } }
-      const out = (data.message?.content || '').trim().replace(/^["“]|["”]$/g, '')
+      let out = (data.message?.content || '').trim().replace(/^["“]|["”]$/g, '')
+      out = out.replace(/^(?:\[assistant\]|<think>[\s\S]*?<\/think>)\s*/i, '').trim()
       if (!out) return null
       const translatedLang = clearLanguageOf(stripLookTags(out))
       if (translatedLang && translatedLang !== lang) return null
