@@ -511,7 +511,11 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // Interactive Watch Party & PC Co-Browsing (TikTok scroll/likes, YouTube feed navigation, generic gaming)
-    if (await watchPartyService.handleVoiceCommand(trimmed)) {
+    const partyResult = await watchPartyService.handleVoiceCommand(trimmed, (msg) => this.emitAssistant(msg))
+    if (partyResult.handled) {
+      if (partyResult.reply) {
+        this.emitAssistant(partyResult.reply)
+      }
       this.finishSession()
       return
     }

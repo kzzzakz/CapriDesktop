@@ -300,10 +300,20 @@ export type ScriptEventPayload =
 
 export type WatchPartyMode = 'idle' | 'tiktok' | 'youtube' | 'gaming'
 
+export interface WatchPartyCursor {
+  x: number
+  y: number
+  visible: boolean
+  isClicking?: boolean
+  isScrolling?: boolean
+  targetLabel?: string
+}
+
 export interface WatchPartyStatusPayload {
   mode: WatchPartyMode
   active: boolean
   isBrowsingFeed: boolean
   candidateTitle?: string
   lastReaction?: string
+  cursor?: WatchPartyCursor
 }

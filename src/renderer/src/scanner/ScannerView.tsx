@@ -717,6 +717,64 @@ export const ScannerView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Capri Autonomous Cyber Cursor Overlay */}
+          {watchPartyState?.cursor?.visible && (
+            <div
+              className="absolute pointer-events-none z-50 transition-all duration-700 ease-out"
+              style={{
+                left: `${watchPartyState.cursor.x}px`,
+                top: `${watchPartyState.cursor.y}px`,
+                transform: 'translate(-4px, -4px)'
+              }}
+            >
+              <div className="relative">
+                {/* Cyberpunk Neon Arrow Pointer */}
+                <svg
+                  width="30"
+                  height="30"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className="filter drop-shadow-[0_0_10px_#00f0ff] drop-shadow-[0_0_18px_rgba(0,240,255,0.7)]"
+                >
+                  <path
+                    d="M3 3L10.07 19.97L12.58 12.58L19.97 10.07L3 3Z"
+                    fill="#00f0ff"
+                    stroke="#ffffff"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+
+                {/* Capri Badge Tag */}
+                <div className="absolute left-6 -top-1 px-1.5 py-0.5 rounded bg-[#090b14]/95 border border-cyan-400/80 text-[9px] font-mono font-bold text-cyan-300 whitespace-nowrap shadow-[0_0_10px_rgba(0,240,255,0.6)] flex items-center gap-1 animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                  CAPRI ⚡
+                </div>
+
+                {/* Click Ripple Wave Animation */}
+                {watchPartyState.cursor.isClicking && (
+                  <div className="absolute -top-3 -left-3 w-12 h-12 rounded-full border-2 border-cyan-400 animate-ping opacity-90" />
+                )}
+
+                {/* Scrolling Indicators */}
+                {watchPartyState.cursor.isScrolling && (
+                  <div className="absolute top-7 left-1 flex flex-col items-center gap-0.5 animate-bounce">
+                    <span className="text-[11px] text-cyan-300 font-mono font-bold">▼</span>
+                    <span className="text-[9px] text-cyan-400/80 font-mono">▼</span>
+                  </div>
+                )}
+
+                {/* Target Locked Reticle if pointing at video title */}
+                {watchPartyState.cursor.targetLabel && (
+                  <div className="absolute -top-9 left-6 px-2.5 py-1 rounded bg-[#090b14]/95 border border-rose-500/90 text-rose-300 text-[10px] font-mono font-semibold max-w-sm truncate shadow-[0_0_14px_rgba(244,63,94,0.7)] animate-fade-in flex items-center gap-1.5">
+                    <span className="text-rose-400 font-bold">🎯</span>
+                    <span className="truncate">&ldquo;{watchPartyState.cursor.targetLabel}&rdquo;</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </>
       ) : (
         /* Regular Regional Scanner Frame UI */
