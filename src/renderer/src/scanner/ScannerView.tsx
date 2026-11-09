@@ -692,39 +692,6 @@ export const ScannerView: React.FC = () => {
             </button>
           </div>
 
-          {/* YouTube Co-Browsing Candidate Proposal Bar */}
-          {watchPartyState?.mode === 'youtube' && watchPartyState.isBrowsingFeed && watchPartyState.candidateTitle && (
-            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-xl bg-[#090b14]/95 border border-cyan-400/70 shadow-[0_0_20px_rgba(0,240,255,0.4)] backdrop-blur-md pointer-events-auto animate-fade-in">
-              <span className="font-mono text-[11px] text-white max-w-md truncate">
-                ¿Vemos: <strong className="text-cyan-300">&ldquo;{watchPartyState.candidateTitle}&rdquo;</strong>?
-              </span>
-              <button
-                onClick={() => window.api.desktopController?.action('click')}
-                className="px-2.5 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/80 text-emerald-200 font-mono text-[10px] font-bold cursor-pointer active:scale-95 transition-all"
-              >
-                ✓ SÍ
-              </button>
-              <button
-                onClick={() => window.api.desktopController?.action('scroll', { direction: 'down', amount: 500 })}
-                className="px-2.5 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-500/80 text-rose-200 font-mono text-[10px] font-bold cursor-pointer active:scale-95 transition-all"
-              >
-                ✕ OTRO
-              </button>
-            </div>
-          )}
-
-          {/* Live Reaction Subtitle Overlay at Bottom */}
-          {liveReaction && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 max-w-xl px-5 py-2.5 rounded-xl bg-[#090b14]/95 border border-cyan-400/70 shadow-[0_0_25px_rgba(0,240,255,0.45)] backdrop-blur-md animate-fade-in pointer-events-none text-center">
-              <div className="font-mono text-[10px] text-cyan-400 font-bold mb-0.5 tracking-wider">
-                CAPRI
-              </div>
-              <div className="font-mono text-[13px] text-white leading-relaxed font-medium">
-                &ldquo;{liveReaction}&rdquo;
-              </div>
-            </div>
-          )}
-
           {/* Capri Autonomous Cyber Cursor Overlay */}
           {watchPartyState?.cursor?.visible && (
             <div

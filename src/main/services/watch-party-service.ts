@@ -200,7 +200,7 @@ export class WatchPartyService {
 
   // --- Mode 2: YouTube Watch Party & Co-Browsing Feed ---
 
-  public async startYoutubeParty(onSay?: (msg: string) => void): Promise<boolean> {
+  public async startYoutubeParty(onSay?: (msg: string) => void, forceEnglish = false): Promise<boolean> {
     this.stopParty(false)
     this.mode = 'youtube'
     this.isBrowsingFeed = true
@@ -220,11 +220,16 @@ export class WatchPartyService {
       console.warn('[WatchParty] Failed to open YouTube URL:', e)
     }
 
-    // 2. Start full screen vision loop
+    // 2. Actively bring browser window to the foreground in front of the terminal
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 600)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 1500)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 2800)
+
+    // 3. Start full screen vision loop
     await scannerService.startFullscreenWatch()
 
-    // 3. Welcome announcement
-    const isEs = consciousnessService.getPreferredLanguage() === 'es'
+    // 4. Welcome announcement
+    const isEs = !forceEnglish && consciousnessService.getPreferredLanguage() === 'es'
     const msg = isEs
       ? '¡De una, choomba! Abriendo YouTube. Dejame mover el mouse y scrollear el feed a ver qué encontramos...'
       : 'Launching YouTube! Let me move my mouse and explore your feed to find something good...'
@@ -446,13 +451,18 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
       .trim()
 
     // 1. Starting YouTube Watch Party & Co-Browsing
-    const isYoutubeStart =
+    const isEnglishYoutube =
       /\b(?:youtube|yt)\b/i.test(clean) &&
-      (/(?:ver|veamos|miremos|mirar|vamos|abrir?|abri|pone|pone|buscar?|busquemos|explorar?|videos?|algo|feed|play|quiero|tengo\s+ganas|que\s+tal\s+si|podemos)/i.test(clean) ||
+      (/(?:watch|watching|see|look|browse|browsing|explore|exploring|check|together|lets?\s*watch|let'?s\s*watch)/i.test(clean) ||
+        /^(?:lets?\s+watch\s+youtube(?:\s+together)?|let'?s\s+watch\s+youtube(?:\s+together)?|watch\s+youtube(?:\s+together)?|open\s+youtube|youtube\s+together)$/i.test(clean))
+
+    const isSpanishYoutube =
+      /\b(?:youtube|yt)\b/i.test(clean) &&
+      (/(?:ver|veamos|miremos|mirar|vamos|abrir?|abri|abre|pone|pon|buscar?|busquemos|explorar?|videos?|algo|feed|play|quiero|tengo\s+ganas|que\s+tal\s+si|podemos|juntos)/i.test(clean) ||
         /^(?:de\s+ver\s+youtube|ver\s+youtube|veamos\s+youtube|miremos\s+youtube|vamos\s+a\s+youtube|abrir\s+youtube|abri\s+youtube|abre\s+youtube|youtube)$/i.test(clean))
 
-    if (isYoutubeStart) {
-      await this.startYoutubeParty(onSay)
+    if (isEnglishYoutube || isSpanishYoutube) {
+      await this.startYoutubeParty(onSay, isEnglishYoutube)
       return { handled: true }
     }
 
@@ -510,13 +520,13 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
 
       // YouTube Feed Co-browsing choice controls
       if (this.mode === 'youtube' && this.isBrowsingFeed && this.awaitingChoice) {
-        // Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok"
-        if (/(?:si\b|dale|ponelo|pone|abri\s+ese|abre\s+ese|ese\b|vamos|de\s+una|bueno|ok|okay|yes|sure|play|reproducilo|pongamos\s+ese)/i.test(clean)) {
+        // Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok", "yes", "sure", "play it", "that one"
+        if (/(?:si\b|dale|ponelo|pone|abri\s+ese|abre\s+ese|ese\b|vamos|de\s+una|bueno|ok|okay|yes\b|sure|play|reproducilo|pongamos\s+ese|that\s+one|pick\s+that|let'?s\s+watch)/i.test(clean)) {
           await this.handleYoutubeChoice(true, onSay)
           return { handled: true }
         }
-        // Reject / Search another: "otra cosa", "otro", "otra", "busca otro", "no", "siguiente", "pasá", "no me gusta"
-        if (/(?:otra\s+cosa|otro|otra|busca\s+otr[oa]|otro\s+video|otra\s+opcion|no\b|no\s+me\s+gusta|ese\s+no|siguiente|pasa|saltea|skip|next|nah|cambia)/i.test(clean)) {
+        // Reject / Search another: "otra cosa", "otro", "otra", "busca otro", "no", "siguiente", "pasá", "no me gusta", "another", "skip", "next"
+        if (/(?:otra\s+cosa|otro|otra|busca\s+otr[oa]|otro\s+video|otra\s+opcion|no\b|no\s+me\s+gusta|ese\s+no|siguiente|pasa|saltea|skip|next|nah|cambia|another|different|don'?t\s+like)/i.test(clean)) {
           await this.handleYoutubeChoice(false, onSay)
           return { handled: true }
         }

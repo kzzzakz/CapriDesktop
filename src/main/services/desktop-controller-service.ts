@@ -125,6 +125,13 @@ export class DesktopControllerService {
     }
     return this.pressKey('space')
   }
+
+  public async focusBrowser(keyword = 'youtube'): Promise<boolean> {
+    if (process.platform === 'win32') {
+      return this.runWin32('focus_browser', ['-Keyword', keyword])
+    }
+    return false
+  }
 }
 
 export const desktopController = DesktopControllerService.getInstance()
