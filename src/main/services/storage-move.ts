@@ -104,7 +104,7 @@ function freeSpaceAt(dir: string): number | null {
 }
 
 /** Whisper's cache, which may have other programs' models: only hers leave it */
-function whisperModels(hubOf: string): string[] {
+export function whisperModels(hubOf: string): string[] {
   try {
     return fs
       .readdirSync(path.join(hubOf, 'hub'), { withFileTypes: true })

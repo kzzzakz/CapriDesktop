@@ -585,6 +585,7 @@ export class RoamingManager {
   }
 
   public handleUserDrag(): void {
+    this.walkArea = null
     if (this.isEyeMode || windowManager.isGamingModeActive()) return
     // Dragged while staying still: she stays still where she was put, until told she can move
     if (this.holdingStill) this.heldAt = windowManager.getCompanionWindow()?.getBounds() ?? this.heldAt
@@ -703,8 +704,16 @@ export class RoamingManager {
   }
 
   // --- Main Walking Loop (Smooth Movement along Desktop) ---
+  /**
+   * The screen she walks on, fixed when a walk starts. Asking every step which screen she is on
+   * flips between two monitors when her window sits across both, and her limits jumped to the
+   * other screen's edges: she teleported, and could end up off screen.
+   */
+  private walkArea: Electron.Rectangle | null = null
+
   private startLoop(): void {
     if (this.loopTimer) clearInterval(this.loopTimer)
+    this.walkArea = null
 
     this.loopTimer = setInterval(() => {
       if (this.isEyeMode || !this.isRoaming || this.isPaused || this.currentBehavior !== 'walking' || this.isTabMode) {
@@ -720,17 +729,27 @@ export class RoamingManager {
 
       try {
         const bounds = companionWin.getBounds()
-        // The screen she's on, not always the main one
-        const primaryDisplay = screen.getDisplayMatching(bounds)
-        const { workArea } = primaryDisplay
+        // The screen she's on when the walk starts, by her center: not always the main one
+        if (!this.walkArea) {
+          const center = { x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2) }
+          this.walkArea = screen.getDisplayNearestPoint(center).workArea
+        }
+        const workArea = this.walkArea
 
         const minX = workArea.x + 10
         const maxX = workArea.x + workArea.width - bounds.width - 10
 
+        // Partly outside her screen (dragged across two monitors): she walks back in instead of jumping
+        if (bounds.x > maxX && this.direction === 'right') this.direction = 'left'
+        else if (bounds.x < minX && this.direction === 'left') this.direction = 'right'
+        const outside = bounds.x > maxX || bounds.x < minX
+
         let newX = bounds.x + (this.direction === 'right' ? this.speed : -this.speed)
 
         // Turn around at screen edges
-        if (newX >= maxX) {
+        if (outside) {
+          // walking back in: no clamp until she's inside
+        } else if (newX >= maxX) {
           newX = maxX
           this.direction = 'left'
           this.broadcastStatus()
@@ -740,10 +759,14 @@ export class RoamingManager {
           this.broadcastStatus()
         }
 
-        // Smooth horizontal roaming, preserving current Y height (walks in the air or floor as placed by user)
-        const currentY = bounds.y
+        // Smooth horizontal roaming, preserving current Y height (walks in the air or floor as placed by user),
+        // but always inside the screen she walks on
+        const insideY = Math.max(workArea.y, Math.min(workArea.y + workArea.height - bounds.height, bounds.y))
+        const currentY = bounds.y + Math.sign(insideY - bounds.y) * Math.min(6, Math.abs(insideY - bounds.y))
         this.isSelfMoving = true
-        companionWin.setPosition(Math.round(newX), currentY)
+        // With the size given too: on a scaled screen (125%, 150%) setPosition alone made the window
+        // a pixel bigger every step, until she drifted and walked off the screen
+        companionWin.setBounds({ x: Math.round(newX), y: currentY, ...windowManager.companionSize('desktop') }, false)
         setImmediate(() => {
           this.isSelfMoving = false
         })

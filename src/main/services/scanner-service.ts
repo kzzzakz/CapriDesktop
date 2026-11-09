@@ -307,6 +307,7 @@ export class ScannerService {
       }
 
       const VISION_PRIORITIES = [
+        'qwen2.5vl',
         'qwen2.5-vl',
         'llava',
         'minicpm-v',

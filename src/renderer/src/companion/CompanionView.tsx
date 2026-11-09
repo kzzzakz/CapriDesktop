@@ -13,7 +13,7 @@ import { useAgentStore } from '../stores/useAgentStore'
 import dialogueBlipAudio from '../assets/dialogue_blip.wav'
 import patPatGif from '../assets/capri/pat-pat-pet-pet.gif'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
-import { acceleratorFromEvent, DEFAULT_HOTKEYS, HOTKEY_ACTIONS, spokenHotkey } from '../../../shared/hotkeys'
+import { acceleratorFromEvent, ALWAYS_ON_ACTIONS, DEFAULT_HOTKEYS, HOTKEY_ACTIONS, spokenHotkey } from '../../../shared/hotkeys'
 import { useHotkeys, useHotkeyLabels } from '../utils/useHotkeys'
 import {
   X,
@@ -451,7 +451,7 @@ export const CompanionView: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const pressed = acceleratorFromEvent(e)
       // The Gaming Mode key is global all the time, also with her window focused: nothing to do here
-      if (!pressed || !HOTKEY_ACTIONS.some((action) => action !== 'gaming' && hotkeys[action] === pressed)) return
+      if (!pressed || !HOTKEY_ACTIONS.some((action) => !ALWAYS_ON_ACTIONS.includes(action) && hotkeys[action] === pressed)) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
       e.preventDefault()

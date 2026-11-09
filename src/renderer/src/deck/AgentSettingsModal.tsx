@@ -5,6 +5,7 @@ import { useAgentStore } from '../stores/useAgentStore'
 import { useT } from '../utils/useUiLang'
 import { MemorySettings } from './MemorySettings'
 import { ModelDownload } from './ModelDownload'
+import { LocalModelsPanel } from './LocalModelsPanel'
 import type { SystemPromptPayload } from '../../../main/ipc/channels'
 
 interface AgentSettingsModalProps {
@@ -17,6 +18,8 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
   const t = useT()
   const { llmModel, ollamaRunning, ollamaModels, setLlmConfig, setOllamaStatus } = useAgentStore()
   const [provider, setProvider] = useState<'local' | 'cloud'>('local')
+  // On this PC: Ollama, or LM Studio for .gguf models
+  const [engine, setEngine] = useState<'ollama' | 'lmstudio'>('ollama')
   const [modelInput, setModelInput] = useState(llmModel)
   const [isScanning, setIsScanning] = useState(false)
   const formRef = useRef<LlmProviderFormHandle>(null)
@@ -86,7 +89,7 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
     try {
       // The system prompt is saved only if it was loaded and changed (applies from the next message)
       if (promptLoaded && promptText !== savedPrompt) await window.api.agent.setSystemPrompt(promptText)
-      if (provider === 'local' && modelInput) {
+      if (provider === 'local' && engine === 'ollama' && modelInput) {
         setLlmConfig({ model: modelInput })
         await window.api.agent.setConfig({ model: modelInput })
       }
@@ -154,9 +157,15 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
         </div>
 
         <div className="cp-scroll p-5 space-y-4 overflow-y-auto">
-          <LlmProviderForm ref={formRef} onProviderChange={setProvider} />
+          <LlmProviderForm
+            ref={formRef}
+            onProviderChange={(next, nextEngine) => {
+              setProvider(next)
+              setEngine(nextEngine ?? 'ollama')
+            }}
+          />
 
-          {provider === 'local' && (
+          {provider === 'local' && engine === 'ollama' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-[14px]">
                 <span className={`flex items-center gap-2 ${ollamaRunning ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}`}>
@@ -195,6 +204,9 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
               />
             </div>
           )}
+
+          {/* Below the thinking models: the ones that see, and what the setup installed */}
+          <LocalModelsPanel ollamaRunning={ollamaRunning} onModelsChanged={() => void scan()} />
 
           {/* How she calls the user */}
           <div className="space-y-1">

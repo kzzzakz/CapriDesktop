@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
 import { IPC_CHANNELS, ScannerBounds } from '../ipc/channels'
-import { clampGamingOpacity, normalizeHotkeys, type Hotkeys } from '../../shared/hotkeys'
+import { clampCompanionScale, clampGamingOpacity, normalizeHotkeys, type Hotkeys } from '../../shared/hotkeys'
 
 export type MusicPlatform = 'youtube_music' | 'spotify'
 
@@ -40,6 +40,13 @@ export interface ConsciousnessData {
   arrowKeysEnabled?: boolean
   /** "Quedate quieta": kept until she is told she can move, even across restarts */
   holdingStill?: boolean
+  /** Her size on the desktop and in Gaming Mode, 1 = normal */
+  companionScale?: number
+  /** Sent away with her key: she stays hidden, even after a restart, until it's pressed again */
+  away?: boolean
+  /** Start as administrator, for games that run as administrator */
+  runAsAdmin?: boolean
+  gamingScale?: number
   hotkeys?: Hotkeys
   gamingOpacity?: number
   /** Hash of the Modelfile the installed persona was built from */
@@ -319,6 +326,34 @@ class ConsciousnessService {
 
   public setGamingOpacity(value: number): void {
     this.data.gamingOpacity = clampGamingOpacity(value)
+    this.save()
+  }
+
+  public getCompanionScale(kind: 'desktop' | 'gaming'): number {
+    return clampCompanionScale(kind === 'gaming' ? this.data.gamingScale : this.data.companionScale)
+  }
+
+  public setCompanionScale(kind: 'desktop' | 'gaming', value: number): void {
+    if (kind === 'gaming') this.data.gamingScale = clampCompanionScale(value)
+    else this.data.companionScale = clampCompanionScale(value)
+    this.save()
+  }
+
+  public getRunAsAdmin(): boolean {
+    return !!this.data.runAsAdmin
+  }
+
+  public setRunAsAdmin(enabled: boolean): void {
+    this.data.runAsAdmin = enabled
+    this.save()
+  }
+
+  public isAway(): boolean {
+    return !!this.data.away
+  }
+
+  public setAway(away: boolean): void {
+    this.data.away = away
     this.save()
   }
 

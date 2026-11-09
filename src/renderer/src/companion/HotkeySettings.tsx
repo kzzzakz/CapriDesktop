@@ -3,7 +3,7 @@ import { Keyboard } from 'lucide-react'
 import { useT } from '../utils/useUiLang'
 import { acceleratorFromEvent, DEFAULT_HOTKEYS, formatHotkey, HOTKEY_ACTIONS, type HotkeyAction, type HotkeyProblem, type Hotkeys } from '../../../shared/hotkeys'
 
-const ACTION_LABEL = { talk: 'vs_hotkeyTalk', listen: 'vs_hotkeyListen', chat: 'vs_hotkeyChat', gaming: 'vs_hotkeyGaming' } as const
+const ACTION_LABEL = { talk: 'vs_hotkeyTalk', listen: 'vs_hotkeyListen', chat: 'vs_hotkeyChat', gaming: 'vs_hotkeyGaming', away: 'vs_hotkeyAway' } as const
 const PROBLEM_TEXT = { needsModifier: 'vs_hotkeyNeedsModifier', reserved: 'vs_hotkeyReserved', inUse: 'vs_hotkeyInUse', taken: 'vs_hotkeyTaken' } as const
 
 /** Which keys do what, chosen by pressing them, and whether they also work over other apps */

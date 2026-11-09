@@ -166,7 +166,7 @@ export class AgentManager extends EventEmitter {
 
       // Make Capri appear right in front of everything on screen
       const companionWin = windowManager.getCompanionWindow()
-      if (companionWin && !companionWin.isDestroyed()) {
+      if (companionWin && !companionWin.isDestroyed() && !windowManager.isAway()) {
         companionWin.show()
         companionWin.setAlwaysOnTop(true, 'screen-saver')
         companionWin.moveTop()
@@ -208,7 +208,7 @@ export class AgentManager extends EventEmitter {
 
   /** `why` is what led her to say it, so she can answer if she's asked about it later */
   public setCompanionSpeech(text: string, durationMs = 4000, speakVoice = false, why?: string): void {
-    if (scriptPlayer.isPlaying()) return
+    if (scriptPlayer.isPlaying() || windowManager.isAway()) return
     const line = personalize(localizeLine(text, consciousnessService.getPreferredLanguage()))
     this.capriLocal.noteOwnLine(line, why)
     windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: line, durationMs, speakVoice })

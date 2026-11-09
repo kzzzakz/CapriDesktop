@@ -29,6 +29,8 @@ import { memoryService } from '../services/memory-service'
 import { addKnownApp, listKnownApps, onKnownAppsChanged, removeKnownApp, renameKnownApp, suggestedAppName } from '../services/known-apps'
 import { openKnownApp } from '../services/app-launcher'
 import { ollamaService } from '../services/ollama-service'
+import { isElevated, relaunchElevated } from '../services/admin-mode'
+import { deleteLocalModel, listInstalledParts, listLocalModels, removeInstalledPart, type InstalledPartId } from '../services/installed-parts'
 import { cyberpunkFoldersState, markCyberpunkFolder, unmarkCyberpunkFolder } from '../services/game/adapters/cyberpunk/cyberpunk-folders'
 
 export function registerIpcHandlers(): void {
@@ -178,7 +180,8 @@ export function registerIpcHandlers(): void {
         const bounds = win.getBounds()
         const newX = bounds.x + payload.dx
         const newY = bounds.y + payload.dy
-        win.setPosition(newX, newY)
+        // With the size given too: setPosition alone grows the window on scaled screens
+        win.setBounds({ x: newX, y: newY, width: bounds.width, height: bounds.height }, false)
         if (windowManager.isGamingModeActive()) {
           windowManager.setSavedGamingPosition({ x: newX, y: newY })
         } else {
@@ -366,6 +369,15 @@ export function registerIpcHandlers(): void {
     ollamaService.pullModel(String(model ?? ''), (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
   )
   ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL_CANCEL, () => ollamaService.cancelPull())
+  // A .gguf file on this PC, added to Ollama. The file is picked here: the window never passes a path
+  ipcMain.handle(IPC_CHANNELS.OLLAMA_IMPORT_GGUF, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const options: Electron.OpenDialogOptions = { properties: ['openFile'], filters: [{ name: 'GGUF', extensions: ['gguf'] }] }
+    const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const file = picked.filePaths[0]
+    if (picked.canceled || !file) return false
+    return ollamaService.importGguf(file, (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
+  })
 
   // Cyberpunk 2077 in any folder, or under Mod Organizer: the user can show Capri where
   ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDERS_GET, () => cyberpunkFoldersState())
@@ -557,6 +569,28 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_SET, (_event, action: HotkeyAction, accelerator: string) => windowManager.setHotkey(action, String(accelerator)))
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_RESET, () => windowManager.resetHotkeys())
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_GET, () => consciousnessService.getGamingOpacity())
+  // Local models, each with its size and whether it sees, and the parts the setup installed
+  ipcMain.handle(IPC_CHANNELS.MODELS_LIST, () => listLocalModels())
+  ipcMain.handle(IPC_CHANNELS.MODEL_DELETE, async (_event, name: string) => (await deleteLocalModel(String(name ?? ''))) ? listLocalModels() : null)
+  ipcMain.handle(IPC_CHANNELS.VISION_MODEL_GET, () => consciousnessService.getScannerVisionModel())
+  ipcMain.handle(IPC_CHANNELS.VISION_MODEL_SET, (_event, model: string) => {
+    consciousnessService.setScannerVisionModel(String(model || 'auto'))
+    return consciousnessService.getScannerVisionModel()
+  })
+  ipcMain.handle(IPC_CHANNELS.PARTS_LIST, () => listInstalledParts())
+  ipcMain.handle(IPC_CHANNELS.PART_REMOVE, (_event, id: string) => (['voiceEnv', 'whisper', 'ffmpeg'].includes(id) ? removeInstalledPart(id as InstalledPartId) : listInstalledParts()))
+
+  // Running as administrator, for games that run as administrator
+  ipcMain.handle(IPC_CHANNELS.ADMIN_GET, () => ({ enabled: consciousnessService.getRunAsAdmin(), elevated: isElevated() }))
+  ipcMain.handle(IPC_CHANNELS.ADMIN_SET, async (_event, enabled: boolean) => {
+    consciousnessService.setRunAsAdmin(!!enabled)
+    // Turned on: she restarts as administrator now. Turned off: from her next start
+    const relaunching = !!enabled && !isElevated() ? await relaunchElevated() : false
+    return { enabled: consciousnessService.getRunAsAdmin(), elevated: isElevated(), relaunching }
+  })
+  // Her size, normal and in Gaming Mode
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_GET, () => ({ desktop: consciousnessService.getCompanionScale('desktop'), gaming: consciousnessService.getCompanionScale('gaming') }))
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_SET, (_event, kind: string, value: number) => windowManager.setCompanionScale(kind === 'gaming' ? 'gaming' : 'desktop', Number(value)))
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_SET, (_event, value: number) => {
     consciousnessService.setGamingOpacity(value)
     const saved = consciousnessService.getGamingOpacity()
