@@ -212,7 +212,7 @@ function errorCode(message: string): LlmErrorCode {
 }
 
 /** Anything that looks like a key or token never reaches a bubble or the log */
-const redact = (text: string): string => text.replace(/\b(?:sk|gsk|xai|key|AIza|ya29)[-_.A-Za-z0-9]{12,}/g, '***').slice(0, 1000)
+const redact = (text: string): string => text.replace(/\b(?:sk|gsk|xai|key|AIza|ya29|nvapi)[-_.A-Za-z0-9]{12,}/g, '***').slice(0, 1000)
 
 function killTree(child: ChildProcess): void {
   if (child.exitCode !== null || !child.pid) return

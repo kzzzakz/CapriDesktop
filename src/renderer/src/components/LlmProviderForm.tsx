@@ -10,6 +10,7 @@ const PRESETS: { id: string; label: string; baseUrl: string }[] = [
   { id: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1' },
   { id: 'google', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
   { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
+  { id: 'nvidia', label: 'NVIDIA', baseUrl: 'https://integrate.api.nvidia.com/v1' },
   { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
   { id: 'mistral', label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1' },
   { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },

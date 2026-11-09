@@ -175,7 +175,8 @@ function authHeaders(key: string): Record<string, string> {
 function classify(status: number): LlmErrorCode {
   if (status === 401 || status === 403) return 'auth'
   if (status === 402 || status === 429) return 'quota'
-  if (status === 400 || status === 404 || status === 422) return 'model'
+  // 410: NVIDIA's answer for a model that reached its end of life
+  if (status === 400 || status === 404 || status === 410 || status === 422) return 'model'
   return 'other'
 }
 
@@ -191,6 +192,8 @@ export async function listCloudModels(baseUrlRaw: string, typedKey?: string): Pr
     const models = (data.data || data.models || [])
       .map((m) => String(m.id || (m as { name?: string }).name || '').replace(/^models\//, ''))
       .filter(Boolean)
+      // Some providers (NVIDIA) list embedding, reranking and safety models too: those can't chat
+      .filter((id) => !/embed|rerank|retriever|reward|guard|safety|topic-control|parse|clip|whisper|tts|ocr/i.test(id))
       .sort((a, b) => a.localeCompare(b))
     return { ok: true, models }
   } catch {
@@ -467,7 +470,7 @@ export function cloudErrorCode(err: unknown): LlmErrorCode {
 export function cloudErrorDetail(err: unknown): string {
   const cause = (err as { cause?: { message?: string } })?.cause?.message
   return String(cause || (err as Error)?.message || err)
-    .replace(/\b(?:sk|gsk|xai|key|AIza)[-_A-Za-z0-9]{12,}/g, '***')
+    .replace(/\b(?:sk|gsk|xai|key|AIza|nvapi)[-_A-Za-z0-9]{12,}/g, '***')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 160)
