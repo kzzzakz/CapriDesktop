@@ -1081,6 +1081,90 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
     }
   }
 
+  /**
+   * Captures a high-resolution sub-region of the screen directly without downscaling the entire display first.
+   * Perfect for OCR and reading crisp text/titles from UI cards (e.g. YouTube feed cards).
+   */
+  public async captureDisplayRegion(bounds: { x: number; y: number; width: number; height: number }): Promise<{ base64: string; width: number; height: number; rawBuffer: Buffer } | null> {
+    try {
+      const centerPoint = {
+        x: bounds.x + Math.round(bounds.width / 2),
+        y: bounds.y + Math.round(bounds.height / 2)
+      }
+      const currentDisplay = screen.getDisplayNearestPoint(centerPoint)
+      const scale = currentDisplay.scaleFactor || 1
+
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(currentDisplay.bounds.width * scale),
+          height: Math.round(currentDisplay.bounds.height * scale)
+        }
+      })
+
+      const targetSource =
+        sources.find((s) => s.display_id === String(currentDisplay.id)) ||
+        sources.find((s) => s.name.toLowerCase().includes(currentDisplay.id.toString())) ||
+        sources[0]
+
+      if (!targetSource || targetSource.thumbnail.isEmpty()) {
+        return null
+      }
+
+      const thumb = targetSource.thumbnail
+      const thumbSize = thumb.getSize()
+
+      // Virtual screen coordinates to display local pixel coordinates
+      const localX = Math.round((bounds.x - currentDisplay.bounds.x) * scale)
+      const localY = Math.round((bounds.y - currentDisplay.bounds.y) * scale)
+      const localW = Math.round(bounds.width * scale)
+      const localH = Math.round(bounds.height * scale)
+
+      const safeX = Math.max(0, Math.min(localX, thumbSize.width - 20))
+      const safeY = Math.max(0, Math.min(localY, thumbSize.height - 20))
+      const safeW = Math.max(20, Math.min(localW, thumbSize.width - safeX))
+      const safeH = Math.max(20, Math.min(localH, thumbSize.height - safeY))
+
+      const cropped = thumb.crop({
+        x: safeX,
+        y: safeY,
+        width: safeW,
+        height: safeH
+      })
+
+      const croppedSize = cropped.getSize()
+      let finalImg = cropped
+      const maxSide = 1024
+      if (croppedSize.width > maxSide || croppedSize.height > maxSide) {
+        if (croppedSize.width >= croppedSize.height) {
+          finalImg = cropped.resize({
+            width: maxSide,
+            height: Math.round((croppedSize.height * maxSide) / croppedSize.width)
+          })
+        } else {
+          finalImg = cropped.resize({
+            width: Math.round((croppedSize.width * maxSide) / croppedSize.height),
+            height: maxSide
+          })
+        }
+      }
+
+      const rawBuffer = finalImg.toJPEG(85)
+      const base64 = rawBuffer.toString('base64')
+      const size = finalImg.getSize()
+
+      return {
+        base64,
+        width: size.width,
+        height: size.height,
+        rawBuffer
+      }
+    } catch (err) {
+      console.warn('[ScannerService] captureDisplayRegion error:', err)
+      return null
+    }
+  }
+
   private async getForegroundWindowInfo(): Promise<{ title: string; process: string } | null> {
     if (process.platform !== 'win32') return null
     return new Promise((resolve) => {

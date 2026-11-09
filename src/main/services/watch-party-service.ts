@@ -252,34 +252,37 @@ export class WatchPartyService {
 
   private async extractCardTitle(pos: { x: number; y: number }): Promise<string> {
     try {
-      const capture = await scannerService.captureFullScreenBase64()
-      if (!capture || !capture.rawBuffer) return ''
-
       const display = screen.getPrimaryDisplay()
-      const scaleX = capture.width / display.bounds.width
-      const scaleY = capture.height / display.bounds.height
+      const { width, height } = display.bounds
 
-      const cx = Math.round(pos.x * scaleX)
-      const cy = Math.round(pos.y * scaleY)
+      // YouTube desktop video card bounding box in display virtual coordinates
+      // Width 38% and Height 42% centered around pos.x, pos.y
+      const cardW = Math.round(width * 0.38)
+      const cardH = Math.round(height * 0.42)
+      const cropX = Math.max(0, Math.min(width - cardW, Math.round(pos.x - cardW / 2)))
+      const cropY = Math.max(0, Math.min(height - cardH, Math.round(pos.y - cardH * 0.32)))
 
-      // YouTube desktop video card bounding box in downscaled coordinates
-      // Width 38% and Height 40% aligned to include the thumbnail AND the title/metadata text directly beneath it
-      const cardW = Math.round(capture.width * 0.38)
-      const cardH = Math.round(capture.height * 0.40)
-      const cropX = Math.max(0, Math.min(capture.width - cardW, Math.round(cx - cardW / 2)))
-      const cropY = Math.max(0, Math.min(capture.height - cardH, Math.round(cy - cardH * 0.32)))
+      const captured = await scannerService.captureDisplayRegion({
+        x: cropX,
+        y: cropY,
+        width: cardW,
+        height: cardH
+      })
 
-      const cropped = nativeImage
-        .createFromBuffer(capture.rawBuffer)
-        .crop({ x: cropX, y: cropY, width: cardW, height: cardH })
-      const croppedBase64 = cropped.toJPEG(85).toString('base64')
+      if (!captured || !captured.base64) {
+        console.warn('[WatchParty] Could not capture card region')
+        return ''
+      }
 
       const visionModel = await scannerService.detectVisionModel()
-      if (!visionModel) return ''
+      if (!visionModel) {
+        console.warn('[WatchParty] No vision model detected')
+        return ''
+      }
 
-      const prompt = `This is a cropped screenshot of a single YouTube video card.
-Read the video title written on this card.
-Output ONLY the video title inside double quotation marks like "Video Title", nothing else. If you cannot read the title clearly, output NONE.`
+      const prompt = `This is a cropped screenshot of a YouTube video card.
+Read the title of this video written on or beneath the thumbnail.
+Output ONLY the video title inside quotation marks like "Video Title", nothing else. If you cannot read the title clearly, output NONE.`
 
       const resp = await llmFetch('http://127.0.0.1:11434/api/generate', {
         method: 'POST',
@@ -287,21 +290,40 @@ Output ONLY the video title inside double quotation marks like "Video Title", no
         body: llmBody({
           model: visionModel,
           prompt,
-          images: [croppedBase64],
+          images: [captured.base64],
           stream: false,
-          options: { temperature: 0.1, num_predict: 45 }
+          options: { temperature: 0.1, num_predict: 250 }
         }),
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(12000)
       })
 
       if (resp.ok) {
         const data = (await resp.json()) as any
-        const raw = String(data?.response || '')
+        const raw = String(data?.response || '').trim()
+        console.log('[WatchParty] extractCardTitle raw response:', raw)
+
+        let title = ''
         const match = raw.match(/"([^"]+)"/) || raw.match(/“([^”]+)”/)
-        const title = match ? match[1].trim() : ''
-        if (title && title.length >= 3 && !/none|unknown|untitled|screenshot|video\s*title/i.test(title)) {
+        if (match) {
+          title = match[1].trim()
+        } else {
+          const firstLine = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || ''
+          title = firstLine
+            .replace(/^#+\s*/, '')
+            .replace(/^(?:the\s+)?(?:video\s+)?title(?:\s+is)?:\s*/i, '')
+            .replace(/^["'“”]+|["'“”]+$/g, '')
+            .trim()
+        }
+
+        if (
+          title &&
+          title.length >= 3 &&
+          !/^(none|unknown|untitled|n\/a|no title|screenshot|video\s*title)$/i.test(title)
+        ) {
           return title
         }
+      } else {
+        console.warn('[WatchParty] extractCardTitle LLM response not ok:', resp.status, await resp.text().catch(() => ''))
       }
     } catch (err) {
       console.warn('[WatchParty] Card title extraction error:', err)
