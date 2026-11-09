@@ -23,6 +23,16 @@ export const FIXED_COMMANDS: Record<string, Forms> = {
     ko: ['클립 따줘', '클립 저장해줘', '방금 거 클립해줘'],
     zh: ['剪辑一下', '保存片段', '录个片段', '把这段存下来']
   },
+  'cancel the valorant agent pick': {
+    fr: ['annule le pick valorant', 'annule l agent valorant', 'annule le choix d agent valorant'],
+    de: ['brich den valorant pick ab', 'valorant pick abbrechen', 'agentenwahl in valorant abbrechen'],
+    it: ['annulla il pick di valorant', 'annulla l agente di valorant', 'annulla la scelta dell agente valorant'],
+    pt: ['cancela o pick do valorant', 'cancela o agente do valorant', 'cancele o pick do valorant'],
+    ru: ['отмени пик в валоранте', 'отмени выбор агента в валоранте', 'отмени пик в valorant'],
+    ja: ['ヴァロのピックをキャンセルして', 'valorantのエージェント選択をキャンセルして', 'ヴァロラントのピックをやめて'],
+    ko: ['발로란트 픽 취소해줘', '발로 요원 선택 취소해줘', 'valorant 픽 취소해줘'],
+    zh: ['取消瓦罗兰特选人', '取消valorant选英雄', '取消无畏契约选人']
+  },
   'are you bored?': {
     fr: ['tu t ennuies', 'est ce que tu t ennuies'],
     de: ['ist dir langweilig', 'langweilst du dich'],
@@ -333,6 +343,19 @@ export const TEMPLATE_COMMANDS: { en: string; forms: Forms }[] = [
       ja: ['{w}をバンして'],
       ko: ['{w} 밴해줘', '{w} 밴'],
       zh: ['ban掉{w}', '禁掉{w}', '禁用{w}']
+    }
+  },
+  {
+    en: 'lock {w} in valorant',
+    forms: {
+      fr: ['lock {w} dans valorant', 'choisis {w} dans valorant', 'prends {w} dans valorant', 'verrouille {w} dans valorant'],
+      de: ['wähle {w} in valorant', 'nimm {w} in valorant'],
+      it: ['scegli {w} in valorant', 'prendi {w} in valorant', 'blocca {w} in valorant'],
+      pt: ['lock {w} no valorant', 'escolhe {w} no valorant', 'escolha {w} no valorant', 'pega {w} no valorant', 'trava {w} no valorant'],
+      ru: ['залочь {w} в валоранте', 'выбери {w} в валоранте', 'залочь {w} в valorant', 'выбери {w} в valorant'],
+      ja: ['ヴァロで{w}をロックして', 'valorantで{w}をロックして', 'ヴァロラントで{w}を選んで', 'valorantで{w}を選んで'],
+      ko: ['발로란트에서 {w} 락해줘', '발로에서 {w} 픽해줘', '발로란트에서 {w} 골라줘', 'valorant에서 {w} 픽해줘'],
+      zh: ['在瓦罗兰特里选{w}', '瓦罗兰特锁{w}', '无畏契约选{w}', '在valorant里选{w}', 'valorant锁定{w}']
     }
   },
   {

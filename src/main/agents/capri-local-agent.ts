@@ -33,6 +33,8 @@ import { CodingAgent, isCodingRequest } from './coding-agent'
 import { updateService } from '../services/update-service'
 import { cleanAppRequest } from '../services/app-finder'
 import { commandInEnglish } from './command-translations'
+import { parseValorantCommand } from '../services/valorant/command-parser'
+import { valorantAgentSelect, valorantPickMessage } from '../services/valorant/agent-select-service'
 import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
 import { memoryService } from '../services/memory-service'
 import { listKnownApps } from '../services/known-apps'
@@ -926,6 +928,29 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // League of Legends (LCU) Client Interceptor: Multi-Intent & Compound Plans, Accept, Auto-Accept, Pick, Ban
+    // VALORANT agent select: selects and locks the agent the user asked for, now or when it starts
+    const valorantCmd = parseValorantCommand(norm)
+    if (valorantCmd.isValorant) {
+      if (valorantCmd.wantsCancel) {
+        this.emitAssistant(
+          valorantAgentSelect.cancelAgentRequest() ? "Valorant agent pick cancelled, {name}." : "There was no Valorant agent pick waiting, {name}."
+        )
+        this.finishSession()
+        return
+      }
+      const agent = valorantCmd.agent
+      if (!agent) {
+        this.emitAssistant(`Couldn't find an agent named "${valorantCmd.agentQuery}" in Valorant, {name}. Double check the name!`)
+        this.finishSession()
+        return
+      }
+      const result = await valorantAgentSelect.requestAgent(agent.uuid, agent.name)
+      console.log(`[Capri Agent] Valorant agent ${agent.name}: ${result.status}`)
+      if (result.status !== 'cancelled') this.emitAssistant(valorantPickMessage(result.status, agent.name))
+      this.finishSession()
+      return
+    }
+
     const lolCmd = parseLolCommand(norm)
     if (lolCmd.isLolCommand) {
       // Auto-Accept Toggle
