@@ -1,6 +1,6 @@
 import { llmFetch, isCloudMode, getLlmSettings } from './llm-gateway'
 import { llmBody } from './user-profile'
-import { desktopCapturer, screen } from 'electron'
+import { desktopCapturer, screen, nativeImage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { windowManager } from '../windows/window-manager'
@@ -1026,74 +1026,117 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
    * Captures the full primary display, downscales to max 768px side for rapid multimodal processing.
    */
   public async captureFullScreenBase64(): Promise<{ base64: string; width: number; height: number; rawBuffer: Buffer } | null> {
-    try {
-      const primaryDisplay = screen.getPrimaryDisplay()
-      const scale = primaryDisplay.scaleFactor || 1
-
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: {
-          width: Math.round(primaryDisplay.bounds.width * scale),
-          height: Math.round(primaryDisplay.bounds.height * scale)
-        }
-      })
-
-      const targetSource =
-        sources.find((s) => s.display_id === String(primaryDisplay.id)) ||
-        sources.find((s) => s.name.toLowerCase().includes(primaryDisplay.id.toString())) ||
-        sources[0]
-
-      if (!targetSource || targetSource.thumbnail.isEmpty()) {
-        return null
-      }
-
-      const thumb = targetSource.thumbnail
-      const thumbSize = thumb.getSize()
-      let finalImg = thumb
-      const maxSide = 768
-      if (thumbSize.width > maxSide || thumbSize.height > maxSide) {
-        if (thumbSize.width >= thumbSize.height) {
-          finalImg = thumb.resize({
-            width: maxSide,
-            height: Math.round((thumbSize.height * maxSide) / thumbSize.width)
-          })
-        } else {
-          finalImg = thumb.resize({
-            width: Math.round((thumbSize.width * maxSide) / thumbSize.height),
-            height: maxSide
-          })
-        }
-      }
-
-      const rawBuffer = finalImg.toJPEG(75)
-      const base64 = rawBuffer.toString('base64')
-      const size = finalImg.getSize()
-
-      return {
-        base64,
-        width: size.width,
-        height: size.height,
-        rawBuffer
-      }
-    } catch (err) {
-      console.warn('[ScannerService] captureFullScreenBase64 error:', err)
-      return null
-    }
+    const primaryDisplay = screen.getPrimaryDisplay()
+    return this.captureDisplayRegion({
+      x: primaryDisplay.bounds.x,
+      y: primaryDisplay.bounds.y,
+      width: primaryDisplay.bounds.width,
+      height: primaryDisplay.bounds.height
+    }, 768)
   }
 
   /**
    * Captures a high-resolution sub-region of the screen directly without downscaling the entire display first.
    * Perfect for OCR and reading crisp text/titles from UI cards (e.g. YouTube feed cards).
+   * Uses native GDI on Windows and native tools on Linux for 100% reliability without desktopCapturer crashes.
    */
-  public async captureDisplayRegion(bounds: { x: number; y: number; width: number; height: number }): Promise<{ base64: string; width: number; height: number; rawBuffer: Buffer } | null> {
-    try {
-      const centerPoint = {
-        x: bounds.x + Math.round(bounds.width / 2),
-        y: bounds.y + Math.round(bounds.height / 2)
-      }
-      const currentDisplay = screen.getDisplayNearestPoint(centerPoint)
-      const scale = currentDisplay.scaleFactor || 1
+  public async captureDisplayRegion(
+    bounds: { x: number; y: number; width: number; height: number },
+    maxSide = 1024
+  ): Promise<{ base64: string; width: number; height: number; rawBuffer: Buffer } | null> {
+    const centerPoint = {
+      x: bounds.x + Math.round(bounds.width / 2),
+      y: bounds.y + Math.round(bounds.height / 2)
+    }
+    const currentDisplay = screen.getDisplayNearestPoint(centerPoint)
+    const scale = currentDisplay.scaleFactor || 1
 
+    if (process.platform === 'win32') {
+      const physX = Math.round((bounds.x - currentDisplay.bounds.x) * scale)
+      const physY = Math.round((bounds.y - currentDisplay.bounds.y) * scale)
+      const physW = Math.round(bounds.width * scale)
+      const physH = Math.round(bounds.height * scale)
+
+      return new Promise((resolve) => {
+        execFile(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath('capture_screen_region.ps1'),
+            '-X',
+            String(physX),
+            '-Y',
+            String(physY),
+            '-Width',
+            String(physW),
+            '-Height',
+            String(physH),
+            '-MaxSide',
+            String(maxSide),
+            '-Quality',
+            '85'
+          ],
+          { timeout: 5000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf8' },
+          (error, stdout) => {
+            if (error || !stdout) {
+              console.warn('[ScannerService] capture_screen_region.ps1 failed:', error)
+              return resolve(null)
+            }
+            const b64 = stdout.trim()
+            if (!b64) return resolve(null)
+            try {
+              const rawBuffer = Buffer.from(b64, 'base64')
+              const img = nativeImage.createFromBuffer(rawBuffer)
+              const size = img.getSize()
+              resolve({
+                base64: b64,
+                width: size.width,
+                height: size.height,
+                rawBuffer
+              })
+            } catch (err) {
+              console.warn('[ScannerService] Failed to parse captured image:', err)
+              resolve(null)
+            }
+          }
+        )
+      })
+    }
+
+    if (process.platform === 'linux') {
+      // Linux ImageMagick import fallback
+      try {
+        const cropArg = `${Math.round(bounds.width)}x${Math.round(bounds.height)}+${Math.round(bounds.x)}+${Math.round(bounds.y)}`
+        const buffer = await new Promise<Buffer | null>((resolve) => {
+          execFile('import', ['-window', 'root', '-crop', cropArg, '-quality', '85', 'jpeg:-'], {
+            encoding: 'buffer',
+            maxBuffer: 10 * 1024 * 1024,
+            timeout: 4000
+          }, (err, stdout) => {
+            if (err || !stdout || stdout.length === 0) return resolve(null)
+            resolve(stdout as unknown as Buffer)
+          })
+        })
+        if (buffer) {
+          const img = nativeImage.createFromBuffer(buffer)
+          const size = img.getSize()
+          return {
+            base64: buffer.toString('base64'),
+            width: size.width,
+            height: size.height,
+            rawBuffer: buffer
+          }
+        }
+      } catch {
+        // Fall through to desktopCapturer
+      }
+    }
+
+    try {
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
         thumbnailSize: {
@@ -1114,7 +1157,6 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
       const thumb = targetSource.thumbnail
       const thumbSize = thumb.getSize()
 
-      // Virtual screen coordinates to display local pixel coordinates
       const localX = Math.round((bounds.x - currentDisplay.bounds.x) * scale)
       const localY = Math.round((bounds.y - currentDisplay.bounds.y) * scale)
       const localW = Math.round(bounds.width * scale)
@@ -1134,7 +1176,6 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
 
       const croppedSize = cropped.getSize()
       let finalImg = cropped
-      const maxSide = 1024
       if (croppedSize.width > maxSide || croppedSize.height > maxSide) {
         if (croppedSize.width >= croppedSize.height) {
           finalImg = cropped.resize({
