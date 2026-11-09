@@ -263,10 +263,11 @@ export class WatchPartyService {
       const cy = Math.round(pos.y * scaleY)
 
       // YouTube desktop video card bounding box in downscaled coordinates
-      const cardW = Math.round(capture.width * 0.35)
-      const cardH = Math.round(capture.height * 0.32)
+      // Width 38% and Height 40% aligned to include the thumbnail AND the title/metadata text directly beneath it
+      const cardW = Math.round(capture.width * 0.38)
+      const cardH = Math.round(capture.height * 0.40)
       const cropX = Math.max(0, Math.min(capture.width - cardW, Math.round(cx - cardW / 2)))
-      const cropY = Math.max(0, Math.min(capture.height - cardH, Math.round(cy - cardH / 2)))
+      const cropY = Math.max(0, Math.min(capture.height - cardH, Math.round(cy - cardH * 0.32)))
 
       const cropped = nativeImage
         .createFromBuffer(capture.rawBuffer)
@@ -278,7 +279,7 @@ export class WatchPartyService {
 
       const prompt = `This is a cropped screenshot of a single YouTube video card.
 Read the video title written on this card.
-Output ONLY the video title inside double quotation marks like "Video Title", nothing else. If you cannot read the title clearly, output ""`
+Output ONLY the video title inside double quotation marks like "Video Title", nothing else. If you cannot read the title clearly, output NONE.`
 
       const resp = await llmFetch('http://127.0.0.1:11434/api/generate', {
         method: 'POST',
@@ -290,7 +291,7 @@ Output ONLY the video title inside double quotation marks like "Video Title", no
           stream: false,
           options: { temperature: 0.1, num_predict: 45 }
         }),
-        signal: AbortSignal.timeout(6000)
+        signal: AbortSignal.timeout(10000)
       })
 
       if (resp.ok) {
@@ -675,7 +676,18 @@ Output ONLY the video title inside double quotation marks like "Video Title", no
 
       // YouTube Feed Co-browsing choice controls
       if (this.mode === 'youtube' && this.isBrowsingFeed && this.awaitingChoice) {
-        // 1. Delegate choice to Capri: "elegí vos", "you choose", "pick one"
+        // 1. Check REJECTION / SEARCH ANOTHER *FIRST* (takes precedence over accept)
+        // e.g. "nah, lets watch other video", "lets watch another", "otro", "otra cosa", "siguiente", "skip", "next"
+        const isReject =
+          /^(?:no|nah|nope|otro|otra|next|skip|pas[ao])$/i.test(clean) ||
+          /(?:nah\b|nope\b|not\s+this|don'?t\s+like|no\s+me\s+gusta|ese\s+no|otro\b|otra\b|other\s+video|another\s+video|different\s+video|something\s+else|different\s+one|another\s+one|otra\s+cosa|busca\s+otr|siguiente|saltea|cambia|skip\b|next\b)/i.test(clean)
+
+        if (isReject) {
+          await this.handleYoutubeChoice(false, onSay)
+          return { handled: true }
+        }
+
+        // 2. Delegate choice to Capri: "elegí vos", "you choose", "pick one", "pick for me"
         if (/(?:elegi\s+vos|elegilo\s+vos|elegi\s+tu|elegilo\s+tu|you\s+choose|pick\s+one|pick\s+for\s+me|choose\s+one|decidi\s+vos)/i.test(clean)) {
           const isEs = consciousnessService.getPreferredLanguage() === 'es'
           this.say(isEs ? '¡De una, elijo yo entonces!' : "Alright, I'll pick one then!", 3000, onSay)
@@ -683,18 +695,12 @@ Output ONLY the video title inside double quotation marks like "Video Title", no
           return { handled: true }
         }
 
-        // 2. Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok", "yes", "sure", "play it", "that one"
-        if (/(?:^si$|^si\b|dale|ponelo|pone\b|abri\s+ese|abre\s+ese|pone\s+ese|ese\b|vamos|de\s+una|bueno|ok\b|okay|yes\b|sure|play|reproducilo|pongamos\s+ese|that\s+one|pick\s+that|let'?s\s+watch|me\s+gusta)/i.test(clean)) {
-          await this.handleYoutubeChoice(true, onSay)
-          return { handled: true }
-        }
+        // 3. Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok", "yes", "sure", "play it", "that one"
+        const isAccept =
+          /(?:^si$|^si\b|dale|ponelo|pone\b|abri\s+ese|abre\s+ese|pone\s+ese|ese\b|vamos|de\s+una|bueno|ok\b|okay|yes\b|sure|play\b|reproducilo|pongamos\s+ese|that\s+one|pick\s+that|let'?s\s+watch\s+(?:this|it|that)|me\s+gusta|yeah\b|yep\b)/i.test(clean)
 
-        // 3. Reject / Search another: "otra cosa", "otro", "busca otro", "siguiente", "pasá", "no me gusta", "another", "skip", "next"
-        if (
-          /^(?:no|otro|otra|next|skip|nah|nope|pas[ao])$/i.test(clean) ||
-          /(?:otra\s+cosa|busca\s+otr[oa]|otro\s+video|otra\s+opcion|no\s+me\s+gusta|ese\s+no|siguiente\s+video|siguiente|saltea|cambia|another\s+one|different\s+video|don'?t\s+like|not\s+this)/i.test(clean)
-        ) {
-          await this.handleYoutubeChoice(false, onSay)
+        if (isAccept) {
+          await this.handleYoutubeChoice(true, onSay)
           return { handled: true }
         }
       }

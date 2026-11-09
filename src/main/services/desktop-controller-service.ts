@@ -129,6 +129,17 @@ export class DesktopControllerService {
   public async focusBrowser(keyword = 'youtube'): Promise<boolean> {
     if (process.platform === 'win32') {
       return this.runWin32('focus_browser', ['-Keyword', keyword])
+    } else if (isLinux) {
+      // 1. Try activating by window title matching keyword (e.g. YouTube, TikTok)
+      const kwSuccess = await this.runLinuxXdotool(['search', '--name', keyword, 'windowactivate'])
+      if (kwSuccess) return true
+
+      // 2. Fallback to common browser window classes on Linux X11/Wayland (via XWayland)
+      const browserClasses = ['google-chrome', 'chromium', 'firefox', 'brave-browser', 'opera']
+      for (const cls of browserClasses) {
+        const activated = await this.runLinuxXdotool(['search', '--class', cls, 'windowactivate'])
+        if (activated) return true
+      }
     }
     return false
   }

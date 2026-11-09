@@ -1,4 +1,4 @@
-import { llmFetch } from './llm-gateway'
+import { llmFetch, isCloudMode, getLlmSettings } from './llm-gateway'
 import { llmBody } from './user-profile'
 import { desktopCapturer, screen } from 'electron'
 import fs from 'fs'
@@ -291,10 +291,15 @@ export class ScannerService {
   }
 
   /**
-   * Detects available vision model in Ollama (qwen2.5-vl, llava, minicpm-v, etc.)
+   * Detects available vision model in Ollama or cloud provider (Gemini, Claude, GPT, qwen2.5-vl, llava, etc.)
    */
   public async detectVisionModel(): Promise<string | null> {
     try {
+      if (isCloudMode()) {
+        const settings = getLlmSettings()
+        return settings.model || 'cloud-vision'
+      }
+
       const resp = await llmFetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) })
       if (!resp.ok) return null
       const data = (await resp.json()) as any
