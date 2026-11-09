@@ -56,7 +56,7 @@ export const DevDeckView: React.FC = () => {
     if (window.api) {
       Promise.all([window.api.agent.getConfig(), window.api.agent.getLlmSettings()]).then(([config, settings]) => {
         setLlmConfig(config)
-        setCloudModel(settings.provider === 'cloud' ? settings.model : null)
+        setCloudModel(settings.provider === 'cloud' ? settings.model : settings.provider === 'app' ? settings.model || settings.preset : null)
         setConfigLoaded(true)
       })
       window.api.agent.detectOllama().then((res) => {
@@ -83,7 +83,7 @@ export const DevDeckView: React.FC = () => {
   // A cloud model is chosen in the settings: the top bar only shows it
   useEffect(() => {
     if (isSettingsOpen) return
-    window.api?.agent.getLlmSettings().then((s) => setCloudModel(s.provider === 'cloud' ? s.model : null))
+    window.api?.agent.getLlmSettings().then((s) => setCloudModel(s.provider === 'cloud' ? s.model : s.provider === 'app' ? s.model || s.preset : null))
     window.api?.agent.detectOllama().then((res) => res && setOllamaStatus(res))
   }, [isSettingsOpen, setOllamaStatus])
 

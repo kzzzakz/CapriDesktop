@@ -1,6 +1,6 @@
 import { scriptPlayer } from '../services/script/script-player'
 import { ensureRequestedLook, requestedLook, splitByLooks, stripLookTags } from '../services/script/look-tags'
-import { isWindows } from '../services/platform'
+import { listProcessNames, isWindows } from '../services/platform'
 import { clearLanguageOf, detectLanguage, type DetectedLang } from '../services/language-detect'
 import { cloudErrorCode, cloudErrorDetail, isCloudMode, llmFetch, type LlmErrorCode } from '../services/llm-gateway'
 import * as os from 'os'
@@ -34,6 +34,9 @@ import { CodingAgent, isCodingRequest } from './coding-agent'
 import { updateService } from '../services/update-service'
 import { cleanAppRequest } from '../services/app-finder'
 import { commandInEnglish } from './command-translations'
+import { parseValorantCommand } from '../services/valorant/command-parser'
+import { valorantAgentSelect, valorantPickMessage } from '../services/valorant/agent-select-service'
+import { leaveValorantQueue, startValorantQueue, valorantIsTheOpenGame, valorantQueueMessage } from '../services/valorant/matchmaking-service'
 import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
 import { memoryService } from '../services/memory-service'
 import { listKnownApps } from '../services/known-apps'
@@ -955,6 +958,47 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // League of Legends (LCU) Client Interceptor: Multi-Intent & Compound Plans, Accept, Auto-Accept, Pick, Ban
+    // VALORANT agent select: selects and locks the agent the user asked for, now or when it starts
+    let valorantCmd = parseValorantCommand(norm)
+    // "busca partida" with no game named: VALORANT when it is the game that is open
+    if (valorantCmd.searchWithoutGame && valorantIsTheOpenGame(await listProcessNames().catch(() => null))) {
+      valorantCmd = parseValorantCommand(`${norm} valorant`)
+    }
+    if (valorantCmd.isValorant) {
+      if (valorantCmd.wantsLeaveQueue) {
+        this.emitAssistant(valorantQueueMessage(await leaveValorantQueue()))
+        this.finishSession()
+        return
+      }
+      if (valorantCmd.wantsCancel) {
+        this.emitAssistant(
+          valorantAgentSelect.cancelAgentRequest() ? "Valorant agent pick cancelled, {name}." : "There was no Valorant agent pick waiting, {name}."
+        )
+        this.finishSession()
+        return
+      }
+      const said: string[] = []
+      if (valorantCmd.wantsSearch) {
+        const queued = await startValorantQueue(valorantCmd.queue)
+        console.log(`[Capri Agent] Valorant search: ${queued.status}`)
+        said.push(valorantQueueMessage(queued))
+      }
+      if (valorantCmd.agentQuery) {
+        const agent = valorantCmd.agent
+        if (!agent) {
+          said.push(`Couldn't find an agent named "${valorantCmd.agentQuery}" in Valorant, {name}. Double check the name!`)
+        } else {
+          const result = await valorantAgentSelect.requestAgent(agent.uuid, agent.name)
+          console.log(`[Capri Agent] Valorant agent ${agent.name}: ${result.status}`)
+          // After starting the search the client message would only repeat itself
+          if (result.status !== 'cancelled' && !(said.length && result.status === 'client_not_running')) said.push(valorantPickMessage(result.status, agent.name))
+        }
+      }
+      if (said.length) this.emitAssistant(said.join(' '))
+      this.finishSession()
+      return
+    }
+
     const lolCmd = parseLolCommand(norm)
     if (lolCmd.isLolCommand) {
       // Auto-Accept Toggle

@@ -3,6 +3,7 @@ import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-se
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { ModelPullProgress } from '../main/services/ollama-service'
 import type { InstalledPart, LocalModelInfo } from '../main/services/installed-parts'
+import type { AiAppInfo } from '../main/services/ai-apps'
 import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
@@ -299,6 +300,9 @@ const api = {
     pullModel: (model: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL, model),
     cancelPullModel: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL_CANCEL),
     importGgufModel: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_IMPORT_GGUF),
+
+    listAiApps: (): Promise<AiAppInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.AI_APPS_LIST),
+    testAiApp: (app: string, model: string): Promise<{ ok: boolean; error?: string; detail?: string }> => ipcRenderer.invoke(IPC_CHANNELS.AI_APPS_TEST, app, model),
 
     // Local models and installed parts
     listLocalModels: (): Promise<LocalModelInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.MODELS_LIST),

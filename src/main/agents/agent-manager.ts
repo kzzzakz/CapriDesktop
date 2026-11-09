@@ -226,7 +226,7 @@ export class AgentManager extends EventEmitter {
   }
 
   public async detectOllama(): Promise<{ running: boolean; models: string[] }> {
-    if (isCloudMode()) return { running: true, models: [getLlmSettings().model] }
+    if (isCloudMode()) return { running: true, models: [getLlmSettings().model || getLlmSettings().preset] }
     return await ollamaService.ensureRunning()
   }
 
