@@ -124,8 +124,9 @@ export class WatchPartyService {
     }
 
     // Bring browser to foreground in front of background windows
-    setTimeout(() => void desktopController.focusBrowser('tiktok'), 800)
-    setTimeout(() => void desktopController.focusBrowser('tiktok'), 2200)
+    setTimeout(() => void desktopController.focusBrowser('tiktok'), 500)
+    setTimeout(() => void desktopController.focusBrowser('tiktok'), 1200)
+    setTimeout(() => void desktopController.focusBrowser('tiktok'), 2400)
 
     // 2. Start full screen vision loop
     await scannerService.startFullscreenWatch()
@@ -216,8 +217,9 @@ export class WatchPartyService {
     }
 
     // 2. Actively bring browser window to the foreground in front of the terminal
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 800)
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 2200)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 500)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 1200)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 2400)
 
     // 3. Start full screen vision loop
     await scannerService.startFullscreenWatch()
@@ -375,8 +377,9 @@ Output ONLY the video title inside double quotation marks like "Video Title", no
     }
 
     // 2. Bring browser to front
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 800)
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 2200)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 500)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 1200)
+    setTimeout(() => void desktopController.focusBrowser('youtube'), 2400)
 
     // 3. Start full screen vision loop
     await scannerService.startFullscreenWatch()

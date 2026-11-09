@@ -97,6 +97,75 @@ public static class DesktopController {
         int screenHeight = GetSystemMetrics(1);
         DoubleClick(screenWidth / 2, screenHeight / 2);
     }
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const int SW_RESTORE = 9;
+
+    public static bool BringToFront(IntPtr handle) {
+        if (handle == IntPtr.Zero) return false;
+
+        ShowWindow(handle, SW_RESTORE);
+
+        // 1. Momentarily force TopMost to bypass Z-order foreground lock
+        SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW);
+
+        // 2. Attach thread input to current foreground thread to get official focus rights
+        IntPtr foreWindow = GetForegroundWindow();
+        uint forePid;
+        uint foreThread = GetWindowThreadProcessId(foreWindow, out forePid);
+        uint targetPid;
+        uint targetThread = GetWindowThreadProcessId(handle, out targetPid);
+        uint currentThread = GetCurrentThreadId();
+
+        bool attachedFore = false;
+        bool attachedTarget = false;
+
+        if (foreThread != 0 && foreThread != currentThread) {
+            attachedFore = AttachThreadInput(currentThread, foreThread, true);
+        }
+        if (targetThread != 0 && targetThread != currentThread) {
+            attachedTarget = AttachThreadInput(currentThread, targetThread, true);
+        }
+
+        bool result = SetForegroundWindow(handle);
+
+        if (attachedTarget) {
+            AttachThreadInput(currentThread, targetThread, false);
+        }
+        if (attachedFore) {
+            AttachThreadInput(currentThread, foreThread, false);
+        }
+
+        // 3. Drop TopMost so the browser behaves normally without staying pinned
+        SetWindowPos(handle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+
+        return result;
+    }
 }
 "@
 
@@ -163,31 +232,44 @@ try {
         "focus_browser" {
             $activated = $false
             try {
-                $ws = New-Object -ComObject WScript.Shell
+                $targetHwnd = [IntPtr]::Zero
 
-                # 1. First attempt: If Keyword or "YouTube" matches any active window title directly
-                if ($Keyword -and $ws.AppActivate($Keyword)) {
-                    $activated = $true
-                } elseif ($ws.AppActivate("YouTube")) {
-                    $activated = $true
-                }
-
-                # 2. Second attempt: Find the browser's real primary window (MainWindowHandle != 0)
-                if (-not $activated) {
-                    $browserNames = @('chrome', 'msedge', 'opera', 'brave', 'firefox')
-                    foreach ($name in $browserNames) {
-                        $procs = Get-Process -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }
-                        foreach ($p in $procs) {
-                            if ($ws.AppActivate($p.Id)) {
-                                $activated = $true
-                                break
-                            }
-                        }
-                        if ($activated) { break }
+                # 1. Search for a process where MainWindowTitle matches $Keyword or YouTube
+                if ($Keyword) {
+                    $named = Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -match $Keyword } | Select-Object -First 1
+                    if ($named) {
+                        $targetHwnd = $named.MainWindowHandle
                     }
                 }
+                if ($targetHwnd -eq [IntPtr]::Zero) {
+                    $yt = Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -match "YouTube" } | Select-Object -First 1
+                    if ($yt) {
+                        $targetHwnd = $yt.MainWindowHandle
+                    }
+                }
+
+                # 2. If title not matched yet, search by browser process name
+                if ($targetHwnd -eq [IntPtr]::Zero) {
+                    $browserNames = @('chrome', 'msedge', 'opera', 'brave', 'firefox')
+                    foreach ($name in $browserNames) {
+                        $p = Get-Process -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
+                        if ($p) {
+                            $targetHwnd = $p.MainWindowHandle
+                            break
+                        }
+                    }
+                }
+
+                # 3. Bring to front with dual-layer (TopMost flash + AttachThreadInput + WScript.Shell)
+                if ($targetHwnd -ne [IntPtr]::Zero) {
+                    $activated = [DesktopController]::BringToFront($targetHwnd)
+                    try {
+                        $ws = New-Object -ComObject WScript.Shell
+                        $ws.AppActivate([int]$targetHwnd)
+                    } catch {}
+                }
             } catch {
-                # Fallback silently on COM error
+                # Fallback silently on error
             }
 
             if ($activated) {
