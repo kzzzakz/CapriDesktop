@@ -221,30 +221,23 @@ export class WatchPartyService {
     setTimeout(() => void desktopController.focusBrowser('youtube'), 1200)
     setTimeout(() => void desktopController.focusBrowser('youtube'), 2400)
 
-    // 3. Start full screen vision loop
-    await scannerService.startFullscreenWatch()
+    // 3. Ensure fullscreen scanner is PAUSED while browsing feed
+    // so it doesn't collide with card title extraction or talk over the proposal
+    scannerService.stopFullscreenWatch()
 
     // 4. Welcome announcement
     const isEs = !forceEnglish && consciousnessService.getPreferredLanguage() === 'es'
     const msg = isEs
-      ? '¡De una, choomba! Abriendo YouTube. Dejame mover el mouse y scrollear el feed a ver qué encontramos...'
-      : 'Launching YouTube! Let me move my mouse and explore your feed to find something good...'
-    this.say(msg, 5000, onSay)
+      ? '¡De una, choomba! Abriendo YouTube. Dejame ver qué encontramos en tu feed...'
+      : "Launching YouTube! Let's check out your feed..."
+    this.say(msg, 4000, onSay)
 
-    // Wait 3.5s for page rendering, glide mouse down to feed and scroll
-    setTimeout(async () => {
+    // Wait 4s for browser and YouTube page to load, then propose the first video
+    setTimeout(() => {
       if (this.mode === 'youtube' && this.isBrowsingFeed) {
-        this.moveCursor(width * 0.35, height * 0.38)
-        this.animateScroll('down')
-        await desktopController.scroll('down', 380)
-
-        setTimeout(() => {
-          if (this.mode === 'youtube' && this.isBrowsingFeed) {
-            void this.proposeNextYoutubeVideo(onSay)
-          }
-        }, 1200)
+        void this.proposeNextYoutubeVideo(onSay)
       }
-    }, 3500)
+    }, 4000)
 
     this.broadcastStatus()
     return true
@@ -256,11 +249,11 @@ export class WatchPartyService {
       const { width, height } = display.bounds
 
       // YouTube desktop video card bounding box in display virtual coordinates
-      // Width 38% and Height 42% centered around pos.x, pos.y
-      const cardW = Math.round(width * 0.38)
+      // Width 36% and Height 42% centered around pos.x, pos.y
+      const cardW = Math.round(width * 0.36)
       const cardH = Math.round(height * 0.42)
       const cropX = Math.max(0, Math.min(width - cardW, Math.round(pos.x - cardW / 2)))
-      const cropY = Math.max(0, Math.min(height - cardH, Math.round(pos.y - cardH * 0.32)))
+      const cropY = Math.max(0, Math.min(height - cardH, Math.round(pos.y - cardH * 0.35)))
 
       const captured = await scannerService.captureDisplayRegion({
         x: cropX,
@@ -280,9 +273,10 @@ export class WatchPartyService {
         return ''
       }
 
-      const prompt = `This is a cropped screenshot of a YouTube video card.
-Read the title of this video written on or beneath the thumbnail.
-Output ONLY the video title inside quotation marks like "Video Title", nothing else. If you cannot read the title clearly, output NONE.`
+      const prompt = `You are an OCR assistant. Look at this cropped screenshot of a YouTube video card.
+Find the main video title (the bold headline text below or on the thumbnail).
+Reply with ONLY the video title in quotation marks, e.g. "Video Title Here".
+If there is no text or title visible, reply "NONE".`
 
       const resp = await llmFetch('http://127.0.0.1:11434/api/generate', {
         method: 'POST',
@@ -318,7 +312,7 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
         if (
           title &&
           title.length >= 3 &&
-          !/^(none|unknown|untitled|n\/a|no title|screenshot|video\s*title)$/i.test(title)
+          !/^(none|unknown|untitled|n\/a|no title|screenshot|video\s*title)[.]?$/i.test(title)
         ) {
           return title
         }
@@ -341,10 +335,10 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
 
     // Calculate grid coordinates for candidate video card
     const positions = [
-      { x: width * 0.35, y: height * 0.42 },
-      { x: width * 0.65, y: height * 0.42 },
-      { x: width * 0.35, y: height * 0.72 },
-      { x: width * 0.65, y: height * 0.72 }
+      { x: width * 0.32, y: height * 0.38 },
+      { x: width * 0.62, y: height * 0.38 },
+      { x: width * 0.32, y: height * 0.72 },
+      { x: width * 0.62, y: height * 0.72 }
     ]
     const pos = positions[this.videoIndex % positions.length]
     this.currentTarget = pos
@@ -405,8 +399,8 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
     setTimeout(() => void desktopController.focusBrowser('youtube'), 1200)
     setTimeout(() => void desktopController.focusBrowser('youtube'), 2400)
 
-    // 3. Start full screen vision loop
-    await scannerService.startFullscreenWatch()
+    // 3. Ensure fullscreen scanner is paused while exploring feed
+    scannerService.stopFullscreenWatch()
 
     const display = screen.getPrimaryDisplay()
     const { width, height } = display.bounds
@@ -493,6 +487,8 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
 
       setTimeout(() => {
         this.hideCursor()
+        // Video is now playing! Start full screen watch to react to video content
+        void scannerService.startFullscreenWatch()
       }, 1500)
     }, 1800)
   }
@@ -522,6 +518,8 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
 
       setTimeout(() => {
         this.hideCursor()
+        // Video is now playing! Start full screen watch to react to video content
+        void scannerService.startFullscreenWatch()
       }, 1500)
     } else {
       // User rejected: "otra cosa", "otro", etc.
@@ -531,20 +529,28 @@ Output ONLY the video title inside quotation marks like "Video Title", nothing e
       const rejectMsg = isEs
         ? 'Dale, buscando otra cosa en el feed...'
         : 'Alright, looking for another video in your feed...'
-      this.say(rejectMsg, 3000, onSay)
+      this.say(rejectMsg, 2500, onSay)
 
-      // Move cursor and scroll feed!
-      const display = screen.getPrimaryDisplay()
-      const { width, height } = display.bounds
-      this.moveCursor(width * 0.5, height * 0.5)
-      this.animateScroll('down')
-      await desktopController.scroll('down', 540)
-
-      setTimeout(() => {
-        if (this.mode === 'youtube' && this.isBrowsingFeed) {
-          void this.proposeNextYoutubeVideo(onSay)
-        }
-      }, 1500)
+      // Only scroll down after inspecting the 4 visible cards on screen to reveal fresh ones
+      const shouldScroll = this.videoIndex > 0 && this.videoIndex % 4 === 0
+      if (shouldScroll) {
+        const display = screen.getPrimaryDisplay()
+        const { width, height } = display.bounds
+        this.moveCursor(width * 0.5, height * 0.5)
+        this.animateScroll('down')
+        await desktopController.scroll('down', 520)
+        setTimeout(() => {
+          if (this.mode === 'youtube' && this.isBrowsingFeed) {
+            void this.proposeNextYoutubeVideo(onSay)
+          }
+        }, 1200)
+      } else {
+        setTimeout(() => {
+          if (this.mode === 'youtube' && this.isBrowsingFeed) {
+            void this.proposeNextYoutubeVideo(onSay)
+          }
+        }, 800)
+      }
     }
   }
 
