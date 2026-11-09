@@ -11,10 +11,12 @@ import { app, safeStorage } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { scriptPath } from './app-paths'
+import { aiAppStatus, isAiAppId, runAiApp, type AiAppId } from './ai-apps'
 import { personalize } from './user-profile'
 import { DEFAULT_SYSTEM_PROMPT, getSystemPromptPersona } from './system-prompt-store'
 
-export type LlmProvider = 'local' | 'cloud'
+/** 'app': an AI app installed on this PC (Antigravity, Claude Code, Codex): preset says which, model its model */
+export type LlmProvider = 'local' | 'cloud' | 'app'
 export type LlmErrorCode = 'auth' | 'quota' | 'model' | 'network' | 'insecure' | 'other'
 
 export interface LlmPublicSettings {
@@ -99,8 +101,10 @@ function keyWouldLeakInClear(baseUrl: string, key: string): boolean {
   return !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
 }
 
+/** Her thinking happens outside Ollama: a cloud API or one of the user's AI apps */
 export function isCloudMode(): boolean {
   const s = load()
+  if (s.provider === 'app') return isAiAppId(s.preset)
   return s.provider === 'cloud' && !!s.baseUrl && !!s.model
 }
 
@@ -120,9 +124,16 @@ export function getLlmSettings(): LlmPublicSettings {
 export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; error?: string; settings: LlmPublicSettings } {
   const current = load()
   const next: StoredSettings = { ...current }
-  if (update.provider === 'local' || update.provider === 'cloud') next.provider = update.provider
+  if (update.provider === 'local' || update.provider === 'cloud' || update.provider === 'app') next.provider = update.provider
   if (typeof update.preset === 'string') next.preset = update.preset
   if (typeof update.model === 'string') next.model = update.model.trim()
+
+  // An AI app keeps no address or key of its own: the cloud ones stay saved for when the user goes back
+  if (next.provider === 'app') {
+    if (!isAiAppId(next.preset)) return { success: false, error: 'missing-model', settings: getLlmSettings() }
+    persist({ ...current, provider: next.provider, preset: next.preset, model: next.model })
+    return { success: true, settings: getLlmSettings() }
+  }
   if (typeof update.baseUrl === 'string') next.baseUrl = normalizeBase(update.baseUrl)
 
   if (next.provider === 'cloud') {
@@ -193,7 +204,7 @@ export async function testCloudConnection(baseUrlRaw: string, model: string, typ
   const key = keyFor(baseUrl, typedKey)
   if (keyWouldLeakInClear(baseUrl, key)) return { ok: false, error: 'insecure' }
   try {
-    const res = await postChat(
+    const res = await postChatApi(
       baseUrl,
       key,
       { model, messages: [{ role: 'user', content: 'Reply with: ok' }], max_tokens: 16 },
@@ -240,7 +251,18 @@ function relaxBody(body: Body, errorText: string): Body | null {
 /** Parameters a provider and model turned down once: not sent again, so each message is one request */
 const refusedParams = new Map<string, Set<string>>()
 
-async function postChat(baseUrl: string, key: string, payload: Body, signal?: AbortSignal | null): Promise<Response> {
+/** One chat request through an AI app, answered like the API would: errors keep their HTTP status */
+async function appChat(app: AiAppId, model: string, payload: Body, signal?: AbortSignal | null): Promise<Response> {
+  try {
+    return jsonResponse(await runAiApp(app, payload, model, signal))
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw err
+    console.warn(`[LlmGateway] ${app} failed:`, (err as Error)?.message || err)
+    return jsonResponse({ error: { message: String((err as Error)?.message || err) } }, aiAppStatus(err))
+  }
+}
+
+async function postChatApi(baseUrl: string, key: string, payload: Body, signal?: AbortSignal | null): Promise<Response> {
   const route = `${baseUrl}|${String(payload.model ?? '')}`
   const refused = refusedParams.get(route)
   let body: Body = { ...payload }
@@ -385,10 +407,16 @@ async function ollamaAnswer(res: Response, stream: boolean, kind: 'chat' | 'gene
 export async function llmFetch(input: string, init?: RequestInit): Promise<Response> {
   if (!isCloudMode()) return fetch(input, init)
 
-  const { baseUrl, model } = load()
+  const settings = load()
+  const viaApp = settings.provider === 'app'
+  const { baseUrl } = settings
+  // An app on its default model still needs a name for the callers that list models
+  const model = viaApp ? settings.model || settings.preset : settings.model
   const route = new URL(input).pathname
-  const key = keyFor(baseUrl)
-  if (keyWouldLeakInClear(baseUrl, key)) return jsonResponse({ error: 'insecure' }, 403)
+  const key = viaApp ? '' : keyFor(baseUrl)
+  if (!viaApp && keyWouldLeakInClear(baseUrl, key)) return jsonResponse({ error: 'insecure' }, 403)
+  const postChat = (_base: string, _key: string, payload: Body, sig?: AbortSignal | null): Promise<Response> =>
+    viaApp ? appChat(settings.preset as AiAppId, settings.model, payload, sig) : postChatApi(baseUrl, key, payload, sig)
   const signal = init?.signal
   const req: Body = typeof init?.body === 'string' ? JSON.parse(init.body) : {}
 

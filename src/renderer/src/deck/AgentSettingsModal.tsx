@@ -17,7 +17,7 @@ interface AgentSettingsModalProps {
 export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, onClose }) => {
   const t = useT()
   const { llmModel, ollamaRunning, ollamaModels, setLlmConfig, setOllamaStatus } = useAgentStore()
-  const [provider, setProvider] = useState<'local' | 'cloud'>('local')
+  const [provider, setProvider] = useState<'local' | 'cloud' | 'app'>('local')
   // On this PC: Ollama, or LM Studio for .gguf models
   const [engine, setEngine] = useState<'ollama' | 'lmstudio'>('ollama')
   const [modelInput, setModelInput] = useState(llmModel)
@@ -318,7 +318,7 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
           </div>
 
           {/* What she remembers about the user */}
-          <MemorySettings isCloud={provider === 'cloud'} />
+          <MemorySettings isCloud={provider !== 'local'} />
         </div>
 
         <div className="px-5 py-3.5 border-t border-[var(--cp-red-line)] flex justify-end gap-2 shrink-0">

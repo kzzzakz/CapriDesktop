@@ -102,6 +102,9 @@ export const IPC_CHANNELS = {
   OLLAMA_PULL: 'ollama:pull',
   COMPANION_SCALE_GET: 'companion:getScale',
   ADMIN_GET: 'admin:get',
+  // The user's AI apps (Antigravity, Claude Code, Codex) as her model
+  AI_APPS_LIST: 'aiApps:list',
+  AI_APPS_TEST: 'aiApps:test',
   // Local models and installed parts (Capri // Brain)
   MODELS_LIST: 'models:list',
   MODEL_DELETE: 'models:delete',

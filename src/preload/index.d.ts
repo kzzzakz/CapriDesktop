@@ -3,6 +3,7 @@ import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-se
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { ModelPullProgress } from '../main/services/ollama-service'
 import type { InstalledPart, LocalModelInfo } from '../main/services/installed-parts'
+import type { AiAppInfo } from '../main/services/ai-apps'
 import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -140,6 +141,8 @@ export interface IElectronAPI {
     pullModel: (model: string) => Promise<boolean>
     cancelPullModel: () => Promise<void>
     importGgufModel: () => Promise<boolean>
+    listAiApps: () => Promise<AiAppInfo[]>
+    testAiApp: (app: string, model: string) => Promise<{ ok: boolean; error?: string; detail?: string }>
     // Local models and installed parts
     listLocalModels: () => Promise<LocalModelInfo[]>
     deleteLocalModel: (name: string) => Promise<LocalModelInfo[] | null>

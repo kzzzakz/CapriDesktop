@@ -30,6 +30,7 @@ import { addKnownApp, listKnownApps, onKnownAppsChanged, removeKnownApp, renameK
 import { openKnownApp } from '../services/app-launcher'
 import { ollamaService } from '../services/ollama-service'
 import { isElevated, relaunchElevated } from '../services/admin-mode'
+import { isAiAppId, listAiApps, testAiApp } from '../services/ai-apps'
 import { deleteLocalModel, listInstalledParts, listLocalModels, removeInstalledPart, type InstalledPartId } from '../services/installed-parts'
 import { cyberpunkFoldersState, markCyberpunkFolder, unmarkCyberpunkFolder } from '../services/game/adapters/cyberpunk/cyberpunk-folders'
 
@@ -579,6 +580,12 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle(IPC_CHANNELS.PARTS_LIST, () => listInstalledParts())
   ipcMain.handle(IPC_CHANNELS.PART_REMOVE, (_event, id: string) => (['voiceEnv', 'whisper', 'ffmpeg'].includes(id) ? removeInstalledPart(id as InstalledPartId) : listInstalledParts()))
+
+  // The user's AI apps, as her model
+  ipcMain.handle(IPC_CHANNELS.AI_APPS_LIST, () => listAiApps())
+  ipcMain.handle(IPC_CHANNELS.AI_APPS_TEST, (_event, app: string, model: string) =>
+    isAiAppId(app) ? testAiApp(app, String(model || '')) : { ok: false, error: 'other' }
+  )
 
   // Running as administrator, for games that run as administrator
   ipcMain.handle(IPC_CHANNELS.ADMIN_GET, () => ({ enabled: consciousnessService.getRunAsAdmin(), elevated: isElevated() }))
