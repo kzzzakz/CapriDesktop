@@ -251,6 +251,7 @@ export const ScannerView: React.FC = () => {
   const [isContinuous, setIsContinuous] = useState(false)
   const [isWatchingScreen, setIsWatchingScreen] = useState(false)
   const [watchPartyState, setWatchPartyState] = useState<WatchPartyStatusPayload | null>(null)
+  const isLiveWatch = isWatchingScreen || !!watchPartyState?.active
   const [liveReaction, setLiveReaction] = useState<string | null>(null)
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'result' | 'error'>('idle')
   const [scanResult, setScanResult] = useState<ScannerScanResult | null>(null)
@@ -388,7 +389,7 @@ export const ScannerView: React.FC = () => {
 
   // Click-through Hit-Testing (Forward mouse inside the hole; capture on borders/controls)
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isWatchingScreen) {
+    if (isLiveWatch) {
       const { clientX, clientY } = e
       const w = window.innerWidth
       // Top center badge bounds (allows clicking the STOP button)
@@ -437,9 +438,17 @@ export const ScannerView: React.FC = () => {
         window.api.scanner.setIgnoreMouse(false)
       }
     }
-  }, [isWatchingScreen])
+  }, [isLiveWatch])
 
   const handleMouseLeave = useCallback((e: React.MouseEvent) => {
+    if (isLiveWatch) {
+      if (lastIgnoreRef.current !== true) {
+        lastIgnoreRef.current = true
+        window.api.scanner.setIgnoreMouse(true)
+      }
+      return
+    }
+
     // On Linux, turning click-through on is reported as the mouse leaving, right where it still is.
     // Answering that would turn it off and on again forever.
     const stillOver = e.clientX > 0 && e.clientY > 0 && e.clientX < window.innerWidth - 1 && e.clientY < window.innerHeight - 1
@@ -449,7 +458,7 @@ export const ScannerView: React.FC = () => {
       lastIgnoreRef.current = false
       window.api.scanner.setIgnoreMouse(false)
     }
-  }, [])
+  }, [isLiveWatch])
 
   // Drag and Resize Handler
   const startDrag = useCallback(
@@ -610,7 +619,7 @@ export const ScannerView: React.FC = () => {
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      {isWatchingScreen ? (
+      {isLiveWatch ? (
         /* Full-Screen Live Watch Overlay (Zero disruption to games/videos - Frame only, no laser sweep) */
         <>
           {/* Cybernetic Perimeter Neon Edge & Corners */}

@@ -868,6 +868,17 @@ export class WindowManager {
     return this.isScannerFullscreen
   }
 
+  public ensureScannerTop(): void {
+    if (this.scannerWin && !this.scannerWin.isDestroyed() && this.scannerWin.isVisible()) {
+      this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
+      this.scannerWin.moveTop()
+    }
+    if (this.companionWin && !this.companionWin.isDestroyed() && this.companionWin.isVisible()) {
+      this.companionWin.setAlwaysOnTop(true, 'screen-saver', 2)
+      this.companionWin.moveTop()
+    }
+  }
+
   public setScannerFullscreenWatch(active: boolean): void {
     this.isScannerFullscreen = active
     if (!this.scannerWin || this.scannerWin.isDestroyed()) {

@@ -61,6 +61,7 @@ export class WatchPartyService {
       isScrolling: false,
       targetLabel
     }
+    windowManager.ensureScannerTop()
     this.broadcastStatus()
   }
 
@@ -204,26 +205,36 @@ export class WatchPartyService {
     this.awaitingChoice = false
     this.videoIndex = 0
 
+    // 1. Enable fullscreen overlay window for cyberpunk borders and cyber cursor
+    // while keeping ambient vision loop paused so it doesn't collide with card title extraction
+    scannerService.setOverlayOnlyWatch(true)
+
     // Get display bounds for Capri's mouse
     const display = screen.getPrimaryDisplay()
     const { width, height } = display.bounds
     this.moveCursor(width * 0.5, 220)
 
-    // 1. Open YouTube in default browser
+    // 2. Open YouTube in default browser
     try {
       await shell.openExternal('https://www.youtube.com')
     } catch (e) {
       console.warn('[WatchParty] Failed to open YouTube URL:', e)
     }
 
-    // 2. Actively bring browser window to the foreground in front of the terminal
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 500)
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 1200)
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 2400)
-
-    // 3. Ensure fullscreen scanner is PAUSED while browsing feed
-    // so it doesn't collide with card title extraction or talk over the proposal
-    scannerService.stopFullscreenWatch()
+    // 3. Actively bring browser window to the foreground in front of the terminal,
+    // and reassert topmost status for Capri's scanner overlay
+    setTimeout(() => {
+      void desktopController.focusBrowser('youtube')
+      windowManager.ensureScannerTop()
+    }, 600)
+    setTimeout(() => {
+      void desktopController.focusBrowser('youtube')
+      windowManager.ensureScannerTop()
+    }, 1300)
+    setTimeout(() => {
+      void desktopController.focusBrowser('youtube')
+      windowManager.ensureScannerTop()
+    }, 2500)
 
     // 4. Welcome announcement
     const isEs = !forceEnglish && consciousnessService.getPreferredLanguage() === 'es'
@@ -235,6 +246,7 @@ export class WatchPartyService {
     // Wait 4s for browser and YouTube page to load, then propose the first video
     setTimeout(() => {
       if (this.mode === 'youtube' && this.isBrowsingFeed) {
+        windowManager.ensureScannerTop()
         void this.proposeNextYoutubeVideo(onSay)
       }
     }, 4000)
@@ -381,26 +393,35 @@ If there is no text or title visible, reply "NONE".`
     this.awaitingChoice = false
     this.videoIndex = 0
 
+    // 1. Enable fullscreen overlay window for cyberpunk borders and cyber cursor
+    scannerService.setOverlayOnlyWatch(true)
+
     const isEs = !forceEnglish && consciousnessService.getPreferredLanguage() === 'es'
     const introMsg = isEs
       ? '¡De una! Dejame chusmear el feed a ver qué joyita encuentro...'
       : 'On it! Let me explore your feed and pick something cool for us...'
     this.say(introMsg, 4000, onSay)
 
-    // 1. Open YouTube in default browser
+    // 2. Open YouTube in default browser
     try {
       await shell.openExternal('https://www.youtube.com')
     } catch (e) {
       console.warn('[WatchParty] Failed to open YouTube URL:', e)
     }
 
-    // 2. Bring browser to front
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 500)
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 1200)
-    setTimeout(() => void desktopController.focusBrowser('youtube'), 2400)
-
-    // 3. Ensure fullscreen scanner is paused while exploring feed
-    scannerService.stopFullscreenWatch()
+    // 3. Bring browser to front and ensure scanner overlay stays topmost
+    setTimeout(() => {
+      void desktopController.focusBrowser('youtube')
+      windowManager.ensureScannerTop()
+    }, 600)
+    setTimeout(() => {
+      void desktopController.focusBrowser('youtube')
+      windowManager.ensureScannerTop()
+    }, 1300)
+    setTimeout(() => {
+      void desktopController.focusBrowser('youtube')
+      windowManager.ensureScannerTop()
+    }, 2500)
 
     const display = screen.getPrimaryDisplay()
     const { width, height } = display.bounds
@@ -408,6 +429,7 @@ If there is no text or title visible, reply "NONE".`
     // 4. Capri explores the feed like a human: glides mouse, scrolls, inspects
     setTimeout(async () => {
       if (this.mode !== 'youtube') return
+      windowManager.ensureScannerTop()
       this.moveCursor(width * 0.45, height * 0.35)
 
       // First scroll
@@ -595,6 +617,8 @@ If there is no text or title visible, reply "NONE".`
     this.awaitingChoice = false
 
     scannerService.stopFullscreenWatch()
+    windowManager.setScannerFullscreenWatch(false)
+    windowManager.hideScanner()
 
     if (speak) {
       const isEs = consciousnessService.getPreferredLanguage() === 'es'

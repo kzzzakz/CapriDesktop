@@ -55,7 +55,7 @@ export class ScannerService {
       isOpen,
       isScanning: this.isScanning,
       isContinuous: this.isContinuous,
-      isWatchingScreen: this.isWatchingScreen,
+      isWatchingScreen: this.isWatchingScreen || windowManager.isScannerFullscreenActive(),
       isFullscreenWatch: windowManager.isScannerFullscreenActive(),
       bounds
     }
@@ -91,11 +91,21 @@ export class ScannerService {
   }
 
   public isWatchingScreenActive(): boolean {
-    return this.isWatchingScreen
+    return this.isWatchingScreen || windowManager.isScannerFullscreenActive()
+  }
+
+  public setOverlayOnlyWatch(enabled: boolean): void {
+    if (enabled) {
+      this.stopWatchScreenLoop()
+      this.isWatchingScreen = true
+      windowManager.setScannerFullscreenWatch(true)
+      this.broadcastStatus()
+    } else {
+      this.stopFullscreenWatch()
+    }
   }
 
   public async startFullscreenWatch(): Promise<boolean> {
-    if (this.isWatchingScreen) return true
     this.isWatchingScreen = true
     this.consecutiveStaticTicks = 0
     this.recentContext = []
@@ -116,7 +126,6 @@ export class ScannerService {
   }
 
   public stopFullscreenWatch(): boolean {
-    if (!this.isWatchingScreen) return false
     this.isWatchingScreen = false
     this.stopWatchScreenLoop()
     windowManager.setScannerFullscreenWatch(false)
