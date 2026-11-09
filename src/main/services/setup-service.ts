@@ -52,9 +52,38 @@ const LINUX_FFMPEG_URL = `https://github.com/BtbN/FFmpeg-Builds/releases/downloa
 
 type Logger = (step: SetupStep | 'storage', line: string) => void
 
-function run(cmd: string, args: string[], onLine: (l: string) => void, opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<number> {
+/**
+ * Windows answers "access denied" (Node: spawn EPERM) or "in use" (EBUSY) while an antivirus is still
+ * scanning a program that was just downloaded, or while the download's file is not closed yet. That
+ * passes in a few seconds, so she tries again before giving up, and then says which program it was.
+ */
+const BLOCKED = new Set(['EPERM', 'EACCES', 'EBUSY'])
+
+async function run(cmd: string, args: string[], onLine: (l: string) => void, opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<number> {
+  for (let attempt = 1; ; attempt++) {
+    const result = await runOnce(cmd, args, onLine, opts)
+    if (typeof result === 'number') return result
+    if (!BLOCKED.has(result) || attempt >= 5) {
+      onLine(`error: spawn ${result} (${cmd})`)
+      if (BLOCKED.has(result)) onLine(`Windows did not let Capri start ${path.basename(cmd)}. An antivirus, Smart App Control or a folder protection may be blocking it: allow it there, or run the setup with Capri opened as administrator.`)
+      return 1
+    }
+    onLine(`${path.basename(cmd)} is still locked (${result}), probably by the antivirus scanning it. Trying again...`)
+    await new Promise((r) => setTimeout(r, attempt * 2000))
+  }
+}
+
+/** The exit code, or the error code when the program could not even start */
+function runOnce(cmd: string, args: string[], onLine: (l: string) => void, opts: { cwd?: string; env?: NodeJS.ProcessEnv }): Promise<number | string> {
   return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { windowsHide: true, cwd: opts.cwd, env: opts.env || process.env })
+    let proc: ReturnType<typeof spawn>
+    try {
+      proc = spawn(cmd, args, { windowsHide: true, cwd: opts.cwd, env: opts.env || process.env })
+    } catch (err: any) {
+      // EPERM and EBUSY come out of spawn() itself, not as an error event
+      resolve(String(err?.code || 'EPERM'))
+      return
+    }
     const feed = (buf: Buffer) =>
       buf
         .toString()
@@ -62,9 +91,10 @@ function run(cmd: string, args: string[], onLine: (l: string) => void, opts: { c
         .map((l) => l.trim())
         .filter(Boolean)
         .forEach(onLine)
-    proc.stdout.on('data', feed)
-    proc.stderr.on('data', feed)
-    proc.on('error', (err) => {
+    proc.stdout?.on('data', feed)
+    proc.stderr?.on('data', feed)
+    proc.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code && BLOCKED.has(err.code)) return resolve(err.code)
       onLine(`error: ${err.message}`)
       resolve(1)
     })
@@ -463,7 +493,11 @@ export class SetupService {
           }
         }
       }
-      await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())))
+      await new Promise<void>((resolve, reject) => {
+        out.once('close', () => resolve())
+        out.once('error', reject)
+        out.end()
+      })
       return true
     } catch (err: any) {
       log(step, `Download failed: ${err?.message || err}`)
@@ -626,7 +660,7 @@ export class SetupService {
     const createEnv = async () => {
       log('python', `Creating the voice environment in ${envDir}`)
       if (!isWindows) fs.rmSync(envDir, { recursive: true, force: true })
-      const [cmd, ...pre] = (sys as string).split(' ')
+      const [cmd, ...pre] = /^py -3\.\d+$/.test(sys as string) ? (sys as string).split(' ') : [sys as string]
       const code = await run(cmd, [...pre, '-m', 'venv', envDir], (l) => log('python', l))
       return code === 0 && (await envUsable())
     }
