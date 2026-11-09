@@ -21,6 +21,7 @@ import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '
 import { consciousnessService } from '../services/consciousness-service'
 import { getSystemPromptPersona, personaIntro } from '../services/system-prompt-store'
 import { scannerService } from '../services/scanner-service'
+import { watchPartyService } from '../services/watch-party-service'
 import { boredomService } from '../services/boredom-service'
 import { proactiveDialogueService } from '../services/proactive-dialogue-service'
 import { paintDrawerService } from '../services/paint-drawer-service'
@@ -502,6 +503,12 @@ export class CapriLocalAgent extends EventEmitter {
     if (isMoveAgainRequest(trimmed)) {
       roamingManager.releaseHold()
       this.emitAssistant(isSpanish ? '[excited] ¡Libre otra vez! Vuelvo a dar vueltas, choomba.' : '[excited] Free again! Back to wandering around, choomba.')
+      this.finishSession()
+      return
+    }
+
+    // Interactive Watch Party & PC Co-Browsing (TikTok scroll/likes, YouTube feed navigation, generic gaming)
+    if (await watchPartyService.handleVoiceCommand(trimmed)) {
       this.finishSession()
       return
     }

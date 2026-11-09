@@ -17,7 +17,8 @@ import {
   ScannerBounds,
   ScannerStatusPayload,
   ScannerScanResult,
-  ScannerEventPayload
+  ScannerEventPayload,
+  WatchPartyStatusPayload
 } from '../main/ipc/channels'
 
 // Linux: mouse moves over a click-through window arrive from the main process (Electron only
@@ -496,6 +497,28 @@ const api = {
         ipcRenderer.removeListener(IPC_CHANNELS.SCANNER_EVENT, subscription)
       }
     }
+  },
+
+  // Watch Party & Desktop Control
+  watchParty: {
+    getStatus: (): Promise<WatchPartyStatusPayload> => ipcRenderer.invoke('watchParty:getStatus'),
+    startTiktok: (): Promise<boolean> => ipcRenderer.invoke('watchParty:startTiktok'),
+    startYoutube: (): Promise<boolean> => ipcRenderer.invoke('watchParty:startYoutube'),
+    startGaming: (): Promise<boolean> => ipcRenderer.invoke('watchParty:startGaming'),
+    stop: (): Promise<boolean> => ipcRenderer.invoke('watchParty:stop'),
+    next: (): Promise<boolean> => ipcRenderer.invoke('watchParty:next'),
+    like: (): Promise<boolean> => ipcRenderer.invoke('watchParty:like'),
+    onStateChanged: (callback: (payload: WatchPartyStatusPayload) => void): (() => void) => {
+      const sub = (_e: IpcRendererEvent, payload: WatchPartyStatusPayload): void => callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.WATCH_PARTY_STATE_CHANGED, sub)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.WATCH_PARTY_STATE_CHANGED, sub)
+      }
+    }
+  },
+  desktopController: {
+    action: (action: string, params?: Record<string, unknown>): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_CONTROLLER_ACTION, action, params)
   }
 }
 

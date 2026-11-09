@@ -19,6 +19,8 @@ import { localizeLine } from '../../shared/lines'
 import { ToolExecutor } from '../agents/tools/tool-executor'
 import type { HotkeyAction } from '../../shared/hotkeys'
 import { scannerService } from '../services/scanner-service'
+import { watchPartyService } from '../services/watch-party-service'
+import { desktopController } from '../services/desktop-controller-service'
 import { boredomService } from '../services/boredom-service'
 import { cyberpunkAdapter } from '../services/game'
 import { CYBERPUNK_GIGS, getNextGig } from '../services/game/adapters/cyberpunk/gigs'
@@ -720,5 +722,55 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CYBERPUNK_MARK_GIG, async (_event, gigId?: string) => {
     const gig = gigId ? CYBERPUNK_GIGS.find((g) => g.id === gigId) || getNextGig() : getNextGig()
     return await cyberpunkAdapter.markGig(gig)
+  })
+
+  // Watch Party & Autonomous PC Control
+  ipcMain.handle('watchParty:getStatus', () => {
+    return watchPartyService.getStatus()
+  })
+
+  ipcMain.handle('watchParty:startTiktok', async () => {
+    return await watchPartyService.startTiktokParty()
+  })
+
+  ipcMain.handle('watchParty:startYoutube', async () => {
+    return await watchPartyService.startYoutubeParty()
+  })
+
+  ipcMain.handle('watchParty:startGaming', async () => {
+    return await watchPartyService.startGamingParty()
+  })
+
+  ipcMain.handle('watchParty:stop', () => {
+    return watchPartyService.stopParty(true)
+  })
+
+  ipcMain.handle('watchParty:next', async () => {
+    return await watchPartyService.nextTiktok()
+  })
+
+  ipcMain.handle('watchParty:like', async () => {
+    return await watchPartyService.likeTiktok()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_CONTROLLER_ACTION, async (_event, action: string, params?: Record<string, unknown>) => {
+    switch (action) {
+      case 'scroll':
+        return await desktopController.scroll((params?.direction as 'down' | 'up') || 'down', typeof params?.amount === 'number' ? params.amount : 360)
+      case 'key':
+        return await desktopController.pressKey(params?.key as any)
+      case 'click':
+        return await desktopController.click(typeof params?.x === 'number' ? params.x : -1, typeof params?.y === 'number' ? params.y : -1)
+      case 'tiktok_next':
+        return await desktopController.tiktokNext()
+      case 'tiktok_like':
+        return await desktopController.tiktokLike()
+      case 'tiktok_prev':
+        return await desktopController.tiktokPrev()
+      case 'tiktok_pause':
+        return await desktopController.tiktokPause()
+      default:
+        return false
+    }
   })
 }

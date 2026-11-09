@@ -175,7 +175,11 @@ export const IPC_CHANNELS = {
   SCANNER_WATCH_SCREEN_START: 'scanner:watchScreenStart',
   SCANNER_WATCH_SCREEN_STOP: 'scanner:watchScreenStop',
   SCANNER_WATCH_SCREEN_TOGGLE: 'scanner:watchScreenToggle',
-  SCANNER_EVENT: 'scanner:event'
+  SCANNER_EVENT: 'scanner:event',
+
+  // Watch Party & Desktop Control
+  WATCH_PARTY_STATE_CHANGED: 'watchParty:stateChanged',
+  DESKTOP_CONTROLLER_ACTION: 'desktopController:action'
 } as const
 
 export type CompanionEmotionState =
@@ -290,3 +294,13 @@ export type ScriptEventPayload =
   | { kind: 'end' }
   | { kind: 'look'; look: 'ojos' | 'ojos2' | 'closed' | 'thinking' | 'asustada' | null }
   | { kind: 'line'; id: number; text: string; audioDataUrl?: string; look?: 'ojos' | 'ojos2' | 'closed' | 'thinking' | 'asustada' }
+
+export type WatchPartyMode = 'idle' | 'tiktok' | 'youtube' | 'gaming'
+
+export interface WatchPartyStatusPayload {
+  mode: WatchPartyMode
+  active: boolean
+  isBrowsingFeed: boolean
+  candidateTitle?: string
+  lastReaction?: string
+}

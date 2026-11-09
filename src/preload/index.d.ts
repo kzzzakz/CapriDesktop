@@ -15,7 +15,8 @@ import {
   ScannerBounds,
   ScannerStatusPayload,
   ScannerScanResult,
-  ScannerEventPayload
+  ScannerEventPayload,
+  WatchPartyStatusPayload
 } from '../main/ipc/channels'
 
 export interface SetupStatus {
@@ -233,6 +234,19 @@ export interface IElectronAPI {
     toggleWatchScreen: () => Promise<boolean>
     setIgnoreMouse: (ignore: boolean) => Promise<boolean>
     onEvent: (callback: (event: ScannerEventPayload) => void) => () => void
+  }
+  watchParty: {
+    getStatus: () => Promise<WatchPartyStatusPayload>
+    startTiktok: () => Promise<boolean>
+    startYoutube: () => Promise<boolean>
+    startGaming: () => Promise<boolean>
+    stop: () => Promise<boolean>
+    next: () => Promise<boolean>
+    like: () => Promise<boolean>
+    onStateChanged?: (callback: (payload: WatchPartyStatusPayload) => void) => () => void
+  }
+  desktopController: {
+    action: (action: string, params?: Record<string, unknown>) => Promise<boolean>
   }
 }
 

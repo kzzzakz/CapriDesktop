@@ -3,7 +3,8 @@ import capriFrameImg from '../assets/capri_frame.png'
 import {
   ScannerBounds,
   ScannerScanResult,
-  ScannerEventPayload
+  ScannerEventPayload,
+  WatchPartyStatusPayload
 } from '../../../main/ipc/channels'
 import { useUiLang, UiLang } from '../utils/useUiLang'
 
@@ -21,6 +22,66 @@ const SCANNER_I18N: Record<string, Record<UiLang, string>> = {
     ja: 'CAPRI // 画面ライブ監視',
     ko: 'CAPRI // 화면 실시간 관찰',
     zh: 'CAPRI // 实时屏幕观察'
+  },
+  watchTiktok: {
+    es: 'CAPRI // MIRANDO TIKTOK',
+    en: 'CAPRI // WATCHING TIKTOK',
+    pt: 'CAPRI // ASSISTINDO TIKTOK',
+    fr: 'CAPRI // REGARD SUR TIKTOK',
+    de: 'CAPRI // TIKTOK BEOBACHTUNG',
+    it: 'CAPRI // GUARDANDO TIKTOK',
+    ru: 'CAPRI // СМОТРИТ TIKTOK',
+    ja: 'CAPRI // TIKTOKを視聴中',
+    ko: 'CAPRI // 틱톡 시청 중',
+    zh: 'CAPRI // 正在观看 TIKTOK'
+  },
+  watchYoutube: {
+    es: 'CAPRI // YOUTUBE CO-BROWSING',
+    en: 'CAPRI // YOUTUBE CO-BROWSING',
+    pt: 'CAPRI // YOUTUBE CO-BROWSING',
+    fr: 'CAPRI // YOUTUBE CO-BROWSING',
+    de: 'CAPRI // YOUTUBE CO-BROWSING',
+    it: 'CAPRI // YOUTUBE CO-BROWSING',
+    ru: 'CAPRI // YOUTUBE CO-BROWSING',
+    ja: 'CAPRI // YOUTUBE 共同閲覧',
+    ko: 'CAPRI // 유튜브 함께 보기',
+    zh: 'CAPRI // YOUTUBE 共同浏览'
+  },
+  watchGaming: {
+    es: 'CAPRI // GAMEPLAY EN VIVO',
+    en: 'CAPRI // LIVE GAMEPLAY',
+    pt: 'CAPRI // GAMEPLAY AO VIVO',
+    fr: 'CAPRI // GAMEPLAY EN DIRECT',
+    de: 'CAPRI // LIVE GAMEPLAY',
+    it: 'CAPRI // GAMEPLAY IN DIRETTA',
+    ru: 'CAPRI // ГЕЙМПЛЕЙ В ЖИВУЮ',
+    ja: 'CAPRI // ライブゲーム実況',
+    ko: 'CAPRI // 실시간 게임 관찰',
+    zh: 'CAPRI // 实时游戏实况'
+  },
+  nextVideo: {
+    es: '▼ SIGUIENTE',
+    en: '▼ NEXT',
+    pt: '▼ PRÓXIMO',
+    fr: '▼ SUIVANT',
+    de: '▼ NÄCHSTES',
+    it: '▼ SUCCESSIVO',
+    ru: '▼ СЛЕДУЮЩЕЕ',
+    ja: '▼ 次へ',
+    ko: '▼ 다음',
+    zh: '▼ 下一个'
+  },
+  likeVideo: {
+    es: '❤️ LIKE',
+    en: '❤️ LIKE',
+    pt: '❤️ CURTIR',
+    fr: '❤️ LIKE',
+    de: '❤️ LIKE',
+    it: '❤️ MI PIACE',
+    ru: '❤️ ЛАЙК',
+    ja: '❤️ いいね',
+    ko: '❤️ 좋아요',
+    zh: '❤️ 点赞'
   },
   observing: {
     es: 'OBSERVANDO',
@@ -189,6 +250,7 @@ export const ScannerView: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false)
   const [isContinuous, setIsContinuous] = useState(false)
   const [isWatchingScreen, setIsWatchingScreen] = useState(false)
+  const [watchPartyState, setWatchPartyState] = useState<WatchPartyStatusPayload | null>(null)
   const [liveReaction, setLiveReaction] = useState<string | null>(null)
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'result' | 'error'>('idle')
   const [scanResult, setScanResult] = useState<ScannerScanResult | null>(null)
@@ -225,6 +287,13 @@ export const ScannerView: React.FC = () => {
         boundsRef.current = { ...status.bounds }
         setDimensions({ width: status.bounds.width, height: status.bounds.height })
       }
+    })
+
+    if (window.api.watchParty?.getStatus) {
+      window.api.watchParty.getStatus().then((st) => setWatchPartyState(st)).catch(() => {})
+    }
+    const unsubWatchParty = window.api.watchParty?.onStateChanged?.((st) => {
+      setWatchPartyState(st)
     })
 
     // Listen for scanner events (scanning, result, status, error)
@@ -276,6 +345,7 @@ export const ScannerView: React.FC = () => {
 
     return () => {
       unsubscribe()
+      if (unsubWatchParty) unsubWatchParty()
       if (resultTimerRef.current) clearTimeout(resultTimerRef.current)
       if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current)
     }
@@ -516,8 +586,8 @@ export const ScannerView: React.FC = () => {
     }
   }
 
-  const handleStopWatchScreen = async (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleStopWatchScreen = async (e?: React.MouseEvent) => {
+    e?.stopPropagation()
     try {
       await window.api.scanner.stopWatchScreen()
       setIsWatchingScreen(false)
@@ -567,9 +637,32 @@ export const ScannerView: React.FC = () => {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
               <span className="font-mono text-[11px] font-bold text-cyan-300 tracking-wider">
-                {tr('watchTitle')}
+                {watchPartyState?.mode === 'tiktok'
+                  ? tr('watchTiktok')
+                  : watchPartyState?.mode === 'youtube'
+                  ? tr('watchYoutube')
+                  : watchPartyState?.mode === 'gaming'
+                  ? tr('watchGaming')
+                  : tr('watchTitle')}
               </span>
             </div>
+
+            {watchPartyState?.mode === 'tiktok' && (
+              <div className="flex items-center gap-1.5 ml-1">
+                <button
+                  onClick={() => window.api.watchParty?.like?.()}
+                  className="px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-500/70 text-rose-200 font-mono text-[9px] font-bold transition-all active:scale-95 cursor-pointer"
+                >
+                  {tr('likeVideo')}
+                </button>
+                <button
+                  onClick={() => window.api.watchParty?.next?.()}
+                  className="px-2 py-0.5 rounded bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/70 text-cyan-200 font-mono text-[9px] font-bold transition-all active:scale-95 cursor-pointer"
+                >
+                  {tr('nextVideo')}
+                </button>
+              </div>
+            )}
 
             {isScanning && (
               <span className="font-mono text-[9px] text-rose-300 bg-rose-950/70 border border-rose-400/50 px-1.5 py-0.5 rounded animate-pulse">
@@ -578,13 +671,40 @@ export const ScannerView: React.FC = () => {
             )}
 
             <button
-              onClick={handleStopWatchScreen}
+              onClick={() => {
+                if (watchPartyState?.active) {
+                  window.api.watchParty?.stop?.()
+                } else {
+                  handleStopWatchScreen()
+                }
+              }}
               className="ml-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-500/70 text-rose-200 hover:text-white transition-all cursor-pointer shadow-[0_0_8px_rgba(244,63,94,0.35)] active:scale-95"
               title={tr('stop')}
             >
               {tr('stop')}
             </button>
           </div>
+
+          {/* YouTube Co-Browsing Candidate Proposal Bar */}
+          {watchPartyState?.mode === 'youtube' && watchPartyState.isBrowsingFeed && watchPartyState.candidateTitle && (
+            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-xl bg-[#090b14]/95 border border-cyan-400/70 shadow-[0_0_20px_rgba(0,240,255,0.4)] backdrop-blur-md pointer-events-auto animate-fade-in">
+              <span className="font-mono text-[11px] text-white max-w-md truncate">
+                ¿Vemos: <strong className="text-cyan-300">&ldquo;{watchPartyState.candidateTitle}&rdquo;</strong>?
+              </span>
+              <button
+                onClick={() => window.api.desktopController?.action('click')}
+                className="px-2.5 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/80 text-emerald-200 font-mono text-[10px] font-bold cursor-pointer active:scale-95 transition-all"
+              >
+                ✓ SÍ
+              </button>
+              <button
+                onClick={() => window.api.desktopController?.action('scroll', { direction: 'down', amount: 500 })}
+                className="px-2.5 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-500/80 text-rose-200 font-mono text-[10px] font-bold cursor-pointer active:scale-95 transition-all"
+              >
+                ✕ OTRO
+              </button>
+            </div>
+          )}
 
           {/* Live Reaction Subtitle Overlay at Bottom */}
           {liveReaction && (
