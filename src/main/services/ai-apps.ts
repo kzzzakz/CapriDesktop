@@ -294,7 +294,7 @@ async function askAntigravity(command: Command, turn: Turn, model: string, dir: 
   ]
     .filter(Boolean)
     .join('\n\n')
-  const args = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', 'plan', '--sandbox', '--disable-slash-commands', '--effort', 'low']
+  const args = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', 'plan', '--sandbox', '--disable-slash-commands']
   if (model) args.push('--model', model)
   args.push('-p=')
   const [out, err] = splitErr(await runOnce(command, args, dir, `${JSON.stringify({ event: 'user', message: { content: prompt } })}\n`, signal))
