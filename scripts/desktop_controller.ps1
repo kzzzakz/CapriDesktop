@@ -11,7 +11,6 @@ param(
 
 $code = @"
 using System;
-using System.Text;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -30,29 +29,6 @@ public static class DesktopController {
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);
-
-    [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("user32.dll")]
-    public static extern bool IsIconic(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    public static extern bool BringWindowToTop(IntPtr hWnd);
-
-    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll")]
-    public static extern bool IsWindowVisible(IntPtr hWnd);
 
     public struct POINT {
         public int X;
@@ -74,9 +50,6 @@ public static class DesktopController {
     public const byte VK_K        = 0x4B;
     public const byte VK_L        = 0x4C;
     public const byte VK_M        = 0x4D;
-
-    public const int SW_RESTORE   = 9;
-    public const int SW_SHOW      = 5;
 
     public static void Scroll(string direction, int amount) {
         int delta = (direction.ToLower() == "up") ? Math.Abs(amount) : -Math.Abs(amount);
@@ -123,51 +96,6 @@ public static class DesktopController {
         int screenWidth = GetSystemMetrics(0);
         int screenHeight = GetSystemMetrics(1);
         DoubleClick(screenWidth / 2, screenHeight / 2);
-    }
-
-    public static bool FocusWindow(IntPtr hWnd) {
-        if (hWnd == IntPtr.Zero) return false;
-        if (IsIconic(hWnd)) {
-            ShowWindow(hWnd, SW_RESTORE);
-        } else {
-            ShowWindow(hWnd, SW_SHOW);
-        }
-        // Pulse Alt key to bypass Windows SetForegroundWindow lock
-        keybd_event(0x12, 0, 0, UIntPtr.Zero);
-        keybd_event(0x12, 0, 2, UIntPtr.Zero);
-        BringWindowToTop(hWnd);
-        return SetForegroundWindow(hWnd);
-    }
-
-    public static bool FocusBrowserOrTitle(string keyword) {
-        IntPtr foundHwnd = IntPtr.Zero;
-        string kw = (keyword ?? "").ToLower();
-
-        EnumWindows((hWnd, lParam) => {
-            if (IsWindowVisible(hWnd)) {
-                StringBuilder sb = new StringBuilder(512);
-                GetWindowText(hWnd, sb, 512);
-                string title = sb.ToString();
-                if (!string.IsNullOrWhiteSpace(title)) {
-                    string lowerTitle = title.ToLower();
-                    if (!string.IsNullOrEmpty(kw) && lowerTitle.Contains(kw)) {
-                        foundHwnd = hWnd;
-                        return false;
-                    }
-                    if (lowerTitle.Contains("youtube") || lowerTitle.Contains("chrome") || lowerTitle.Contains("edge") || lowerTitle.Contains("opera") || lowerTitle.Contains("firefox") || lowerTitle.Contains("brave")) {
-                        if (foundHwnd == IntPtr.Zero) {
-                            foundHwnd = hWnd;
-                        }
-                    }
-                }
-            }
-            return true;
-        }, IntPtr.Zero);
-
-        if (foundHwnd != IntPtr.Zero) {
-            return FocusWindow(foundHwnd);
-        }
-        return false;
     }
 }
 "@
@@ -233,8 +161,36 @@ try {
             Write-Output "TIKTOK_PAUSED"
         }
         "focus_browser" {
-            $focused = [DesktopController]::FocusBrowserOrTitle($Keyword)
-            if ($focused) {
+            $activated = $false
+            try {
+                $ws = New-Object -ComObject WScript.Shell
+
+                # 1. First attempt: If Keyword or "YouTube" matches any active window title directly
+                if ($Keyword -and $ws.AppActivate($Keyword)) {
+                    $activated = $true
+                } elseif ($ws.AppActivate("YouTube")) {
+                    $activated = $true
+                }
+
+                # 2. Second attempt: Find the browser's real primary window (MainWindowHandle != 0)
+                if (-not $activated) {
+                    $browserNames = @('chrome', 'msedge', 'opera', 'brave', 'firefox')
+                    foreach ($name in $browserNames) {
+                        $procs = Get-Process -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }
+                        foreach ($p in $procs) {
+                            if ($ws.AppActivate($p.Id)) {
+                                $activated = $true
+                                break
+                            }
+                        }
+                        if ($activated) { break }
+                    }
+                }
+            } catch {
+                # Fallback silently on COM error
+            }
+
+            if ($activated) {
                 Write-Output "FOCUSED_BROWSER"
             } else {
                 Write-Output "NO_BROWSER_FOCUSED"
