@@ -290,10 +290,17 @@ export const ScannerView: React.FC = () => {
     })
 
     if (window.api.watchParty?.getStatus) {
-      window.api.watchParty.getStatus().then((st) => setWatchPartyState(st)).catch(() => {})
+      window.api.watchParty
+        .getStatus()
+        .then((st) => {
+          setWatchPartyState(st)
+          if (st?.active) setIsWatchingScreen(true)
+        })
+        .catch(() => {})
     }
     const unsubWatchParty = window.api.watchParty?.onStateChanged?.((st) => {
       setWatchPartyState(st)
+      if (st?.active) setIsWatchingScreen(true)
     })
 
     // Listen for scanner events (scanning, result, status, error)

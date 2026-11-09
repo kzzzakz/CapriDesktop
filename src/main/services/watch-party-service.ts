@@ -436,9 +436,10 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
   // --- Voice Commands Interceptor ---
 
   public async handleVoiceCommand(rawText: string, onSay?: (msg: string) => void): Promise<{ handled: boolean; reply?: string }> {
-    const norm = rawText
+    const clean = rawText
       .toLowerCase()
-      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/^(?:hey\s+|hola\s+)?(?:capri|companion)[,:\s]*/i, '')
       .replace(/[,:\s]*(?:por\s+favor|porfa|ya|ahora|please|pls)[!.]*$/i, '')
       .replace(/[,:\s]*(?:capri|companion)[!.]*$/i, '')
@@ -446,9 +447,9 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
 
     // 1. Starting YouTube Watch Party & Co-Browsing
     const isYoutubeStart =
-      /\b(?:youtube|yt)\b/i.test(norm) &&
-      (/(?:ver|veamos|miremos|mirar|vamos|abrir?|abr[ií]|pone|pon[eé]|buscar?|busquemos|explorar?|videos?|algo|feed|play|quiero|tengo\s+ganas|qu[eé]\s+tal\s+si|podemos)/i.test(norm) ||
-        /^(?:de\s+ver\s+youtube|ver\s+youtube|veamos\s+youtube|miremos\s+youtube|vamos\s+a\s+youtube|abrir\s+youtube|abrí\s+youtube|abre\s+youtube|youtube)$/i.test(norm))
+      /\b(?:youtube|yt)\b/i.test(clean) &&
+      (/(?:ver|veamos|miremos|mirar|vamos|abrir?|abri|pone|pone|buscar?|busquemos|explorar?|videos?|algo|feed|play|quiero|tengo\s+ganas|que\s+tal\s+si|podemos)/i.test(clean) ||
+        /^(?:de\s+ver\s+youtube|ver\s+youtube|veamos\s+youtube|miremos\s+youtube|vamos\s+a\s+youtube|abrir\s+youtube|abri\s+youtube|abre\s+youtube|youtube)$/i.test(clean))
 
     if (isYoutubeStart) {
       await this.startYoutubeParty(onSay)
@@ -457,9 +458,9 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
 
     // 2. Starting TikTok Watch Party
     const isTiktokStart =
-      /\b(?:tiktok|tiktoks|tik\s+tok)\b/i.test(norm) &&
-      (/(?:ver|veamos|miremos|mirar|vamos|abrir?|abr[ií]|pone|pon[eé]|scrollea|scrolle[aá]|play)/i.test(norm) ||
-        /^(?:tiktoks?|tik\s+tok|ver\s+tiktok|veamos\s+tiktoks?|miremos\s+tiktoks?)$/i.test(norm))
+      /\b(?:tiktok|tiktoks|tik\s+tok)\b/i.test(clean) &&
+      (/(?:ver|veamos|miremos|mirar|vamos|abrir?|abri|pone|pone|scrollea|play)/i.test(clean) ||
+        /^(?:tiktoks?|tik\s+tok|ver\s+tiktok|veamos\s+tiktoks?|miremos\s+tiktoks?)$/i.test(clean))
 
     if (isTiktokStart) {
       await this.startTiktokParty(onSay)
@@ -468,8 +469,8 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
 
     // 3. Starting Gaming Watch Party
     const isGamingStart =
-      /(?:mira|mir[aá]|observa|watch)\s+(?:como\s+juego|mi\s+juego|el\s+juego|pantalla\s+mientras\s+juego|my\s+game)/i.test(norm) ||
-      /(?:reacciona|reaccion[aá])\s+a\s+(?:mi\s+juego|lo\s+que\s+juego)/i.test(norm)
+      /(?:mira|observa|watch)\s+(?:como\s+juego|mi\s+juego|el\s+juego|pantalla\s+mientras\s+juego|my\s+game)/i.test(clean) ||
+      /(?:reacciona)\s+a\s+(?:mi\s+juego|lo\s+que\s+juego)/i.test(clean)
 
     if (isGamingStart) {
       await this.startGamingParty(onSay)
@@ -480,8 +481,8 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
     if (this.mode !== 'idle') {
       // Exit / Stop
       if (
-        /(?:basta|cerrar?|para|par[aá]|stop|terminar?|salir?|close|dej[aá]\s+de\s+mirar)/i.test(norm) &&
-        /(?:tiktok|youtube|juego|pantalla|mirar|watch|video|feed)?/i.test(norm)
+        /(?:basta|cerrar?|para|stop|terminar?|salir?|close|deja\s+de\s+mirar)/i.test(clean) &&
+        /(?:tiktok|youtube|juego|pantalla|mirar|watch|video|feed)?/i.test(clean)
       ) {
         this.stopParty(true)
         return { handled: true }
@@ -489,19 +490,19 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
 
       // TikTok specific controls
       if (this.mode === 'tiktok') {
-        if (/(?:siguiente|next|otro|otra|scrollea|scrolle[aá]|skip|pasala|pasa|pas[aá])/i.test(norm)) {
+        if (/(?:siguiente|next|otro|otra|scrollea|skip|pasala|pasa)/i.test(clean)) {
           await this.nextTiktok(onSay)
           return { handled: true }
         }
-        if (/(?:dale\s+)?like|me\s*gusta|corazon|coraz[oó]n|ponele\s+like/i.test(norm)) {
+        if (/(?:dale\s+)?like|me\s*gusta|corazon|ponele\s+like/i.test(clean)) {
           await this.likeTiktok(onSay)
           return { handled: true }
         }
-        if (/(?:anterior|prev|atras|atr[aá]s|el\s+de\s+antes)/i.test(norm)) {
+        if (/(?:anterior|prev|atras|el\s+de\s+antes)/i.test(clean)) {
           await this.prevTiktok(onSay)
           return { handled: true }
         }
-        if (/(?:pausa|pausar|paus[aá]|play|reproduce|frena|fren[aá])/i.test(norm)) {
+        if (/(?:pausa|pausar|play|reproduce|frena)/i.test(clean)) {
           await this.togglePauseTiktok()
           return { handled: true }
         }
@@ -510,12 +511,12 @@ Output ONLY the video title inside quotation marks like "Video Title Here", noth
       // YouTube Feed Co-browsing choice controls
       if (this.mode === 'youtube' && this.isBrowsingFeed && this.awaitingChoice) {
         // Accept: "dale", "ponelo", "sí", "ese", "abrí ese", "vamos", "ok"
-        if (/(?:si\b|s[ií]\b|dale|ponelo|pon[eé]|abr[ií]\s+ese|abre\s+ese|ese\b|vamos|de\s+una|bueno|ok|okay|yes|sure|play|reproducilo|pongamos\s+ese)/i.test(norm)) {
+        if (/(?:si\b|dale|ponelo|pone|abri\s+ese|abre\s+ese|ese\b|vamos|de\s+una|bueno|ok|okay|yes|sure|play|reproducilo|pongamos\s+ese)/i.test(clean)) {
           await this.handleYoutubeChoice(true, onSay)
           return { handled: true }
         }
         // Reject / Search another: "otra cosa", "otro", "otra", "busca otro", "no", "siguiente", "pasá", "no me gusta"
-        if (/(?:otra\s+cosa|otro|otra|busca\s+otr[oa]|busc[aá]\s+otr[oa]|otro\s+video|otra\s+opci[oó]n|no\b|no\s+me\s+gusta|ese\s+no|siguiente|pas[aá]|salte[aá]|skip|next|nah|cambi[aá])/i.test(norm)) {
+        if (/(?:otra\s+cosa|otro|otra|busca\s+otr[oa]|otro\s+video|otra\s+opcion|no\b|no\s+me\s+gusta|ese\s+no|siguiente|pasa|saltea|skip|next|nah|cambia)/i.test(clean)) {
           await this.handleYoutubeChoice(false, onSay)
           return { handled: true }
         }
