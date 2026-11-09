@@ -1,5 +1,6 @@
 import { championDatabase } from '../lol/champion-database'
 import { findValorantAgent, normalizeAgentName, type ValorantAgent } from './agent-names'
+import type { ValorantQueue } from './matchmaking-service'
 
 export interface ValorantCommand {
   /** The request belongs to Valorant, so the League interceptor must stay out of it */
@@ -7,7 +8,28 @@ export interface ValorantCommand {
   wantsCancel: boolean
   agentQuery: string | null
   agent: ValorantAgent | null
+  /** "find a match": start the search */
+  wantsSearch: boolean
+  /** "cancel the search": leave the queue */
+  wantsLeaveQueue: boolean
+  /** The mode, when it was said: "competitive", "unrated", "swiftplay"... */
+  queue: ValorantQueue | null
+  /** A search with no game named and no agent: which game is open decides */
+  searchWithoutGame: boolean
 }
+
+/** Same words as League's search, so "busca partida" means the game that is open */
+const SEARCH = /(?:busc[aá](?:r|me)?\s+(?:una\s+)?(?:partida|juego|match|game)|entr(?:a|ar)\s+a\s+(?:la\s+)?cola|inici(?:a|ar)\s+(?:la\s+)?b[uú]squeda|pon[eé]?me\s+en\s+cola|ponme\s+en\s+cola|find\s+(?:me\s+)?(?:a\s+)?(?:\w+\s+)?(?:valorant\s+)?(?:match|game)|queue\s+(?:me\s+)?up|start\s+(?:the\s+)?(?:matchmaking|queue|search)|\bbusca\s+partida\b|\bbuscar\s+partida\b|\by\s+busca\b|\band\s+(?:search|find)\b)/i
+const LEAVE = /(?:cancel[\wáé]*|deten[\wé]*|stop|par[aá][\wá]*|sal[\wí]*\s+de)\s+(?:la\s+|el\s+|the\s+)?(?:valorant\s+)?(?:b[uú]squeda|matchmaking|queue|cola|search)|leave\s+(?:the\s+)?queue|dej[aá]\s+de\s+buscar|stop\s+searching/i
+
+const QUEUES: [ValorantQueue, RegExp][] = [
+  ['hurm', /team\s*deathmatch|\btdm\b|duelo\s+por\s+equipos|todos\s+contra\s+todos\s+por\s+equipos/i],
+  ['deathmatch', /death\s*match|todos\s+contra\s+todos|\bffa\b/i],
+  ['spikerush', /spike\s*rush|fiebre\s+de\s+(?:la\s+)?spike/i],
+  ['swiftplay', /swift\s*play|\bswift\b|partida\s+r[aá]pida|r[aá]pida/i],
+  ['competitive', /competiti\w*|ranked|rankeada|clasificatoria|\brank\b/i],
+  ['unrated', /unrated|sin\s+rango|no\s+competitiv\w*|normal(?:es)?\b|casual/i]
+]
 
 const VALORANT_MENTION = /\b(?:valorant|valo|valorantito|agentes?|agents?)\b/i
 const GAME_MENTION = /\b(?:valorant|valo|valorantito)\b/i
@@ -118,14 +140,22 @@ export function parseValorantCommand(norm: string): ValorantCommand {
   const text = (norm || '').trim()
   const mentionsValorant = VALORANT_MENTION.test(text)
   const mentionsGame = GAME_MENTION.test(text)
-  const wantsCancel = CANCEL_VERB.test(text) && SELECT_TARGET.test(text) && mentionsValorant
+  const wantsLeaveQueue = LEAVE.test(text)
+  const wantsCancel = !wantsLeaveQueue && CANCEL_VERB.test(text) && SELECT_TARGET.test(text) && mentionsValorant
+  const wantsSearch = !wantsLeaveQueue && SEARCH.test(text)
+  const queue = wantsSearch ? (QUEUES.find(([, re]) => re.test(text))?.[0] ?? null) : null
 
   const match = wantsCancel ? null : text.match(PICK_MATCH)
   const agentQuery = match ? cleanAgentQuery(match[1]) : null
   const agent = agentQuery ? findValorantAgent(agentQuery) : null
   const champion = agentQuery ? championDatabase.findExactChampion(agentQuery) : null
 
-  const isValorant = wantsCancel || (agentQuery !== null && (mentionsValorant || (agent !== null && !champion)))
+  const pickIsValorant = agentQuery !== null && (mentionsValorant || (agent !== null && !champion))
+  // "busca partida y lockea a Jett" is VALORANT because of the agent; "busca partida en valorant" because of the name
+  const queueIsValorant = (wantsSearch || wantsLeaveQueue) && (mentionsGame || pickIsValorant)
+  const isValorant = wantsCancel || pickIsValorant || queueIsValorant
+  // Only a short command: "find me a game to play tonight" is a question, not the Play button
+  const searchWithoutGame = !isValorant && (wantsSearch || wantsLeaveQueue) && !agentQuery && text.length <= 60
 
-  return { isValorant, wantsCancel, agentQuery, agent }
+  return { isValorant, wantsCancel, agentQuery: pickIsValorant ? agentQuery : null, agent: pickIsValorant ? agent : null, wantsSearch: isValorant && wantsSearch, wantsLeaveQueue: isValorant && wantsLeaveQueue, queue, searchWithoutGame }
 }

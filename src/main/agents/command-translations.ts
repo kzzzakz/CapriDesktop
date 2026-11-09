@@ -23,6 +23,26 @@ export const FIXED_COMMANDS: Record<string, Forms> = {
     ko: ['클립 따줘', '클립 저장해줘', '방금 거 클립해줘'],
     zh: ['剪辑一下', '保存片段', '录个片段', '把这段存下来']
   },
+  'find a valorant match': {
+    fr: ['cherche une partie de valorant', 'cherche une partie sur valorant', 'lance une partie de valorant'],
+    de: ['suche ein valorant spiel', 'such ein match in valorant', 'starte die suche in valorant'],
+    it: ['cerca una partita di valorant', 'cerca una partita su valorant', 'avvia una partita di valorant'],
+    pt: ['procura uma partida de valorant', 'procure uma partida no valorant', 'busca uma partida no valorant'],
+    ru: ['найди игру в валоранте', 'найди матч в валоранте', 'начни поиск в валоранте'],
+    ja: ['ヴァロでマッチを探して', 'valorantでマッチを探して', 'ヴァロラントで試合を探して'],
+    ko: ['발로란트 매치 찾아줘', '발로 게임 찾아줘', '발로란트 큐 돌려줘'],
+    zh: ['瓦罗兰特找一局', '无畏契约开始匹配', 'valorant开始匹配']
+  },
+  'cancel the valorant queue': {
+    fr: ['annule la recherche valorant', 'arrête la recherche de partie valorant', 'quitte la file valorant'],
+    de: ['brich die suche in valorant ab', 'valorant suche abbrechen', 'verlasse die warteschlange in valorant'],
+    it: ['annulla la ricerca su valorant', 'esci dalla coda di valorant', 'ferma la ricerca di valorant'],
+    pt: ['cancela a busca do valorant', 'sai da fila do valorant', 'para a busca no valorant'],
+    ru: ['отмени поиск в валоранте', 'выйди из очереди в валоранте'],
+    ja: ['ヴァロのマッチングをキャンセルして', 'valorantのキューをやめて'],
+    ko: ['발로란트 매칭 취소해줘', '발로 큐 취소해줘'],
+    zh: ['取消瓦罗兰特匹配', '取消无畏契约匹配', '退出valorant排队']
+  },
   'cancel the valorant agent pick': {
     fr: ['annule le pick valorant', 'annule l agent valorant', 'annule le choix d agent valorant'],
     de: ['brich den valorant pick ab', 'valorant pick abbrechen', 'agentenwahl in valorant abbrechen'],

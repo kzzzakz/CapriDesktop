@@ -856,5 +856,13 @@
  "You already locked another agent, so I left it alone.",
  "A teammate already grabbed {0}. Pick another one!",
  "I couldn't lock {0} for you. Check that it's unlocked and still free.",
- "Riot client isn't running or I couldn't connect, {name}. Launch it and try again."
+ "Riot client isn't running or I couldn't connect, {name}. Launch it and try again.",
+ "Searching for a {0} match in VALORANT, {name}. Good luck!",
+ "You're already searching for a match in VALORANT, {name}.",
+ "Only the party leader can start the search in VALORANT, {name}.",
+ "I can't start the search right now, {name}: go to VALORANT's main menu first.",
+ "VALORANT isn't open yet, {name}. Open it and ask me again.",
+ "VALORANT didn't let me start the search, {name}. Try it from the menu.",
+ "Done, {name}: I stopped the VALORANT match search.",
+ "You weren't searching for a match in VALORANT, {name}."
 ]

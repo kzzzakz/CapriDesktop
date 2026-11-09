@@ -74,7 +74,7 @@ export function valorantPickMessage(status: ValorantSpokenPickStatus, agentName:
   return messages[status]
 }
 
-function glzHeaders(session: RiotSession): Record<string, string> {
+export function glzHeaders(session: RiotSession): Record<string, string> {
   return {
     Authorization: `Bearer ${session.accessToken}`,
     'X-Riot-Entitlements-JWT': session.entitlements,
