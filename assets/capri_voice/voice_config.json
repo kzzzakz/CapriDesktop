@@ -1,5 +1,5 @@
 {
-  "provider": "edge-tts",
+  "provider": "fish-audio",
   "active_voice": "en-US-AriaNeural",
   "voice_es": "es-AR-ElenaNeural",
   "pitch": "+32Hz",
@@ -13,7 +13,7 @@
     "similarity_boost": 0.75
   },
   "fish_audio": {
-    "api_key": "",
+    "api_key": "sk-fish-vEW7yFq3lMgtt5P2_zYwelQ8J4Duofh7OjFz7b7kizM",
     "reference_id": "f6f9169f53244cbfb3bd8ce69bf2db10",
     "model": "s2.1-pro-free",
     "format": "mp3"

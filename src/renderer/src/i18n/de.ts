@@ -129,6 +129,12 @@ export const de: Messages = {
   lang_speechAuto: 'Automatisch (wie der Text)',
   lang_micTitle: 'Mikrofon',
   lang_micHelp: 'Sprache, die die Spracherkennung (Whisper) erwartet. Eine feste Wahl ist genauer als die automatische Erkennung.',
+  stt_title: "Transkription",
+  stt_help: "Was deine Stimme in Text umwandelt. Lokal bleibt auf deinem PC; die Cloud antwortet in 1-2 s, schickt das Audio aber an diesen Anbieter.",
+  stt_small: "Lokales Whisper · genau (langsam ohne NVIDIA-GPU)",
+  stt_base: "Lokales Whisper · schnell (weniger genau)",
+  stt_cloud: "Cloud · mit dem API-Schlüssel ihres Gehirns (Google, OpenAI oder Groq)",
+  stt_cloudMissing: "Kein Google-, OpenAI- oder Groq-Schlüssel gespeichert: Sie nutzt lokales Whisper, bis du einen in den Gehirn-Einstellungen hinzufügst.",
   lang_micAuto: 'Automatisch (erkennen)',
 
   ob_page1: 'Sprache',

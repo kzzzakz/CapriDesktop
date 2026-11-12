@@ -19,6 +19,7 @@ import { localizeLine } from '../../shared/lines'
 import { ToolExecutor } from '../agents/tools/tool-executor'
 import type { HotkeyAction } from '../../shared/hotkeys'
 import { scannerService } from '../services/scanner-service'
+import { cloudSttProvider, STT_ENGINES, type SttEngine } from '../services/cloud-stt'
 import { watchPartyService } from '../services/watch-party-service'
 import { desktopController } from '../services/desktop-controller-service'
 import { boredomService } from '../services/boredom-service'
@@ -228,7 +229,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_MUSIC_PLATFORM, () => consciousnessService.getMusicPlatform())
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_MUSIC_PLATFORM, (_event, platform) => consciousnessService.setMusicPlatform(platform))
 
-  ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS, () => consciousnessService.getLanguageSettings())
+  // With the cloud service the saved API key opens, so the window can say whether "cloud" will work
+  const languageSettingsView = () => ({ ...consciousnessService.getLanguageSettings(), cloudStt: cloudSttProvider() })
+  ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS, () => languageSettingsView())
 
   // First-run setup (onboarding window)
   ipcMain.handle(IPC_CHANNELS.SETUP_STATUS, () => setupService.getStatus())
@@ -302,11 +305,15 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_LANGUAGE_SETTINGS, (_event, next: Record<string, string>) => {
-    const saved = consciousnessService.setLanguageSettings(next || {})
+    const { sttEngine, ...langs } = next || {}
+    const saved = consciousnessService.setLanguageSettings({
+      ...langs,
+      ...(STT_ENGINES.includes(sttEngine as SttEngine) ? { sttEngine: sttEngine as SttEngine } : {})
+    })
     // Spoken language differs from the text: load the translation model now, not on the first line
     if (saved.speechLang && saved.speechLang !== 'auto') voiceService.warmTranslator()
     windowManager.broadcast(IPC_CHANNELS.COMPANION_LANGUAGE_CHANGED, consciousnessService.getUiLanguage())
-    return saved
+    return { ...saved, cloudStt: cloudSttProvider() }
   })
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_LANGUAGE, (_event, lang: string) => {
@@ -700,6 +707,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_LINE_DONE, (_event, id: number) => scriptPlayer.onLineDone(id))
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_CANCEL, () => scriptPlayer.cancel())
+  ipcMain.on(IPC_CHANNELS.COMPANION_VOICE_BUSY, (_event, busy: boolean) => scannerService.setVoiceBusy(!!busy))
 
   ipcMain.handle(IPC_CHANNELS.SCANNER_SET_IGNORE_MOUSE, (_event, ignore: boolean) => {
     windowManager.setScannerIgnoreMouse(ignore)

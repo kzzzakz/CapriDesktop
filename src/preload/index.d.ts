@@ -75,14 +75,15 @@ export interface IElectronAPI {
     ) => () => void
     scriptLineDone: (id: number) => void
     cancelScript: () => void
+    setVoiceBusy: (busy: boolean) => void
     onToggleChat: (callback: () => void) => () => void
     getUserProfile: () => Promise<{ name: string; hasName: boolean; onboardingDone: boolean }>
     getMusicPlatform: () => Promise<'youtube_music' | 'spotify'>
     setMusicPlatform: (platform: 'youtube_music' | 'spotify') => Promise<'youtube_music' | 'spotify'>
     setUserName: (name: string) => Promise<string>
     onUserNameChanged: (callback: (name: string) => void) => () => void
-    getLanguageSettings: () => Promise<{ textLang: string; speechLang: string; micLang: string }>
-    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string }) => Promise<{ textLang: string; speechLang: string; micLang: string }>
+    getLanguageSettings: () => Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }>
+    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string; sttEngine?: string }) => Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }>
     onGamingModeChanged: (callback: (enabled: boolean) => void) => () => void
     getGamingOpacity: () => Promise<number>
     getScale: () => Promise<{ desktop: number; gaming: number }>
@@ -106,7 +107,7 @@ export interface IElectronAPI {
     setLanguage: (lang: string) => Promise<string>
     speak: (text: string, durationMs?: number) => Promise<boolean>
     onStateChanged: (callback: (state: CompanionEmotionState) => void) => () => void
-    onSpeechChanged: (callback: (payload: { text: string; durationMs: number; speakVoice?: boolean }) => void) => () => void
+    onSpeechChanged: (callback: (payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean }) => void) => () => void
     onLanguageChanged: (callback: (lang: string) => void) => () => void
   }
   agent: {

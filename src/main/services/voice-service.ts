@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { app } from 'electron'
+import { transcribeInCloud } from './cloud-stt'
 import { consciousnessService } from './consciousness-service'
 import { ollamaService } from './ollama-service'
 function loadEnv(): void {
@@ -113,7 +114,9 @@ export class VoiceService {
     const pythonPath = this.findPythonPath()
 
     try {
-      const worker = spawn(pythonPath, [scriptPath, 'stt-worker'], {
+      // The model in use is loaded before the first phrase; the other one only if it's chosen later
+      const firstModel = consciousnessService.getLanguageSettings().sttEngine === 'whisper-base' ? 'base' : 'small'
+      const worker = spawn(pythonPath, [scriptPath, 'stt-worker', '--model', firstModel], {
         windowsHide: true,
         env: this.pythonEnv(),
         stdio: ['pipe', 'pipe', 'pipe']
@@ -230,12 +233,37 @@ export class VoiceService {
   }
 
   public async transcribe(audioBuffer: Buffer, partial = false): Promise<TranscribeResult> {
+    const engine = consciousnessService.getLanguageSettings().sttEngine || 'whisper-small'
+    if (engine === 'cloud') {
+      // The words on screen while talking would be one paid request every second: only the final one
+      if (partial) return { success: false, error: 'busy' }
+      const startedAt = Date.now()
+      const micLang = consciousnessService.getLanguageSettings().micLang || 'auto'
+      const cloud = await transcribeInCloud(audioBuffer, micLang)
+      if (cloud) {
+        console.log(`[VoiceService] Cloud transcription in ${Date.now() - startedAt}ms: "${cloud.text || cloud.error || ''}"`)
+        if (cloud.success && cloud.text) {
+          if (cloud.language) this.lastTranscript = { text: cloud.text, lang: cloud.language, at: Date.now() }
+          return { success: true, text: cloud.text }
+        }
+        // Silence is an answer too: transcribing it again locally would only add seconds
+        if (cloud.error === 'No speech detected') return { success: false, error: cloud.error }
+        console.warn('[VoiceService] Cloud transcription failed, using local Whisper:', cloud.error)
+      } else {
+        console.warn('[VoiceService] No saved API key can transcribe (Google, OpenAI or Groq): using local Whisper')
+      }
+    }
+    return this.transcribeLocally(audioBuffer, partial, engine === 'whisper-base' ? 'base' : 'small')
+  }
+
+  private async transcribeLocally(audioBuffer: Buffer, partial: boolean, whisperModel: 'small' | 'base'): Promise<TranscribeResult> {
     // Words on screen while talking are a nicety: they never make the real request wait in line
     if (partial && (this.sttState !== 'ready' || this.pendingRequests.size > 0)) {
       return { success: false, error: 'busy' }
     }
     // A worker that failed gets another try: Python may have been installed since
     if (this.sttState === 'failed') this.restartWorker()
+    const startedAt = Date.now()
     const id = `req_${++this.requestCounter}_${Date.now()}`
     const tempIn = path.join(os.tmpdir(), `capri_stt_${id}.webm`)
     fs.writeFileSync(tempIn, audioBuffer)
@@ -263,9 +291,10 @@ export class VoiceService {
         }, waitMs)
 
         this.pendingRequests.set(id, { resolve, reject, tempIn, timer })
-        const payload = JSON.stringify({ id, file: tempIn, lang: prefLang, hint }) + '\n'
+        const payload = JSON.stringify({ id, file: tempIn, lang: prefLang, hint, model: whisperModel }) + '\n'
         this.sttWorker!.stdin!.write(payload)
       })
+      if (!partial) console.log(`[VoiceService] Whisper transcribed in ${Date.now() - startedAt}ms: "${result.text || result.error || ''}"`)
       if (!partial && result.success && result.text && (result as { language?: string }).language) {
         this.lastTranscript = { text: result.text, lang: (result as { language?: string }).language as string, at: Date.now() }
       }
@@ -400,11 +429,16 @@ export class VoiceService {
     let spokenText = cleanText
     const speechLang = consciousnessService.getLanguageSettings().speechLang
     if (!langOverride && speechLang && speechLang !== 'auto' && targetLang !== speechLang) {
-      const translated = await this.translateForSpeech(cleanText, speechLang, 45000)
+      // Quoted text (a video title, a song) is said as written, in its own language: the translator
+      // only gets markers in its place, and the original goes back afterwards
+      const quoted: string[] = []
+      const shielded = cleanText.replace(/["“][^"”]*["”]/g, (m) => `«${quoted.push(m) - 1}»`)
+      const translated = await this.translateForSpeech(shielded, speechLang, 45000)
       if (!translated) {
         return { success: false, error: `Could not translate speech to ${speechLang}` }
       }
-      spokenText = translated
+      const kept = quoted.every((_, i) => translated.includes(`«${i}»`))
+      spokenText = kept ? translated.replace(/«(\d+)»/g, (_, i: string) => quoted[Number(i)] ?? '') : cleanText
       targetLang = speechLang
     }
 
@@ -429,6 +463,7 @@ export class VoiceService {
       ttsArgs.push('--lang', targetLang)
     }
 
+    const ttsStartedAt = Date.now()
     try {
       return await new Promise<SynthesizeResult>((resolve) => {
         const proc = spawn(pythonPath, ttsArgs, {
@@ -455,6 +490,7 @@ export class VoiceService {
             return
           }
 
+          if (!opts.silent) console.log(`[VoiceService] Voice synthesized in ${Date.now() - ttsStartedAt}ms`)
           try {
             const audioBuffer = fs.readFileSync(tempOut)
             const base64Audio = audioBuffer.toString('base64')
@@ -581,7 +617,7 @@ export class VoiceService {
           messages: [
             {
               role: 'system',
-              content: `Translate the user's text to ${names[lang] || lang}. Keep every [bracket tag] exactly as written and in the same position. Keep names, slang like "choom"/"choomba", and the casual tone. Output ONLY the translation.`
+              content: `Translate the user's text to ${names[lang] || lang}. Keep every [bracket tag] and every «number» marker exactly as written and in the same position. Keep names, slang like "choom"/"choomba", and the casual tone. Output ONLY the translation.`
             },
             { role: 'user', content: text }
           ]

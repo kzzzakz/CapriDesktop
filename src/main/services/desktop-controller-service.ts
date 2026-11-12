@@ -32,6 +32,40 @@ export class DesktopControllerService {
     })
   }
 
+  /** Like runWin32, with what the script printed (null if it failed) */
+  private runWin32Output(action: string, extraArgs: string[] = [], timeout = 8000): Promise<string | null> {
+    if (process.platform !== 'win32') return Promise.resolve(null)
+    const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath('desktop_controller.ps1'), '-Action', action, ...extraArgs]
+    return new Promise((resolve) => {
+      execFile('powershell.exe', args, { timeout, encoding: 'utf8' }, (error, stdout) => resolve(error ? null : String(stdout || '').trim()))
+    })
+  }
+
+  /** Puts the real mouse pointer at a point, without clicking */
+  public async movePointer(x: number, y: number): Promise<boolean> {
+    if (process.platform === 'win32') return this.runWin32('move', ['-X', String(Math.round(x)), '-Y', String(Math.round(y))])
+    if (isLinux) return this.runLinuxXdotool(['mousemove', String(Math.round(x)), String(Math.round(y))])
+    return false
+  }
+
+  /** Brings an open YouTube tab to the front. Its title, or null when there is none */
+  public async focusYoutubeTab(): Promise<string | null> {
+    if (process.platform === 'win32') {
+      const out = await this.runWin32Output('focus_youtube_tab', [], 10000)
+      const title = (out || '').split(/\r?\n/).pop()?.trim() || ''
+      return title && title !== 'NO_YOUTUBE_TAB' ? title : null
+    }
+    if (isLinux) return (await this.runLinuxXdotool(['search', '--name', 'YouTube', 'windowactivate'])) ? 'YouTube' : null
+    return null
+  }
+
+  /** Goes to an address in the browser tab in front (address bar, type, Enter) */
+  public async openUrlHere(url: string): Promise<boolean> {
+    if (process.platform === 'win32') return this.runWin32('open_url_here', ['-Keyword', url])
+    if (isLinux) return this.runLinuxXdotool(['key', 'ctrl+l', 'type', '--delay', '10', `${url}\n`])
+    return false
+  }
+
   private runLinuxXdotool(command: string[]): Promise<boolean> {
     if (!isLinux) return Promise.resolve(false)
     return new Promise((resolve) => {
@@ -41,12 +75,14 @@ export class DesktopControllerService {
     })
   }
 
-  public async scroll(direction: 'down' | 'up' = 'down', amount = 360): Promise<boolean> {
+  /** Wheel scroll; with a point, the pointer goes there first so the wheel lands on that window */
+  public async scroll(direction: 'down' | 'up' = 'down', amount = 360, x = -1, y = -1): Promise<boolean> {
     if (process.platform === 'win32') {
-      return this.runWin32('scroll', ['-Direction', direction, '-Amount', String(amount)])
+      return this.runWin32('scroll', ['-Direction', direction, '-Amount', String(amount), '-X', String(Math.round(x)), '-Y', String(Math.round(y))])
     } else if (isLinux) {
       const button = direction === 'down' ? '5' : '4'
       const clicks = Math.max(1, Math.round(amount / 120))
+      if (x >= 0 && y >= 0) return this.runLinuxXdotool(['mousemove', String(Math.round(x)), String(Math.round(y)), 'click', '--repeat', String(clicks), button])
       return this.runLinuxXdotool(['click', '--repeat', String(clicks), button])
     }
     return false
@@ -98,31 +134,34 @@ export class DesktopControllerService {
     return false
   }
 
+  /**
+   * One of TikTok's shortcuts, sent only to a browser window that shows TikTok once it's in front
+   * (anywhere else the key would type into the wrong app). False when it didn't reach TikTok.
+   */
+  private async tiktokKey(action: string): Promise<boolean> {
+    const out = await this.runWin32Output(action)
+    if (out?.includes(action.toUpperCase())) return true
+    console.warn(`[DesktopController] ${action} not sent: ${out || 'script failed'}`)
+    return false
+  }
+
   public async tiktokNext(): Promise<boolean> {
-    if (process.platform === 'win32') {
-      return this.runWin32('tiktok_next')
-    }
+    if (process.platform === 'win32') return this.tiktokKey('tiktok_next')
     return this.pressKey('down')
   }
 
   public async tiktokPrev(): Promise<boolean> {
-    if (process.platform === 'win32') {
-      return this.runWin32('tiktok_prev')
-    }
+    if (process.platform === 'win32') return this.tiktokKey('tiktok_prev')
     return this.pressKey('up')
   }
 
   public async tiktokLike(): Promise<boolean> {
-    if (process.platform === 'win32') {
-      return this.runWin32('tiktok_like')
-    }
+    if (process.platform === 'win32') return this.tiktokKey('tiktok_like')
     return this.pressKey('l')
   }
 
   public async tiktokPause(): Promise<boolean> {
-    if (process.platform === 'win32') {
-      return this.runWin32('tiktok_pause')
-    }
+    if (process.platform === 'win32') return this.tiktokKey('tiktok_pause')
     return this.pressKey('space')
   }
 

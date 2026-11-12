@@ -30,6 +30,7 @@ export const IPC_CHANNELS = {
   COMPANION_SCRIPT_EVENT: 'companion:scriptEvent',
   COMPANION_SCRIPT_LINE_DONE: 'companion:scriptLineDone',
   COMPANION_SCRIPT_CANCEL: 'companion:scriptCancel',
+  COMPANION_VOICE_BUSY: 'companion:voiceBusy',
   WINDOW_FORWARDED_MOUSE: 'window:forwardedMouse',
   COMPANION_TOGGLE_CHAT: 'companion:toggleChat',
   VOICE_TOGGLE_ALWAYS_LISTENING: 'voice:toggleAlwaysListening',

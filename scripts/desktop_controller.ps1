@@ -51,9 +51,19 @@ public static class DesktopController {
     public const byte VK_L        = 0x4C;
     public const byte VK_M        = 0x4D;
 
-    public static void Scroll(string direction, int amount) {
-        int delta = (direction.ToLower() == "up") ? Math.Abs(amount) : -Math.Abs(amount);
-        mouse_event(MOUSEEVENTF_WHEEL, 0, 0, (uint)delta, UIntPtr.Zero);
+    // The wheel goes to the window under the pointer, so it is put over the page first. In
+    // notches of 120 like a real wheel: one huge delta is ignored or clamped by some browsers.
+    public static void Scroll(string direction, int amount, int x, int y) {
+        if (x >= 0 && y >= 0) {
+            SetCursorPos(x, y);
+            Thread.Sleep(40);
+        }
+        int notches = Math.Max(1, (int)Math.Round(Math.Abs(amount) / 120.0));
+        int delta = (direction.ToLower() == "up") ? 120 : -120;
+        for (int i = 0; i < notches; i++) {
+            mouse_event(MOUSEEVENTF_WHEEL, 0, 0, (uint)delta, UIntPtr.Zero);
+            Thread.Sleep(25);
+        }
     }
 
     public static void PressKey(byte vk) {
@@ -176,7 +186,7 @@ try {
 
     switch ($Action.ToLower()) {
         "scroll" {
-            [DesktopController]::Scroll($Direction, $Amount)
+            [DesktopController]::Scroll($Direction, $Amount, $X, $Y)
             Write-Output "SCROLLED_$Direction"
         }
         "key" {
@@ -213,21 +223,83 @@ try {
             }
             Write-Output "DOUBLE_CLICKED"
         }
-        "tiktok_next" {
-            [DesktopController]::PressKey([DesktopController]::VK_DOWN)
-            Write-Output "TIKTOK_NEXT"
+        { $_ -in @("tiktok_next", "tiktok_prev", "tiktok_like", "tiktok_pause") } {
+            # TikTok's own shortcuts (down/up: next/previous, L: like, space: pause) only reach it when
+            # its tab is the one in front. Only a browser window showing TikTok gets the key, and only
+            # once it really is the foreground window: a stray "L" or arrow in another app would type
+            # into it. Prints the action done, NO_TIKTOK or TIKTOK_NOT_IN_FRONT.
+            $vk = switch ($Action.ToLower()) {
+                "tiktok_next"  { [DesktopController]::VK_DOWN }
+                "tiktok_prev"  { [DesktopController]::VK_UP }
+                "tiktok_like"  { [DesktopController]::VK_L }
+                "tiktok_pause" { [DesktopController]::VK_SPACE }
+            }
+            $browserNames = @('chrome', 'msedge', 'opera', 'brave', 'firefox', 'vivaldi')
+            $tiktok = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+                $browserNames -contains $_.ProcessName.ToLower() -and $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -match 'TikTok'
+            } | Select-Object -First 1
+            if (-not $tiktok) {
+                Write-Output "NO_TIKTOK"
+            } else {
+                $hwnd = $tiktok.MainWindowHandle
+                if ([DesktopController]::GetForegroundWindow() -ne $hwnd) {
+                    [DesktopController]::BringToFront($hwnd) | Out-Null
+                    Start-Sleep -Milliseconds 150
+                }
+                if ([DesktopController]::GetForegroundWindow() -ne $hwnd) {
+                    Write-Output "TIKTOK_NOT_IN_FRONT"
+                } else {
+                    [DesktopController]::PressKey($vk)
+                    Write-Output $Action.ToUpper()
+                }
+            }
         }
-        "tiktok_prev" {
-            [DesktopController]::PressKey([DesktopController]::VK_UP)
-            Write-Output "TIKTOK_PREV"
+        "move" {
+            if ($X -ge 0 -and $Y -ge 0) { [DesktopController]::SetCursorPos($X, $Y) | Out-Null }
+            Write-Output "MOVED"
         }
-        "tiktok_like" {
-            [DesktopController]::PressKey([DesktopController]::VK_L)
-            Write-Output "TIKTOK_LIKED"
+        "focus_youtube_tab" {
+            # An open YouTube tab, so she doesn't open another one. A browser window's title is its
+            # active tab; the other tabs are read through UI Automation, as a screen reader would.
+            # Prints the title of the tab now in front, or NO_YOUTUBE_TAB.
+            $found = $null
+            $browserNames = @('chrome', 'msedge', 'opera', 'brave', 'firefox', 'vivaldi')
+            $browsers = Get-Process -ErrorAction SilentlyContinue | Where-Object { $browserNames -contains $_.ProcessName.ToLower() -and $_.MainWindowHandle -ne [IntPtr]::Zero }
+            $front = $browsers | Where-Object { $_.MainWindowTitle -match 'YouTube' } | Select-Object -First 1
+            if ($front) {
+                [DesktopController]::BringToFront($front.MainWindowHandle) | Out-Null
+                $found = $front.MainWindowTitle
+            } else {
+                try {
+                    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+                    $tabCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)
+                    foreach ($b in $browsers) {
+                        $win = [System.Windows.Automation.AutomationElement]::FromHandle($b.MainWindowHandle)
+                        $tab = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond) | Where-Object { $_.Current.Name -match 'YouTube' } | Select-Object -First 1
+                        if ($tab) {
+                            [DesktopController]::BringToFront($b.MainWindowHandle) | Out-Null
+                            $pattern = $null
+                            if ($tab.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
+                                $pattern.Select()
+                            } else {
+                                $r = $tab.Current.BoundingRectangle
+                                [DesktopController]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
+                            }
+                            $found = $tab.Current.Name
+                            break
+                        }
+                    }
+                } catch {}
+            }
+            if ($found) { Write-Output $found } else { Write-Output "NO_YOUTUBE_TAB" }
         }
-        "tiktok_pause" {
-            [DesktopController]::PressKey([DesktopController]::VK_SPACE)
-            Write-Output "TIKTOK_PAUSED"
+        "open_url_here" {
+            # Goes to an address in the browser tab in front: address bar, type, Enter
+            $ws = New-Object -ComObject WScript.Shell
+            $ws.SendKeys('^l')
+            Start-Sleep -Milliseconds 150
+            $ws.SendKeys($Keyword + '{ENTER}')
+            Write-Output "NAVIGATED"
         }
         "focus_browser" {
             $activated = $false

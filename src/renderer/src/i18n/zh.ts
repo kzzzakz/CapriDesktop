@@ -129,6 +129,12 @@ export const zh: Messages = {
   lang_speechAuto: '自动(与文字相同)',
   lang_micTitle: '麦克风',
   lang_micHelp: '语音识别 (Whisper) 预期的语言。固定语言比自动检测更准确。',
+  stt_title: "语音转文字",
+  stt_help: "把你的声音转成文字的方式。本地处理留在你的电脑上；云端 1-2 秒就能响应，但会把音频发送给该服务商。",
+  stt_small: "本地 Whisper · 精准（没有 NVIDIA 显卡时较慢）",
+  stt_base: "本地 Whisper · 快速（精度较低）",
+  stt_cloud: "云端 · 使用她大脑的 API 密钥（Google、OpenAI 或 Groq）",
+  stt_cloudMissing: "没有保存 Google、OpenAI 或 Groq 的密钥：在大脑设置中添加之前，她会使用本地 Whisper。",
   lang_micAuto: '自动(检测)',
 
   ob_page1: '语言',

@@ -1,3 +1,4 @@
+import './services/log-timestamps'
 import { app, BrowserWindow } from 'electron'
 import { windowManager } from './windows/window-manager'
 import { registerIpcHandlers } from './ipc/register-handlers'
@@ -16,6 +17,9 @@ import { legacyUserDataDir } from './services/legacy-data'
 import fs from 'fs'
 import path from 'path'
 import { isElevated, relaunchElevated } from './services/admin-mode'
+import { warmBrainApp } from './services/llm-gateway'
+import { closeAiAppSessions } from './services/ai-apps'
+import { closeScreenWorker } from './services/screen-worker'
 
 // Log unhandled exceptions to crash.log
 process.on('uncaughtException', (err) => {
@@ -74,6 +78,9 @@ if (!gotTheLock) {
 
     // Register all IPC handlers
     registerIpcHandlers()
+
+    // An AI app as her brain opens now and stays open (starting it per question took 20-35s)
+    warmBrainApp()
 
     // Initialize companion and deck windows
     windowManager.init()
@@ -143,5 +150,7 @@ if (!gotTheLock) {
     gameEventBus.stop()
     systemObserver.stop()
     ollamaService.stop()
+    closeAiAppSessions()
+    closeScreenWorker()
   })
 }

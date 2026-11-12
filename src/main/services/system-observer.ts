@@ -186,8 +186,11 @@ export class SystemObserver {
         const isEs = consciousnessService.getPreferredLanguage() === 'es'
 
         // Check for proactive media comment (YouTube, TikTok, Reels, Twitch, Netflix, Spotify)
+        // Not while she is watching the screen with the user: those reactions come from what she sees,
+        // and a canned "I see you jacking into YouTube..." on top of them reads the page title aloud
         if (
           detectedMedia &&
+          !windowManager.isScannerFullscreenActive() &&
           (detectedMedia.title !== this.lastCommentedMediaTitle || Date.now() - this.triggers.media_watching.lastTriggered > 4 * 60 * 1000) &&
           this.canTrigger('media_watching')
         ) {

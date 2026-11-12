@@ -103,9 +103,11 @@ export interface LanguageSettings {
   speechLang: string
   /** Language Whisper expects from the microphone. 'auto' = detect */
   micLang: string
+  /** What turns the microphone into text: local Whisper (precise or fast) or the cloud API of her brain */
+  sttEngine: 'whisper-small' | 'whisper-base' | 'cloud'
 }
 
-export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettings = { textLang: 'auto', speechLang: 'auto', micLang: 'auto' }
+export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettings = { textLang: 'auto', speechLang: 'auto', micLang: 'auto', sttEngine: 'whisper-small' }
 
 class ConsciousnessService {
   private filePath: string = ''

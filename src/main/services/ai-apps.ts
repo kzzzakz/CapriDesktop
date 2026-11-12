@@ -11,7 +11,7 @@
  * Claude Code and Codex come from PR #1 by Kyuni.
  */
 
-import { spawn, execFile, type ChildProcess } from 'child_process'
+import { spawn, execFile, execFileSync, type ChildProcess } from 'child_process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -281,39 +281,96 @@ const jsonLines = (text: string): Body[] =>
     })
     .filter(Boolean) as Body[]
 
-async function askAntigravity(command: Command, turn: Turn, model: string, dir: string, signal?: AbortSignal | null): Promise<string> {
-  // It reads images from files: they wait in its folder, and the text says which one
+/**
+ * The user's own Antigravity settings may pre-approve commands (Remove-Item, npx...) and trust whole
+ * folders (their home, System32). For Capri none of that applies: for this session only (never saved)
+ * nothing is pre-approved and no folder is trusted, so everything needs a permission she refuses.
+ */
+const ANTIGRAVITY_LOCKDOWN = JSON.stringify({ permissions: { allow: [] }, trustedWorkspaces: [] })
+
+/** Antigravity in plan mode with its sandbox: anything needing permission is refused (headless can't ask) */
+function antigravityArgs(model: string): string[] {
+  // No --disable-slash-commands: with it, plan mode silently stops applying. Every message starts
+  // with Capri's own fixed text, so nothing in it can be read as a slash command
+  const args = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', 'plan', '--sandbox', '--settings', ANTIGRAVITY_LOCKDOWN]
+  if (model) args.push('--model', model)
+  args.push('-p=')
+  return args
+}
+
+/** One message for Antigravity. It reads images from files: they wait in its folder, and the text says which one */
+function antigravityMessage(turn: Turn, dir: string, inSession: boolean): string {
+  for (const old of fs.readdirSync(dir)) if (/^image-\d+\./.test(old)) fs.rmSync(path.join(dir, old), { force: true })
   turn.images.forEach((image, i) => fs.writeFileSync(path.join(dir, `image-${i}.${image.ext}`), image.data))
   const prompt = [
     turn.images.length
       ? `${ONLY_A_MODEL} The only exception: open the attached images in the current folder with your file viewer to look at them.`
       : ONLY_A_MODEL,
+    inSession && SESSION_TURN_NOTE,
     turn.instructions && `<instructions>\n${turn.instructions}\n</instructions>`,
     `<conversation>\n${turn.conversation}\n</conversation>`,
     'Write only the next [assistant] reply.'
   ]
     .filter(Boolean)
     .join('\n\n')
-  const args = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', 'plan', '--sandbox', '--disable-slash-commands']
-  if (model) args.push('--model', model)
-  args.push('-p=')
-  const [out, err] = splitErr(await runOnce(command, args, dir, `${JSON.stringify({ event: 'user', message: { content: prompt } })}\n`, signal))
-  const result = jsonLines(out).reverse().find((e) => e.event === 'result')?.result
+  return `${JSON.stringify({ event: 'user', message: { content: prompt } })}\n`
+}
+
+function antigravityAnswer(result: Body | undefined, err: string): string {
   if (!result) throw new AiAppError(redact(err || 'Antigravity gave no answer.'), errorCode(err))
   if (result.status !== 'SUCCESS') throw new AiAppError(redact(String(result.error || err || 'Antigravity failed.')), errorCode(`${result.error} ${err}`))
   return String(result.response || '')
 }
 
-async function askClaudeCode(command: Command, turn: Turn, model: string, dir: string, signal?: AbortSignal | null): Promise<string> {
-  // The instructions go in a file: Windows cuts command lines at 32k characters
-  const systemFile = path.join(dir, 'system.txt')
-  fs.writeFileSync(systemFile, [ONLY_A_MODEL, turn.instructions].filter(Boolean).join('\n\n'), 'utf8')
-  const content: Body[] = [{ type: 'text', text: `Continue this conversation; role labels mark the earlier turns. Answer only the last one.\n\n${turn.conversation}` }]
-  for (const image of turn.images) content.push({ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data.toString('base64') } })
-  const args = [
+/**
+ * Antigravity's tools are off for Capri, enforced by Antigravity itself: its own folder (the workspace)
+ * gets a PreToolUse hook that denies every tool call. Plan mode and the sandbox alone are not enough:
+ * tested, its file tool still wrote outside its folder without asking. A hook that fails also blocks
+ * the tool. With allowReading, its file viewer still goes through (read_file / view_file): the one-shot
+ * run reads screenshots that way (ACP sessions get them inside the message). Reading outside its
+ * folder still needs a permission, which headless can't give.
+ */
+function writeNoToolsHook(dir: string, allowReading: boolean): void {
+  const agents = path.join(dir, '.agents')
+  fs.mkdirSync(agents, { recursive: true })
+  const deny = 'echo {"decision":"deny","reason":"Capri only uses the model: tools are off."}'
+  // The tool's name in the payload, written by Antigravity: "name": "read_file" (text the model writes
+  // in the arguments arrives escaped, \"name\", so it can't fake this)
+  const script = allowReading
+    ? ['@echo off', 'findstr /r /c:"\\"name\\": *\\"read_file\\"" /c:"\\"name\\": *\\"view_file\\"" >nul', `if %errorlevel%==0 (echo {"decision":"allow"}) else (${deny})`, 'exit /b 0', '']
+    : ['@echo off', deny, 'exit /b 0', '']
+  const hookFile = path.join(agents, 'capri-no-tools.cmd')
+  fs.writeFileSync(hookFile, script.join('\r\n'))
+  fs.writeFileSync(
+    path.join(agents, 'hooks.json'),
+    JSON.stringify({ 'capri-no-tools': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: unquotedPath(hookFile), timeout: 10 }] }] } })
+  )
+}
+
+/**
+ * Antigravity hands a hook's command to cmd /c with its quotes escaped, so a quoted path is never
+ * found: the path goes bare, and one with spaces as its short 8.3 form (which has none).
+ */
+function unquotedPath(file: string): string {
+  if (!/\s/.test(file) || !isWin) return file
+  try {
+    const short = execFileSync('cmd.exe', ['/d', '/c', `for %I in ("${file}") do @echo %~sI`], { encoding: 'utf8', windowsHide: true }).trim()
+    if (short && !/\s/.test(short)) return short
+  } catch {}
+  return file
+}
+
+async function askAntigravity(command: Command, turn: Turn, model: string, dir: string, signal?: AbortSignal | null): Promise<string> {
+  writeNoToolsHook(dir, true)
+  const [out, err] = splitErr(await runOnce(command, antigravityArgs(model), dir, antigravityMessage(turn, dir, false), signal))
+  return antigravityAnswer(jsonLines(out).reverse().find((e) => e.event === 'result')?.result, err)
+}
+
+/** Claude Code with no tools at all: it only thinks and answers */
+function claudeArgs(model: string, systemFile: string): string[] {
+  return [
     '-p',
     '--model', model || 'haiku',
-    // No tools at all: it only thinks and answers
     '--tools', '',
     '--permission-mode', 'default',
     '--no-session-persistence',
@@ -325,14 +382,379 @@ async function askClaudeCode(command: Command, turn: Turn, model: string, dir: s
     '--verbose',
     '--system-prompt-file', systemFile
   ]
-  const [out, err] = splitErr(await runOnce(command, args, dir, `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`, signal))
-  const result = jsonLines(out).reverse().find((e) => e.type === 'result')
-  if (!result) throw new AiAppError(redact(err || out || 'Claude Code gave no answer.'), errorCode(`${err} ${out}`))
+}
+
+/**
+ * One message for Claude Code. Started once per question, the instructions go in its system prompt;
+ * a session that stays open has one system prompt for every question, so they travel in the message.
+ */
+function claudeMessage(turn: Turn, inSession: boolean): string {
+  const text = [
+    inSession && SESSION_TURN_NOTE,
+    inSession && turn.instructions && `<instructions>\n${turn.instructions}\n</instructions>`,
+    `Continue this conversation; role labels mark the earlier turns. Answer only the last one.\n\n${turn.conversation}`
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+  const content: Body[] = [{ type: 'text', text }]
+  for (const image of turn.images) content.push({ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data.toString('base64') } })
+  return `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`
+}
+
+function claudeAnswer(result: Body | undefined, err: string): string {
+  if (!result) throw new AiAppError(redact(err || 'Claude Code gave no answer.'), errorCode(err))
   if (result.is_error) {
     const why = String(result.result || JSON.stringify(result.errors || ''))
     throw new AiAppError(redact(why), errorCode(why))
   }
   return String(result.result || '')
+}
+
+async function askClaudeCode(command: Command, turn: Turn, model: string, dir: string, signal?: AbortSignal | null): Promise<string> {
+  // The instructions go in a file: Windows cuts command lines at 32k characters
+  const systemFile = path.join(dir, 'system.txt')
+  fs.writeFileSync(systemFile, [ONLY_A_MODEL, turn.instructions].filter(Boolean).join('\n\n'), 'utf8')
+  const [out, err] = splitErr(await runOnce(command, claudeArgs(model, systemFile), dir, claudeMessage(turn, false), signal))
+  return claudeAnswer(jsonLines(out).reverse().find((e) => e.type === 'result'), err || out)
+}
+
+// Sessions that stay open
+//
+// Starting the app is most of the wait: one start per question was 20-35s. Both apps can stay open
+// and take one question after another, so a session stays open while the app is her brain.
+//  - Claude Code: its print mode reads one message after another on stdin (~1s per answer).
+//  - Antigravity: its ACP server (Agent Client Protocol, JSON-RPC on stdio). Its print mode only takes
+//    text, so a screenshot had to be opened with its file tool: two model steps, 10-25s. ACP takes the
+//    image inside the message: 3-8s. Plan mode and the chosen model are set on each new session, the
+//    client offers no file or terminal access, and any permission the agent asks for is refused.
+// The app remembers the earlier messages of a session, but Capri sends the whole conversation every
+// time: after a few questions the session is replaced by a fresh one (started ahead, so nobody waits),
+// and each message says it stands alone.
+
+type SessionApp = 'antigravity' | 'claude-code'
+const SESSION_MAX_TURNS = 8
+const SESSION_IDLE_MS = 15 * 60_000
+/** A chat reply while she's still thinking of a screen reaction gets a second session, not a queue */
+const SESSION_POOL = 2
+
+const SESSION_TURN_NOTE =
+  'This message is a new request that stands on its own: ignore every earlier message of this session and answer only this one.'
+
+/**
+ * When its stream breaks, Antigravity writes a notice into the answer ("The stream was interrupted.
+ * Please continue the task you were working on.") and then says it all again. She'd read that aloud:
+ * only the last complete answer stays.
+ */
+function withoutInterruption(text: string): string {
+  const parts = text.split(/[^\S\n]*(?:⚠️?)?[^\S\n]*The stream was interrupted\.[^\n]*/i).map((p) => p.trim())
+  // Cut off and never said again: half a sentence is no answer
+  return parts[parts.length - 1] || ''
+}
+
+/** The question as ACP content: the text, and the images inside the message instead of in files */
+function acpPrompt(turn: Turn): Body[] {
+  const conversation = turn.conversation.replace(/\[attached image: image-(\d+)\.\w+\]/g, (_m, i: string) => `[attached image ${Number(i) + 1}]`)
+  const text = [
+    ONLY_A_MODEL,
+    SESSION_TURN_NOTE,
+    turn.instructions && `<instructions>\n${turn.instructions}\n</instructions>`,
+    `<conversation>\n${conversation}\n</conversation>`,
+    'Write only the next [assistant] reply.'
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+  return [{ type: 'text', text }, ...turn.images.map((image) => ({ type: 'image', mimeType: image.mime, data: image.data.toString('base64') }))]
+}
+
+class AppSession {
+  readonly dir: string
+  dead = false
+  busy = false
+  turns = 0
+  lastUsed = Date.now()
+  private child: ChildProcess
+  private buffer = ''
+  private stderr = ''
+  /** Claude Code: the answer being waited for */
+  private pending: { resolve: (event: Body) => void; reject: (err: Error) => void } | null = null
+  /** Antigravity: JSON-RPC calls waiting for their answer, and the reply text streaming in */
+  private calls = new Map<number, { resolve: (msg: Body) => void; reject: (err: Error) => void }>()
+  private nextCallId = 1
+  private acpSession = ''
+  private acpText = ''
+  /** Antigravity: starting the ACP session and its warm-up question, until done */
+  private ready: Promise<void> | null = null
+
+  constructor(
+    readonly app: SessionApp,
+    readonly model: string,
+    command: Command
+  ) {
+    this.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-app-'))
+    let args: string[]
+    if (app === 'antigravity') {
+      writeNoToolsHook(this.dir, false)
+      // Without --sandbox an ACP session wrote a file outside its folder without asking (tested)
+      args = ['--sandbox', '--settings', ANTIGRAVITY_LOCKDOWN, 'acp']
+    } else {
+      const systemFile = path.join(this.dir, 'system.txt')
+      fs.writeFileSync(
+        systemFile,
+        `${ONLY_A_MODEL}\n\nEvery user message is a separate request that brings its own <instructions> (who you are, how to answer): follow them as your instructions for that answer.`,
+        'utf8'
+      )
+      args = claudeArgs(model, systemFile)
+    }
+    this.child = spawn(command.file, [...command.prefix, ...args], {
+      cwd: this.dir,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NO_COLOR: '1' },
+      windowsHide: true,
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    this.child.stdout!.setEncoding('utf8')
+    this.child.stderr!.setEncoding('utf8')
+    this.child.stdout!.on('data', (chunk: string) => this.onOutput(chunk))
+    this.child.stderr!.on('data', (chunk: string) => {
+      this.stderr = (this.stderr + chunk).slice(-8000)
+    })
+    this.child.stdin!.on('error', () => {})
+    this.child.on('error', (err) => this.fail(new AiAppError(err.message, (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'auth' : 'other')))
+    this.child.on('close', (code) => this.fail(new AiAppError(redact(this.stderr || `${AI_APP_NAMES[app]} closed (${code}).`), errorCode(this.stderr))))
+    console.log(`[AiApps] ${AI_APP_NAMES[app]} session opened${model ? ` (${model})` : ''}`)
+    if (app === 'antigravity') {
+      this.ready = this.startAcp().catch((err) => {
+        console.warn('[AiApps] Antigravity session could not start:', (err as Error)?.message)
+        this.close()
+      })
+    }
+  }
+
+  /** A new ACP session in plan mode on the chosen model, and a tiny first question so the next one is quick */
+  private async startAcp(): Promise<void> {
+    await this.call('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } })
+    const session = await this.call('session/new', { cwd: this.dir, mcpServers: [] })
+    this.acpSession = String(session.sessionId || '')
+    if (!this.acpSession) throw new AiAppError('Antigravity opened no session.', 'other')
+    await this.call('session/set_mode', { sessionId: this.acpSession, modeId: 'plan' })
+    if (this.model) await this.call('session/set_model', { sessionId: this.acpSession, modelId: this.model })
+    this.acpText = ''
+    await this.call('session/prompt', { sessionId: this.acpSession, prompt: [{ type: 'text', text: `${ONLY_A_MODEL}\n\nReply with only the word: ok` }] })
+  }
+
+  /** One JSON-RPC call to the ACP server; an error answer becomes the AiAppError it describes */
+  private call(method: string, params: Body): Promise<Body> {
+    return new Promise((resolve, reject) => {
+      if (this.dead) return reject(new AiAppError('Session closed.', 'other'))
+      const id = this.nextCallId++
+      this.calls.set(id, {
+        resolve: (msg) => {
+          if (msg.error) {
+            const why = String(msg.error.message || JSON.stringify(msg.error))
+            reject(new AiAppError(redact(why), errorCode(why)))
+          } else resolve(msg.result || {})
+        },
+        reject
+      })
+      this.child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
+    })
+  }
+
+  private onOutput(chunk: string): void {
+    this.buffer += chunk
+    let at: number
+    while ((at = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, at).trim()
+      this.buffer = this.buffer.slice(at + 1)
+      if (!line.startsWith('{')) continue
+      let event: Body
+      try {
+        event = JSON.parse(line)
+      } catch {
+        continue
+      }
+      if (this.app === 'antigravity') this.onAcpMessage(event)
+      else if (event.type === 'result' && this.pending) {
+        const { resolve } = this.pending
+        this.pending = null
+        resolve(event)
+      }
+    }
+  }
+
+  private onAcpMessage(msg: Body): void {
+    // The answer to one of our calls
+    if (typeof msg.id === 'number' && !msg.method && this.calls.has(msg.id)) {
+      const call = this.calls.get(msg.id)!
+      this.calls.delete(msg.id)
+      call.resolve(msg)
+      return
+    }
+    if (msg.method === 'session/update') {
+      const update = msg.params?.update
+      if (update?.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') this.acpText += String(update.content.text || '')
+      return
+    }
+    // The agent asks for something (a permission, a file, a terminal): never granted
+    if (msg.method && msg.id !== undefined) {
+      const reply =
+        msg.method === 'session/request_permission'
+          ? { jsonrpc: '2.0', id: msg.id, result: { outcome: { outcome: 'cancelled' } } }
+          : { jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Not available: Capri only uses the model.' } }
+      this.child.stdin!.write(`${JSON.stringify(reply)}\n`)
+    }
+  }
+
+  private fail(err: Error): void {
+    if (!this.dead) console.log(`[AiApps] ${AI_APP_NAMES[this.app]} session closed`)
+    this.dead = true
+    const pending = this.pending
+    this.pending = null
+    pending?.reject(err)
+    for (const call of this.calls.values()) call.reject(err)
+    this.calls.clear()
+    fs.rm(this.dir, { recursive: true, force: true }, () => {})
+  }
+
+  close(): void {
+    if (this.dead) return
+    killTree(this.child)
+    this.fail(new AiAppError('Session closed.', 'other'))
+  }
+
+  /** One question, one answer. A question can't be called back halfway: stopping it ends the session */
+  async ask(turn: Turn, signal?: AbortSignal | null): Promise<string> {
+    if (this.ready) {
+      const ready = this.ready
+      this.ready = null
+      await ready
+    }
+    if (this.dead) throw new AiAppError('Session closed.', 'other')
+    this.turns++
+    this.stderr = ''
+    const timer = setTimeout(() => this.close(), REPLY_TIMEOUT_MS)
+    const onAbort = () => this.close()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      if (signal?.aborted) onAbort()
+      if (this.app === 'antigravity') {
+        this.acpText = ''
+        const result = await this.call('session/prompt', { sessionId: this.acpSession, prompt: acpPrompt(turn) })
+        if (result.stopReason === 'refusal') throw new AiAppError('Antigravity refused to answer.', 'other')
+        const text = withoutInterruption(this.acpText)
+        if (!text) throw new AiAppError(redact(this.stderr || `Antigravity gave no answer (${result.stopReason || 'no reason'}).`), 'other')
+        return text
+      }
+      const event = await new Promise<Body>((resolve, reject) => {
+        this.pending = { resolve, reject }
+        this.child.stdin!.write(claudeMessage(turn, true))
+      })
+      return claudeAnswer(event, this.stderr)
+    } catch (err) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      throw err
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    }
+  }
+}
+
+const sessions: AppSession[] = []
+let idleTimer: NodeJS.Timeout | null = null
+
+function dropSession(session: AppSession): void {
+  session.close()
+  const at = sessions.indexOf(session)
+  if (at >= 0) sessions.splice(at, 1)
+}
+
+function openSession(app: SessionApp, model: string, command: Command): AppSession {
+  const session = new AppSession(app, model, command)
+  sessions.push(session)
+  if (!idleTimer) {
+    idleTimer = setInterval(() => {
+      for (const s of [...sessions]) if (s.dead || (!s.busy && Date.now() - s.lastUsed > SESSION_IDLE_MS)) dropSession(s)
+      if (!sessions.length && idleTimer) {
+        clearInterval(idleTimer)
+        idleTimer = null
+      }
+    }, 60_000)
+    idleTimer.unref()
+  }
+  return session
+}
+
+/** A model without its thinking level: "gemini-3.8-flash-medium" and "-low" are the same model */
+const modelFamily = (model: string): string => model.replace(/-(?:high|medium|low)$/i, '')
+
+/** Sessions of another app or another model go; the same model on another thinking level stays for the quick answers */
+function dropOtherBrains(app: SessionApp, model: string): void {
+  for (const s of [...sessions]) if (s.dead || ((s.app !== app || modelFamily(s.model) !== modelFamily(model)) && !s.busy)) dropSession(s)
+}
+
+const quickModels = new Map<string, string>()
+
+/**
+ * The model for an answer that has to come fast (a one-line reaction to the screen): the same model
+ * on its lowest thinking level, when the app has one. Measured with Antigravity, a reaction took
+ * 5-10s on "medium" and 3-4s on "low", and reads just as well.
+ */
+async function quickModelOf(id: AiAppId, model: string, command: Command): Promise<string> {
+  if (id !== 'antigravity' || !/-(?:high|medium)$/i.test(model)) return model
+  const known = quickModels.get(model)
+  if (known) return known
+  const low = `${modelFamily(model)}-low`
+  const models = await listAntigravityModels(command).catch(() => [] as string[])
+  // An empty list only means the app didn't answer this time: asked again next time
+  if (!models.length) return model
+  const quick = models.includes(low) ? low : model
+  quickModels.set(model, quick)
+  return quick
+}
+
+/** A free session of this app and model: an open one, a new one, or none when the pool is full */
+function takeSession(app: SessionApp, model: string, command: Command, spare = true): AppSession | null {
+  dropOtherBrains(app, model)
+  const mine = (): AppSession[] => sessions.filter((s) => !s.dead && s.app === app && s.model === model)
+  const free = mine().find((s) => !s.busy)
+  const session = free || (mine().length < SESSION_POOL ? openSession(app, model, command) : null)
+  if (session) session.busy = true
+  // A screen reaction and a chat reply often overlap: a spare starts (and warms up) now, so the
+  // second question finds it ready instead of waiting ~10s for a cold one
+  if (session && spare && mine().length < SESSION_POOL && !mine().some((s) => !s.busy)) openSession(app, model, command)
+  return session
+}
+
+function giveBack(session: AppSession, command: Command): void {
+  session.busy = false
+  session.lastUsed = Date.now()
+  if (session.dead || session.turns >= SESSION_MAX_TURNS) {
+    dropSession(session)
+    // Its replacement starts now, while she talks, so the next question doesn't wait for it
+    if (!sessions.some((s) => !s.dead && s.app === session.app && s.model === session.model)) openSession(session.app, session.model, command)
+  }
+}
+
+/**
+ * Opens the app's session ahead, when it's chosen as her brain or Capri starts with it. `quick`
+ * opens the one for fast answers instead (she starts watching the screen).
+ */
+export function warmAiApp(id: AiAppId, model: string, quick = false): void {
+  if (id === 'codex') return
+  const command = findCommand(id)
+  if (!command) return
+  const open = (m: string): void => {
+    dropOtherBrains(id, m)
+    if (!sessions.some((s) => !s.dead && s.app === id && s.model === m)) openSession(id, m, command)
+  }
+  if (!quick) return open(model.trim())
+  void quickModelOf(id, model.trim(), command).then(open)
+}
+
+/** Closes every open session: another brain was chosen, or Capri is quitting */
+export function closeAiAppSessions(): void {
+  for (const s of [...sessions]) dropSession(s)
 }
 
 async function askCodex(command: Command, turn: Turn, model: string, dir: string, signal?: AbortSignal | null): Promise<string> {
@@ -359,13 +781,33 @@ async function askCodex(command: Command, turn: Turn, model: string, dir: string
   return String(message.item.text || '')
 }
 
-/** One chat request through the app, answered in OpenAI's shape */
-export async function runAiApp(id: AiAppId, body: Body, model: string, signal?: AbortSignal | null): Promise<Body> {
+/**
+ * One chat request through the app, answered in OpenAI's shape. `quick` asks for the fastest answer
+ * the chosen model can give (its lowest thinking level, when the app has one).
+ */
+export async function runAiApp(id: AiAppId, body: Body, model: string, signal?: AbortSignal | null, quick = false): Promise<Body> {
   signal?.throwIfAborted()
   const command = findCommand(id)
   if (!command) throw new AiAppError(`${AI_APP_NAMES[id]} is not installed.`, 'auth')
   const turn = readTurn(body)
-  // Its own empty folder each time: nothing of the user's is in reach, and it is gone afterwards
+  if (quick) model = await quickModelOf(id, model.trim(), command)
+  if (id !== 'codex') {
+    // Quick answers come one at a time: no spare session waiting next to theirs
+    const session = takeSession(id, model.trim(), command, !quick)
+    if (session) {
+      try {
+        return toChatResponse(body, await session.ask(turn, signal), id)
+      } catch (err) {
+        // Stopped on purpose, or the app answered with an error (signed out, no quota): that's the answer.
+        // A session that died on its own gets one more try started the usual way
+        if (signal?.aborted || !session.dead || (err instanceof AiAppError && err.code !== 'other')) throw err
+        console.warn(`[AiApps] ${AI_APP_NAMES[id]} session failed, asking once without it:`, (err as Error)?.message)
+      } finally {
+        giveBack(session, command)
+      }
+    }
+  }
+  // Codex, a full pool or a failed session: its own empty folder each time: nothing of the user's is in reach, and it is gone afterwards
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-app-'))
   try {
     const ask = id === 'antigravity' ? askAntigravity : id === 'claude-code' ? askClaudeCode : askCodex

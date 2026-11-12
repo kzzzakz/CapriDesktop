@@ -11,7 +11,7 @@ import { app, safeStorage } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { scriptPath } from './app-paths'
-import { aiAppStatus, isAiAppId, runAiApp, type AiAppId } from './ai-apps'
+import { aiAppStatus, closeAiAppSessions, isAiAppId, runAiApp, warmAiApp, type AiAppId } from './ai-apps'
 import { personalize } from './user-profile'
 import { DEFAULT_SYSTEM_PROMPT, getSystemPromptPersona } from './system-prompt-store'
 
@@ -108,6 +108,18 @@ export function isCloudMode(): boolean {
   return s.provider === 'cloud' && !!s.baseUrl && !!s.model
 }
 
+/** One of the user's AI apps answers: a whole program starts per question, so 20s+ each */
+export function isAiAppMode(): boolean {
+  const s = load()
+  return s.provider === 'app' && isAiAppId(s.preset)
+}
+
+/** Opens ahead the app session that answers her quick lines (she starts watching the screen) */
+export function warmQuickAnswers(): void {
+  const s = load()
+  if (s.provider === 'app' && isAiAppId(s.preset)) warmAiApp(s.preset, s.model, true)
+}
+
 export function getLocalModel(): string {
   return load().localModel || 'capri'
 }
@@ -132,6 +144,8 @@ export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; e
   if (next.provider === 'app') {
     if (!isAiAppId(next.preset)) return { success: false, error: 'missing-model', settings: getLlmSettings() }
     persist({ ...current, provider: next.provider, preset: next.preset, model: next.model })
+    // The app opens now and stays open: the first question doesn't wait for it to start
+    warmAiApp(next.preset, next.model)
     return { success: true, settings: getLlmSettings() }
   }
   if (typeof update.baseUrl === 'string') next.baseUrl = normalizeBase(update.baseUrl)
@@ -157,10 +171,28 @@ export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; e
   }
 
   persist(next)
+  closeAiAppSessions()
   return { success: true, settings: getLlmSettings() }
 }
 
+/** Capri starts with an AI app as her brain: it opens right away and stays open */
+export function warmBrainApp(): void {
+  const s = load()
+  if (s.provider === 'app' && isAiAppId(s.preset)) warmAiApp(s.preset, s.model)
+}
+
 /** The typed key if there is one, otherwise the saved key only if it belongs to that same server */
+/**
+ * The API the brain settings hold a key for, also while an AI app answers (the key from before stays
+ * saved). Cloud transcription uses it, so it needs no account of its own.
+ */
+export function savedApiCredentials(): { baseUrl: string; key: string } | null {
+  const s = load()
+  const key = savedKey()
+  if (!s.baseUrl || !key || keyWouldLeakInClear(s.baseUrl, key)) return null
+  return { baseUrl: normalizeBase(s.baseUrl), key }
+}
+
 function keyFor(baseUrl: string, typedKey?: string): string {
   if (typedKey) return typedKey.trim()
   return sameOrigin(load().baseUrl, baseUrl) ? savedKey() : ''
@@ -255,9 +287,9 @@ function relaxBody(body: Body, errorText: string): Body | null {
 const refusedParams = new Map<string, Set<string>>()
 
 /** One chat request through an AI app, answered like the API would: errors keep their HTTP status */
-async function appChat(app: AiAppId, model: string, payload: Body, signal?: AbortSignal | null): Promise<Response> {
+async function appChat(app: AiAppId, model: string, payload: Body, signal?: AbortSignal | null, quick = false): Promise<Response> {
   try {
-    return jsonResponse(await runAiApp(app, payload, model, signal))
+    return jsonResponse(await runAiApp(app, payload, model, signal, quick))
   } catch (err) {
     if ((err as Error)?.name === 'AbortError') throw err
     console.warn(`[LlmGateway] ${app} failed:`, (err as Error)?.message || err)
@@ -418,10 +450,12 @@ export async function llmFetch(input: string, init?: RequestInit): Promise<Respo
   const route = new URL(input).pathname
   const key = viaApp ? '' : keyFor(baseUrl)
   if (!viaApp && keyWouldLeakInClear(baseUrl, key)) return jsonResponse({ error: 'insecure' }, 403)
-  const postChat = (_base: string, _key: string, payload: Body, sig?: AbortSignal | null): Promise<Response> =>
-    viaApp ? appChat(settings.preset as AiAppId, settings.model, payload, sig) : postChatApi(baseUrl, key, payload, sig)
   const signal = init?.signal
   const req: Body = typeof init?.body === 'string' ? JSON.parse(init.body) : {}
+  // A one-line reaction to the screen: an app answers it on the model's fastest thinking level
+  const quick = !!(req.options as Body | undefined)?.quick
+  const postChat = (_base: string, _key: string, payload: Body, sig?: AbortSignal | null): Promise<Response> =>
+    viaApp ? appChat(settings.preset as AiAppId, settings.model, payload, sig, quick) : postChatApi(baseUrl, key, payload, sig)
 
   if (route.endsWith('/api/tags')) {
     return jsonResponse({ models: [...LOCAL_MODEL_ALIASES, model].map((name) => ({ name })) })

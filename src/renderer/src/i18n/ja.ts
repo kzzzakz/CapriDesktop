@@ -129,6 +129,12 @@ export const ja: Messages = {
   lang_speechAuto: '自動 (テキストと同じ)',
   lang_micTitle: 'マイク',
   lang_micHelp: '音声認識 (Whisper) が想定する言語です。固定すると自動検出より正確です。',
+  stt_title: "文字起こし",
+  stt_help: "声をテキストに変換する方法です。ローカルはPC内で完結し、クラウドは1〜2秒で応答しますが音声をそのプロバイダーに送信します。",
+  stt_small: "ローカル Whisper · 高精度（NVIDIA GPUがないと遅い）",
+  stt_base: "ローカル Whisper · 高速（精度は低め）",
+  stt_cloud: "クラウド · 頭脳のAPIキーを使用（Google、OpenAI、Groq）",
+  stt_cloudMissing: "Google、OpenAI、Groq のキーが保存されていません。頭脳の設定でキーを追加するまでローカル Whisper を使います。",
   lang_micAuto: '自動 (検出)',
 
   ob_page1: '言語',

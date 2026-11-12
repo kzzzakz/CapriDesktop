@@ -127,6 +127,12 @@ export const en = {
   lang_speechAuto: 'Automatic (same as the text)',
   lang_micTitle: 'Microphone',
   lang_micHelp: 'Language the speech recognition (Whisper) expects. Setting it is more accurate than auto-detection.',
+  stt_title: "Transcription",
+  stt_help: "What turns your voice into text. Local stays on your PC; the cloud answers in 1-2 s but sends the audio to that provider.",
+  stt_small: "Local Whisper · precise (slow without an NVIDIA GPU)",
+  stt_base: "Local Whisper · fast (less precise)",
+  stt_cloud: "Cloud · with the API key of her brain (Google, OpenAI or Groq)",
+  stt_cloudMissing: "No Google, OpenAI or Groq key saved: she uses local Whisper until you add one in the brain settings.",
   lang_micAuto: 'Automatic (detect)',
 
   ob_page1: 'Language',

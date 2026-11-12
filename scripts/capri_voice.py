@@ -428,6 +428,11 @@ def synthesize_fish_audio(text: str, out_path: str, fish_cfg: dict, synth_preset
     }
     if ref_id:
         body["reference_id"] = ref_id
+    # How long Fish takes before answering: "normal" (best quality), "balanced" or "low". Measured
+    # on a one-line reaction, "balanced" answered in 3-4s and "normal" in 5-6s
+    latency = str(fish_cfg.get("latency", "") or os.environ.get("FISH_AUDIO_LATENCY", "") or "balanced").strip().lower()
+    if latency in ("normal", "balanced", "low"):
+        body["latency"] = latency
 
     emotions = re.findall(r'\[[a-zA-Z0-9_\s\-]+\]', text)
     sys.stderr.write(
@@ -670,36 +675,40 @@ async def synthesize_speech(text: str, out_path: str, lang_override: str = None)
 
     print(json.dumps({"success": True, "path": out_path, "voice": voice, "provider": "edge-tts", "fallback": is_fallback}))
 
-_whisper_model = None
+_whisper_models = {}
 
-def get_whisper_model():
-    global _whisper_model
-    if _whisper_model is None:
+def whisper_model_name(requested: str = None) -> str:
+    # "small" understands accented English and mixed ES/EN far better than "base"; "base" takes about
+    # a third of the time on a CPU. CAPRI_WHISPER_MODEL (e.g. "medium", "large-v3-turbo") overrides both.
+    return os.environ.get("CAPRI_WHISPER_MODEL", "").strip() or (requested or "").strip() or "small"
+
+def get_whisper_model(requested: str = None):
+    """Each model is loaded once and kept: switching between them in the settings is instant after that."""
+    model_name = whisper_model_name(requested)
+    if model_name not in _whisper_models:
         try:
             from faster_whisper import WhisperModel
             import ctranslate2  # ships with faster-whisper; avoids pulling in PyTorch just to detect the GPU
-            device = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
-            compute_type = "float16" if device == "cuda" else "int8"
-            # "small" understands accented English and mixed ES/EN far better than "base".
-            # Override with CAPRI_WHISPER_MODEL (e.g. "medium", "large-v3-turbo") if VRAM allows.
-            model_name = os.environ.get("CAPRI_WHISPER_MODEL", "").strip() or "small"
-            model = WhisperModel(model_name, device=device, compute_type=compute_type)
-            if device == "cuda":
-                # The model loads fine without NVIDIA's libraries and only fails when it first works.
-                # After that failure the same model hangs forever, so it's tried once, right here.
-                import numpy
-                model.detect_language(numpy.zeros(16000, dtype=numpy.float32))
-            _whisper_model = model
+            if ctranslate2.get_cuda_device_count() == 0:
+                _whisper_models[model_name] = cpu_whisper_model(model_name)
+                return _whisper_models[model_name]
+            model = WhisperModel(model_name, device="cuda", compute_type="float16")
+            # The model loads fine without NVIDIA's libraries and only fails when it first works.
+            # After that failure the same model hangs forever, so it's tried once, right here.
+            import numpy
+            model.detect_language(numpy.zeros(16000, dtype=numpy.float32))
+            _whisper_models[model_name] = model
         except Exception as gpu_err:
             sys.stderr.write(f"[STT] Using the CPU: {gpu_err}\n")
-            _whisper_model = cpu_whisper_model()
-    return _whisper_model
+            _whisper_models[model_name] = cpu_whisper_model(model_name)
+    return _whisper_models[model_name]
 
-def cpu_whisper_model():
+def cpu_whisper_model(model_name: str = None):
     """Same model on the CPU: used when CUDA/cuBLAS is not available on this machine."""
     from faster_whisper import WhisperModel
-    model_name = os.environ.get("CAPRI_WHISPER_MODEL", "").strip() or "small"
-    return WhisperModel(model_name, device="cpu", compute_type="int8")
+    # Up to 8 threads: measured a bit quicker than the default on an 8-core laptop
+    threads = min(8, os.cpu_count() or 4)
+    return WhisperModel(whisper_model_name(model_name), device="cpu", compute_type="int8", cpu_threads=threads)
 
 # Names Whisper would otherwise mishear. The prompt also pulls it towards its own language, so the
 # Spanish and English phrases only go to those two.
@@ -743,20 +752,24 @@ def clean_cyberpunk_transcription(text: str) -> str:
     text = re.sub(r'\b(?:clipe[aá]|clipeate)\s+(?:eso|esto)\b', 'clipea eso', text, flags=re.IGNORECASE)
     return text.strip()
 
-def transcribe_audio_internal(input_file: str, language: str = None, hint: str = None) -> dict:
+def transcribe_audio_internal(input_file: str, language: str = None, hint: str = None, model_name: str = None) -> dict:
     temp_wav = input_file + ".16k.wav"
     try:
-        # Convert whatever browser MediaRecorder produced (webm/ogg/wav) to 16kHz mono WAV
-        audio_file = temp_wav
-        cmd = [FFMPEG, "-y", "-i", input_file, "-ar", "16000", "-ac", "1", temp_wav]
-        try:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        except Exception as ffmpeg_err:
-            # Whisper can read the recording by itself: FFmpeg only makes it a bit faster
-            sys.stderr.write(f"[STT] FFmpeg failed, reading the recording directly: {ffmpeg_err}\n")
-            audio_file = input_file
+        # The always-on mic already sends 16kHz mono WAV: Whisper reads it as is, no FFmpeg process.
+        # Anything else (webm/ogg from the recorder) is converted first
+        with open(input_file, "rb") as fh:
+            is_wav = fh.read(4) == b"RIFF"
+        audio_file = input_file if is_wav else temp_wav
+        if not is_wav:
+            cmd = [FFMPEG, "-y", "-i", input_file, "-ar", "16000", "-ac", "1", temp_wav]
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            except Exception as ffmpeg_err:
+                # Whisper can read the recording by itself: FFmpeg only makes it a bit faster
+                sys.stderr.write(f"[STT] FFmpeg failed, reading the recording directly: {ffmpeg_err}\n")
+                audio_file = input_file
 
-        model = get_whisper_model()
+        model = get_whisper_model(model_name)
         lang_arg = None
         if language and language != "auto":
             lang_arg = language.split("-")[0].lower()
@@ -787,9 +800,9 @@ def transcribe_audio_internal(input_file: str, language: str = None, hint: str =
             # GPU detected but its CUDA libraries are missing: switch to the CPU for good
             if not re.search(r"cuda|cublas|cudnn", str(cuda_err), re.IGNORECASE):
                 raise
-            global _whisper_model
-            _whisper_model = cpu_whisper_model()
-            raw_text, info = run(_whisper_model)
+            cpu_model = cpu_whisper_model(model_name)
+            _whisper_models[whisper_model_name(model_name)] = cpu_model
+            raw_text, info = run(cpu_model)
         full_text = clean_cyberpunk_transcription(raw_text)
 
         if full_text:
@@ -809,10 +822,10 @@ def transcribe_audio(input_file: str, language: str = None):
     res = transcribe_audio_internal(input_file, language)
     print(json.dumps(res), flush=True)
 
-def run_stt_worker():
-    # Warm up Whisper model on launch
+def run_stt_worker(model_name: str = None):
+    # Warm up the chosen Whisper model on launch
     try:
-        get_whisper_model()
+        get_whisper_model(model_name)
         print(json.dumps({"ready": True, "engine": "faster-whisper-local"}), flush=True)
     except Exception as e:
         print(json.dumps({"ready": False, "error": str(e)}), flush=True)
@@ -832,7 +845,7 @@ def run_stt_worker():
                     out["id"] = req_id
                 print(json.dumps(out), flush=True)
                 continue
-            res = transcribe_audio_internal(file_path, lang, req.get("hint"))
+            res = transcribe_audio_internal(file_path, lang, req.get("hint"), req.get("model"))
             if req_id is not None:
                 res["id"] = req_id
             print(json.dumps(res), flush=True)
@@ -858,7 +871,8 @@ def main():
     stt_parser.add_argument("--lang", default=None, help="Language code (e.g. es, en)")
 
     # STT Worker (persistent local process)
-    subparsers.add_parser("stt-worker")
+    worker_parser = subparsers.add_parser("stt-worker")
+    worker_parser.add_argument("--model", default=None, help="Whisper model to load first (small, base)")
 
     args = parser.parse_args()
 
@@ -867,7 +881,7 @@ def main():
     elif args.command == "stt":
         transcribe_audio(args.file, getattr(args, 'lang', None))
     elif args.command == "stt-worker":
-        run_stt_worker()
+        run_stt_worker(getattr(args, 'model', None))
     else:
         parser.print_help()
 

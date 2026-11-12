@@ -129,6 +129,12 @@ export const ko: Messages = {
   lang_speechAuto: '자동 (텍스트와 동일)',
   lang_micTitle: '마이크',
   lang_micHelp: '음성 인식(Whisper)이 예상하는 언어입니다. 고정하면 자동 감지보다 정확합니다.',
+  stt_title: "받아쓰기",
+  stt_help: "목소리를 텍스트로 바꾸는 방식입니다. 로컬은 PC에 남고, 클라우드는 1~2초 만에 응답하지만 오디오를 해당 제공자에게 보냅니다.",
+  stt_small: "로컬 Whisper · 정확함 (NVIDIA GPU 없으면 느림)",
+  stt_base: "로컬 Whisper · 빠름 (정확도 낮음)",
+  stt_cloud: "클라우드 · 두뇌의 API 키 사용 (Google, OpenAI 또는 Groq)",
+  stt_cloudMissing: "저장된 Google, OpenAI, Groq 키가 없습니다: 두뇌 설정에서 키를 추가할 때까지 로컬 Whisper를 사용합니다.",
   lang_micAuto: '자동 (감지)',
 
   ob_page1: '언어',

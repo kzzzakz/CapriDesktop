@@ -120,6 +120,7 @@ const api = {
     },
     scriptLineDone: (id: number): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_SCRIPT_LINE_DONE, id),
     cancelScript: (): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_SCRIPT_CANCEL),
+    setVoiceBusy: (busy: boolean): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_VOICE_BUSY, busy),
 
     setHitThrough: (ignore: boolean): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_HIT_THROUGH, ignore),
     listDisplays: (): Promise<{ id: number; label: string; width: number; height: number; primary: boolean; current: boolean }[]> => ipcRenderer.invoke(IPC_CHANNELS.DISPLAYS_LIST),
@@ -142,10 +143,10 @@ const api = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.COMPANION_USER_NAME_CHANGED, sub)
     },
 
-    getLanguageSettings: (): Promise<{ textLang: string; speechLang: string; micLang: string }> =>
+    getLanguageSettings: (): Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS),
 
-    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string }): Promise<{ textLang: string; speechLang: string; micLang: string }> =>
+    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string; sttEngine?: string }): Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_LANGUAGE_SETTINGS, next),
 
     onToggleChat: (callback: () => void): (() => void) => {
@@ -217,11 +218,11 @@ const api = {
     },
 
     onSpeechChanged: (
-      callback: (payload: { text: string; durationMs: number; speakVoice?: boolean }) => void
+      callback: (payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean }) => void
     ): (() => void) => {
       const subscription = (
         _event: IpcRendererEvent,
-        payload: { text: string; durationMs: number; speakVoice?: boolean }
+        payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean }
       ): void => callback(payload)
       ipcRenderer.on(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, subscription)
       return (): void => {
