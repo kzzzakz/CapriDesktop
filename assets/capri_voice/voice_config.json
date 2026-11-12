@@ -13,7 +13,7 @@
     "similarity_boost": 0.75
   },
   "fish_audio": {
-    "api_key": "sk-fish-vEW7yFq3lMgtt5P2_zYwelQ8J4Duofh7OjFz7b7kizM",
+    "api_key": "",
     "reference_id": "f6f9169f53244cbfb3bd8ce69bf2db10",
     "model": "s2.1-pro-free",
     "format": "mp3"
