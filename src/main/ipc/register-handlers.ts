@@ -198,11 +198,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.COMPANION_SPEAK,
-    (_event, payload: { text: string; durationMs?: number; speakVoice?: boolean }) => {
-      agentManager.setCompanionSpeech(payload.text, payload.durationMs, !!payload.speakVoice)
+    (_event, payload: { text: string; durationMs?: number; speakVoice?: boolean; cameo?: boolean }) => {
+      agentManager.setCompanionSpeech(payload.text, payload.durationMs, !!payload.speakVoice, undefined, false, !!payload.cameo)
       return true
     }
   )
+  ipcMain.handle(IPC_CHANNELS.COMPANION_END_CAMEO, () => windowManager.endCompanionCameo())
 
   // Top-Right Tab Mode (Modo Pestaña en esquina superior derecha)
   ipcMain.handle(

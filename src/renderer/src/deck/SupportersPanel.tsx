@@ -55,7 +55,8 @@ export const SupportersPanel: React.FC = () => {
         : `${name} is a supporter. People like ${name} are why I'm still here.`
     setSpeaking(name)
     setTimeout(() => setSpeaking((current) => (current === name ? null : current)), 4000)
-    void window.api.companion.speak(line, Math.max(5000, line.length * 70), true)
+    // She shows up above the Deck to say it, and goes back when she's done
+    void window.api.companion.speak(line, Math.max(5000, line.length * 70), true, true)
   }
 
   return (

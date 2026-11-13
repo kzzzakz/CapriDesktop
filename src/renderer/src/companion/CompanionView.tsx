@@ -96,6 +96,10 @@ export const CompanionView: React.FC = () => {
   useEffect(() => {
     isDeckOpenRef.current = isDeckOpen
   }, [isDeckOpen])
+  // Showing up above the Deck to say one line (a supporter's message), then hidden again
+  const [isCameo, setIsCameo] = useState(false)
+  const isCameoRef = useRef(false)
+  const cameoCountRef = useRef(0)
 
   useEffect(() => {
     if (!window.api?.deck) return
@@ -632,8 +636,8 @@ export const CompanionView: React.FC = () => {
 
   // Synthesize and play one line with Capri's voice (supports dialogue_blip.wav or Original TTS)
   const playSpeechNow = async (text: string) => {
-    // In Editor Mode, DO not speak. Only speak in Pet Mode
-    if (isDeckOpenRef.current || isVoiceMutedRef.current) return
+    // In Editor Mode, DO not speak. Only speak in Pet Mode (or when she shows up above the Deck on purpose)
+    if ((isDeckOpenRef.current && !isCameoRef.current) || isVoiceMutedRef.current) return
 
     // Strip all emojis and unicode pictographs before synthesizing so TTS never pronounces emoji names
     const clean = personalize(text)
@@ -1206,8 +1210,39 @@ export const CompanionView: React.FC = () => {
       }
     })
 
-    const unsubSpeech = window.api.companion.onSpeechChanged(({ text, durationMs, speakVoice, live }: any) => {
+    const unsubSpeech = window.api.companion.onSpeechChanged(({ text, durationMs, speakVoice, live, cameo }: any) => {
       if (isScriptPlayingRef.current) return
+      // Asked for on purpose (a supporter's name clicked in Settings): said even with the Deck open,
+      // with her visible in her talking form, and she goes back once she's done
+      if (cameo) {
+        void (async () => {
+          cameoCountRef.current++
+          isCameoRef.current = true
+          setIsCameo(true)
+          if (isVoiceMutedRef.current) {
+            setActiveSpeechText(text)
+            setSpeech(text, durationMs || 5000)
+            await new Promise((r) => setTimeout(r, durationMs || 5000))
+          } else {
+            speakWithCapriVoice(text)
+            await new Promise((r) => setTimeout(r, 500))
+            const until = Date.now() + 45000
+            while ((speechPumpingRef.current || isSpeakingRef.current || isSynthesizingVoiceRef.current) && Date.now() < until) {
+              await new Promise((r) => setTimeout(r, 200))
+            }
+            await new Promise((r) => setTimeout(r, 900))
+          }
+          if (--cameoCountRef.current > 0) return
+          isCameoRef.current = false
+          setIsCameo(false)
+          if (isDeckOpenRef.current) {
+            setSpeech(null)
+            setActiveSpeechText(null)
+          }
+          void window.api.companion.endCameo?.()
+        })()
+        return
+      }
       // A reaction to the screen is only worth saying right away: behind another line it's about
       // something that already scrolled past (the third TikTok while she talks about the first)
       if (live && (isSpeakingRef.current || isSynthesizingVoiceRef.current || speechQueueRef.current.length)) {
@@ -2027,7 +2062,7 @@ export const CompanionView: React.FC = () => {
         onMouseEnter={() => setIsWindowHovered(true)}
         onMouseLeave={() => setIsWindowHovered(false)}
         className={`relative w-full h-full flex flex-col items-center justify-start pt-1 select-none overflow-visible font-terminal ${
-          isDeckOpen ? 'invisible opacity-0 pointer-events-none' : ''
+          isDeckOpen && !isCameo ? 'invisible opacity-0 pointer-events-none' : ''
         }`}
         style={{
           WebkitAppRegion: 'drag',
@@ -2169,7 +2204,7 @@ export const CompanionView: React.FC = () => {
         if (isContextMenuOpen) setIsContextMenuOpen(false)
       }}
       className={`relative w-full h-full flex flex-col items-center justify-end p-0 select-none overflow-visible font-terminal ${
-        isDeckOpen ? 'invisible opacity-0 pointer-events-none' : ''
+        isDeckOpen && !isCameo ? 'invisible opacity-0 pointer-events-none' : ''
       }`}
       style={{
         WebkitAppRegion: 'drag',

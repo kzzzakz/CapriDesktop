@@ -29,6 +29,7 @@ export const IPC_CHANNELS = {
   COMPANION_GET_STATE: 'companion:getState',
   COMPANION_STATE_CHANGED: 'companion:stateChanged',
   COMPANION_SPEAK: 'companion:speak',
+  COMPANION_END_CAMEO: 'companion:endCameo',
   COMPANION_SPEECH_CHANGED: 'companion:speechChanged',
   COMPANION_SET_TAB_MODE: 'companion:setTabMode',
   COMPANION_SET_EYE_MODE: 'companion:setEyeMode',

@@ -18,6 +18,7 @@ export class WindowManager {
   private companionWin: BrowserWindow | null = null
   private onboardingWin: BrowserWindow | null = null
   private deckWin: BrowserWindow | null = null
+  private inCameo = false
   private scannerWin: BrowserWindow | null = null
   private isGamingMode = false
   private companionIgnoresMouse = false
@@ -406,7 +407,31 @@ export class WindowManager {
     this.broadcast(IPC_CHANNELS.DECK_STATUS, true)
   }
 
+  /**
+   * With the Dev Deck open she's hidden: for a line said on purpose (a supporter's message) she shows
+   * up above it to say it, and goes back once she's done (endCompanionCameo)
+   */
+  public showCompanionCameo(): void {
+    if (!this.companionWin || this.companionWin.isDestroyed() || this.isAway()) return
+    if (!this.deckWin || this.deckWin.isDestroyed() || !this.deckWin.isVisible()) return
+    this.inCameo = true
+    this.companionWin.showInactive()
+    this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
+    this.companionWin.moveTop()
+  }
+
+  public endCompanionCameo(): void {
+    if (!this.inCameo) return
+    this.inCameo = false
+    // Still in the Deck: hidden again, as she was
+    if (this.deckWin && !this.deckWin.isDestroyed() && this.deckWin.isVisible() && this.companionWin && !this.companionWin.isDestroyed()) {
+      this.companionWin.setAlwaysOnTop(false)
+      this.companionWin.hide()
+    }
+  }
+
   public hideDeck(): void {
+    this.inCameo = false
     if (this.deckWin && !this.deckWin.isDestroyed() && this.deckWin.isVisible()) {
       this.deckWin.hide()
     }

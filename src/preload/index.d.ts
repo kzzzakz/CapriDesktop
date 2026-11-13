@@ -138,9 +138,10 @@ export interface IElectronAPI {
     getLanguage: () => Promise<string>
     onLineLanguage: (callback: (lang: string) => void) => () => void
     setLanguage: (lang: string) => Promise<string>
-    speak: (text: string, durationMs?: number, speakVoice?: boolean) => Promise<boolean>
+    speak: (text: string, durationMs?: number, speakVoice?: boolean, cameo?: boolean) => Promise<boolean>
+    endCameo: () => Promise<void>
     onStateChanged: (callback: (state: CompanionEmotionState) => void) => () => void
-    onSpeechChanged: (callback: (payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean }) => void) => () => void
+    onSpeechChanged: (callback: (payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean; cameo?: boolean }) => void) => () => void
     onLanguageChanged: (callback: (lang: string) => void) => () => void
   }
   agent: {
