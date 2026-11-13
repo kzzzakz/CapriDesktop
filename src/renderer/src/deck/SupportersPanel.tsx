@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Heart, Loader2, Volume2 } from 'lucide-react'
 import supportersData from '../data/supporters.json'
 import { useUiLang } from '../utils/useUiLang'
@@ -33,6 +33,11 @@ export const SupportersPanel: React.FC = () => {
   const isEs = useUiLang() === 'es'
   const [speaking, setSpeaking] = useState<string | null>(null)
   const [thinking, setThinking] = useState<string | null>(null)
+
+  // Her model gets loaded while you look at the list, so her answer doesn't wait for a cold start
+  useEffect(() => {
+    void window.api.companion.warmSupporters?.()
+  }, [])
 
   // Grouped by the update they came in, newest first; the ones without one go at the end
   const groups: { version: string; people: Supporter[] }[] = []

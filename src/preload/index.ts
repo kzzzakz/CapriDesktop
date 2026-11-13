@@ -243,6 +243,7 @@ const api = {
     endCameo: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_END_CAMEO),
     rememberSupporter: (name: string, message: string, line: string): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_REMEMBER_SUPPORTER, { name, message, line }),
+    warmSupporters: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_WARM_SUPPORTERS),
 
     onStateChanged: (callback: (state: CompanionEmotionState) => void): (() => void) => {
       const subscription = (_event: IpcRendererEvent, state: CompanionEmotionState): void => callback(state)

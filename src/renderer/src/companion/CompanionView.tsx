@@ -1210,11 +1210,45 @@ export const CompanionView: React.FC = () => {
       }
     })
 
-    const unsubSpeech = window.api.companion.onSpeechChanged(({ text, durationMs, speakVoice, live, cameo }: any) => {
+    // She goes back once nothing else is coming for her cameo
+    const finishCameo = () => {
+      if (--cameoCountRef.current > 0) return
+      cameoCountRef.current = 0
+      isCameoRef.current = false
+      setIsCameo(false)
+      if (isDeckOpenRef.current) {
+        setSpeech(null)
+        setActiveSpeechText(null)
+      }
+      void window.api.companion.endCameo?.()
+    }
+    let cameoHolds = 0
+    let cameoHoldTimer: ReturnType<typeof setTimeout> | undefined
+    const releaseCameoHold = () => {
+      if (cameoHolds <= 0) return
+      cameoHolds--
+      if (cameoHolds === 0 && cameoHoldTimer) clearTimeout(cameoHoldTimer)
+      finishCameo()
+    }
+
+    const unsubSpeech = window.api.companion.onSpeechChanged(({ text, durationMs, speakVoice, live, cameo, hold, release }: any) => {
       if (isScriptPlayingRef.current) return
       // Asked for on purpose (a supporter's name clicked in Settings): said even with the Deck open,
       // with her visible in her talking form, and she goes back once she's done
+      if (cameo && release) {
+        releaseCameoHold()
+        return
+      }
       if (cameo) {
+        // Something else is coming after this line (her answer to the message): she stays up for it
+        if (hold) {
+          cameoHolds++
+          cameoCountRef.current++
+          if (cameoHoldTimer) clearTimeout(cameoHoldTimer)
+          cameoHoldTimer = setTimeout(() => {
+            while (cameoHolds > 0) releaseCameoHold()
+          }, 65000)
+        }
         void (async () => {
           cameoCountRef.current++
           isCameoRef.current = true
@@ -1232,14 +1266,7 @@ export const CompanionView: React.FC = () => {
             }
             await new Promise((r) => setTimeout(r, 900))
           }
-          if (--cameoCountRef.current > 0) return
-          isCameoRef.current = false
-          setIsCameo(false)
-          if (isDeckOpenRef.current) {
-            setSpeech(null)
-            setActiveSpeechText(null)
-          }
-          void window.api.companion.endCameo?.()
+          finishCameo()
         })()
         return
       }

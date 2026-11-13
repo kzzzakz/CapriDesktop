@@ -6,7 +6,7 @@ import { getStorageRoot } from '../services/storage-location'
 import { scriptPlayer } from '../services/script/script-player'
 import { getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
 import { setupService, SetupStep } from '../services/setup-service'
-import { supporterReaction } from '../services/supporter-reaction'
+import { supporterReaction, warmSupporterModel } from '../services/supporter-reaction'
 import * as os from 'os'
 import { getUserName } from '../services/user-profile'
 import { ipcMain, dialog, BrowserWindow, shell, Menu } from 'electron'
@@ -209,12 +209,20 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.COMPANION_REMEMBER_SUPPORTER,
     async (_event, payload: { name: string; message: string; line: string }) => {
-      const reaction = await supporterReaction(String(payload.name || ''), String(payload.message || ''), consciousnessService.getPreferredLanguage())
-      const full = reaction ? `${payload.line} ${reaction}` : payload.line
-      agentManager.setCompanionSpeech(full, Math.max(5000, full.length * 70), true, undefined, false, true)
-      return full
+      // She starts reading right away; her answer follows as soon as the model has it
+      const line = String(payload.line || '')
+      const message = String(payload.message || '')
+      agentManager.setCompanionSpeech(line, Math.max(5000, line.length * 70), true, undefined, false, message.trim() ? 'hold' : true)
+      const reaction = await supporterReaction(String(payload.name || ''), message, consciousnessService.getPreferredLanguage())
+      if (reaction) {
+        console.log(`[Supporters] Her answer to ${payload.name}: "${reaction}"`)
+        agentManager.setCompanionSpeech(reaction, Math.max(4000, reaction.length * 70), true, undefined, false, true)
+      }
+      if (message.trim()) agentManager.releaseCameoHold()
+      return reaction || ''
     }
   )
+  ipcMain.handle(IPC_CHANNELS.COMPANION_WARM_SUPPORTERS, () => warmSupporterModel())
 
   // Top-Right Tab Mode (Modo Pestaña en esquina superior derecha)
   ipcMain.handle(

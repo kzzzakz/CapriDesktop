@@ -6,8 +6,17 @@ const LANG_NAMES: Record<string, string> = {
   it: 'Italian', ja: 'Japanese', ko: 'Korean', zh: 'Simplified Chinese', ru: 'Russian', pl: 'Polish'
 }
 
+/** Loads her chat model into memory when the Supporters tab opens: a cold load can take ~40s on a modest PC */
+export function warmSupporterModel(): void {
+  llmFetch('http://127.0.0.1:11434/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: getLocalModel(), prompt: '', keep_alive: '30m' })
+  }).catch(() => {})
+}
+
 /** Her own words after reading what a supporter wrote: one or two short sentences, or null if the model doesn't answer in time */
-export async function supporterReaction(name: string, message: string, lang: string, timeoutMs = 15000): Promise<string | null> {
+export async function supporterReaction(name: string, message: string, lang: string, timeoutMs = 60000): Promise<string | null> {
   // Without a message there is nothing to react to: the thank-you line says it all
   if (!message.trim()) return null
   const language = LANG_NAMES[lang] || 'English'
@@ -30,7 +39,7 @@ export async function supporterReaction(name: string, message: string, lang: str
               `You are Capri, a sharp, playful netrunner girl who lives on the desktop. ${name} gave you money to support you and left you a message, ` +
               `which you just read out loud. Now talk TO ${name} (not to anyone else), in first person, reacting to what the message actually means: ` +
               `answer their question, play along with their joke or slang, or take the compliment with some sass. ` +
-              `If it is flirty or asks you to undress, shut it down with a witty, confident comeback, never explicit. ` +
+              `If it is flirty or asks you to undress, shut it down with a witty, confident comeback: never agree, never name a price, never explicit. ` +
               `Exactly one or two short sentences. Never offer help, never ask "anything else", never call yourself an AI or a machine. ` +
               `Write ONLY in ${language}. No emojis, no stage directions, no quotes.`
           },
