@@ -7,12 +7,14 @@ import { CyberpunkFolders } from './CyberpunkFolders'
 interface AppsModalProps {
   isOpen: boolean
   onClose: () => void
+  /** Inside the settings window, as one of its tabs: no overlay and no close button of its own */
+  embedded?: boolean
 }
 
 const PROBLEM_TEXT = { empty: 'apps_problemEmpty', duplicate: 'apps_problemDuplicate', missing: 'apps_problemMissing' } as const
 
 /** The apps Capri knows by name: open them, add new ones, change the name she's asked for them by */
-export const AppsModal: React.FC<AppsModalProps> = ({ isOpen, onClose }) => {
+export const AppsModal: React.FC<AppsModalProps> = ({ isOpen, onClose, embedded = false }) => {
   const t = useT()
   const [apps, setApps] = useState<KnownApp[]>([])
   const [editing, setEditing] = useState<string | null>(null)
@@ -82,18 +84,18 @@ export const AppsModal: React.FC<AppsModalProps> = ({ isOpen, onClose }) => {
   }
 
   return (
-    <div className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none">
-      <div className="cp-frame w-full max-w-xl flex flex-col max-h-[90vh] animate-fade-in" style={{ ['--c' as string]: '14px' }}>
+    <div className={embedded ? 'contents' : 'cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none'}>
+      <div className={embedded ? 'flex flex-col h-full min-h-0' : 'cp-frame w-full max-w-xl flex flex-col max-h-[90vh] animate-fade-in'} style={{ ['--c' as string]: '14px' }}>
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--cp-red-line)] shrink-0">
           <span className="cp-title text-[18px] text-[var(--cp-red)] flex items-center gap-2">
             <AppWindow size={16} /> {t('apps_title')}
           </span>
-          <button onClick={onClose} className="text-[var(--cp-muted)] hover:text-[var(--cp-red-hi)] cursor-pointer" title={t('close')}>
+          {!embedded && <button onClick={onClose} className="text-[var(--cp-muted)] hover:text-[var(--cp-red-hi)] cursor-pointer" title={t('close')}>
             <X size={16} />
-          </button>
+          </button>}
         </div>
 
-        <div className="cp-scroll p-5 space-y-3 overflow-y-auto">
+        <div className={`cp-scroll p-5 space-y-3 overflow-y-auto ${embedded ? 'flex-1 min-h-0' : ''}`}>
           <p className="text-[13px] text-[var(--cp-muted)]">{t('apps_hint')}</p>
 
           {problem && <p className="text-[13px] text-amber-400">{t(PROBLEM_TEXT[problem])}</p>}

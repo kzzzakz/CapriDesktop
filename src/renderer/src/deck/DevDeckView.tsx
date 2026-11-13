@@ -1,15 +1,11 @@
-import { MacSettings } from '../components/MacSettings'
 import React, { useState, useEffect } from 'react'
 import { CapriCommandCenter } from './CapriCommandCenter'
 import { CodeEditorView } from './CodeEditorView'
-import { AgentSettingsModal } from './AgentSettingsModal'
-import { VoiceSettingsModal } from '../companion/VoiceSettingsModal'
-import { LanguageSettingsModal } from './LanguageSettingsModal'
-import { AppsModal } from './AppsModal'
+import { SettingsHub, type SettingsTab } from './SettingsHub'
 import { useCompanionStore } from '../stores/useCompanionStore'
 import { useAgentStore } from '../stores/useAgentStore'
 import { useT, useUiLang } from '../utils/useUiLang'
-import { AppWindow,
+import {
   Minus,
   X,
   Settings,
@@ -20,24 +16,25 @@ import { AppWindow,
   FolderOpen,
   Volume2,
   VolumeX,
-  Sliders,
-  Languages,
   Eye
 } from 'lucide-react'
 
-type DeckTab = 'chat' | 'editor' | 'mac'
+type DeckTab = 'chat' | 'editor'
 
 export const DevDeckView: React.FC = () => {
   const [isMac, setIsMac] = useState(() => /Mac/i.test(navigator.platform))
   useEffect(() => {window.api.platform.status().then(s => setIsMac(s.platform === 'darwin'))}, [])
   const [activeTab, setActiveTab] = useState<DeckTab>('chat')
-  useEffect(()=>window.api.desktop.onOpenSettings(()=>setActiveTab('mac')),[])
+  // Every setting lives in one window, with its sections as tabs
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai')
+  const openSettings = (tab: SettingsTab = 'ai') => {
+    setSettingsTab(tab)
+    setIsSettingsOpen(true)
+  }
+  useEffect(() => window.api.desktop.onOpenSettings(() => openSettings('ai')), [])
+  useEffect(() => window.api.desktop.onOpenVoiceSettings(() => openSettings('voice')), [])
   const [settingsRevision, setSettingsRevision] = useState(0)
-  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false)
-  useEffect(()=>window.api.desktop.onOpenVoiceSettings(()=>setIsVoiceModalOpen(true)),[])
-  const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false)
-  const [isAppsModalOpen, setIsAppsModalOpen] = useState(false)
   const { setEmotion, setSpeech } = useCompanionStore()
   const t = useT()
   const lang = useUiLang()
@@ -223,34 +220,12 @@ export const DevDeckView: React.FC = () => {
           {/* LLM settings */}
           <button
             type="button"
-            onClick={() => isMac ? setActiveTab('mac') : setIsSettingsOpen(true)}
+            onClick={() => openSettings('ai')}
             className="cp-deck-settings flex items-center justify-center bg-[#210f10] border border-[#3c1c1d] rounded-none p-1 text-stone-300 hover:text-stone-100 transition-colors"
-            title={isMac ? 'Settings · AI, Mac & Spotify (⌘,)' : t('deck_settingsTitle')}
-            aria-label={isMac ? 'Settings · AI, Mac & Spotify' : t('deck_settingsTitle')}
+            title={isMac ? `${t('deck_settingsTitle')} (⌘,)` : t('deck_settingsTitle')}
+            aria-label={t('deck_settingsTitle')}
           >
             <Settings size={14} />
-          </button>
-
-          {/* The apps she knows by name */}
-          <button
-            type="button"
-            onClick={() => setIsAppsModalOpen(true)}
-            className="cp-cut flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[14px] font-semibold border border-[#3c1c1d] bg-[#210f10] text-stone-400 hover:text-cyan-300 hover:border-cyan-500/50 transition-all cursor-pointer"
-            title={t('deck_appsTitle')}
-          >
-            <AppWindow size={12} className="text-cyan-400" />
-            <span className="text-[12px] uppercase font-bold text-stone-300">{t('deck_apps')}</span>
-          </button>
-
-          {/* Language Settings Button */}
-          <button
-            type="button"
-            onClick={() => setIsLanguageModalOpen(true)}
-            className="cp-cut flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[14px] font-semibold border border-[#3c1c1d] bg-[#210f10] text-stone-400 hover:text-cyan-300 hover:border-cyan-500/50 transition-all cursor-pointer"
-            title={t('deck_languageTitle')}
-          >
-            <Languages size={12} className="text-cyan-400" />
-            <span className="text-[12px] uppercase font-bold text-stone-300">{t('deck_language')}</span>
           </button>
 
           {/* Watch Screen Button */}
@@ -273,17 +248,6 @@ export const DevDeckView: React.FC = () => {
             <span className="text-[12px] uppercase font-bold text-stone-300">
               {isWatchingScreen ? (isEs ? 'MIRANDO PANTALLA' : 'WATCHING SCREEN') : (isEs ? 'MIRAR PANTALLA' : 'WATCH SCREEN')}
             </span>
-          </button>
-
-          {/* Voice Engine Settings Button */}
-          <button
-            type="button"
-            onClick={() => setIsVoiceModalOpen(true)}
-            className="cp-cut flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[14px] font-semibold border border-[#3c1c1d] bg-[#210f10] text-stone-400 hover:text-cyan-300 hover:border-cyan-500/50 transition-all cursor-pointer"
-            title={t('deck_voiceConfigTitle')}
-          >
-            <Sliders size={12} className="text-cyan-400" />
-            <span className="text-[12px] uppercase font-bold text-stone-300">{t('deck_voiceConfig')}</span>
           </button>
 
           {/* User Option: Capri Voice in Dev Mode */}
@@ -335,37 +299,18 @@ export const DevDeckView: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         {activeTab === 'chat' && <CapriCommandCenter />}
         {activeTab === 'editor' && <CodeEditorView />}
-        {activeTab === 'mac' && (
-          <div className="flex-1 min-w-0 overflow-y-auto px-6 pb-6">
-            <div className="cp-deck-settings-nav sticky top-0 z-20 flex flex-wrap items-center gap-3 py-4 bg-[#100607] border-b border-[#381a1b] mb-5">
-              <h1 className="cp-title text-xl mr-auto">Settings</h1>
-              <button className="cp-btn-ghost px-3 py-2 text-sm" onClick={() => document.getElementById('deck-settings-ai')?.scrollIntoView({block:'start'})}>AI & models</button>
-              <button className="cp-btn-ghost px-3 py-2 text-sm" onClick={() => document.getElementById('deck-settings-mac')?.scrollIntoView({block:'start'})}>Mac & Spotify</button>
-            </div>
-            <div className="mx-auto max-w-5xl space-y-6">
-              <div id="deck-settings-ai" className="scroll-mt-20">
-                <AgentSettingsModal isOpen embedded onClose={() => setActiveTab('chat')} onSaved={() => setSettingsRevision(value => value + 1)} />
-              </div>
-              <div id="deck-settings-mac" className="scroll-mt-20"><MacSettings /></div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {isMac && <div className="cp-deck-footer h-9 shrink-0 border-t border-[#381a1b] flex items-center justify-between px-4"><span className="cp-label">Apple Silicon</span><button className="cp-btn-ghost text-sm" aria-pressed={activeTab === 'mac'} title="AI, Mac & Spotify settings (⌘,)" onClick={() => setActiveTab('mac')}>Settings</button></div>}
+      {isMac && <div className="cp-deck-footer h-9 shrink-0 border-t border-[#381a1b] flex items-center justify-between px-4"><span className="cp-label">Apple Silicon</span><button className="cp-btn-ghost text-sm" aria-pressed={isSettingsOpen} title="Settings (⌘,)" onClick={() => openSettings('ai')}>Settings</button></div>}
 
-      {/* Settings Modal */}
-      {isSettingsOpen && configLoaded && (
-        <AgentSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
-      )}
-
-      <LanguageSettingsModal isOpen={isLanguageModalOpen} onClose={() => setIsLanguageModalOpen(false)} />
-      <AppsModal isOpen={isAppsModalOpen} onClose={() => setIsAppsModalOpen(false)} />
-
-      {/* Voice TTS Settings Modal */}
-      <VoiceSettingsModal
-        isOpen={isVoiceModalOpen}
-        onClose={() => setIsVoiceModalOpen(false)}
+      {/* Settings: AI, voice, language, apps, supporters (and Mac on a Mac) */}
+      <SettingsHub
+        isOpen={isSettingsOpen && configLoaded}
+        tab={settingsTab}
+        onTabChange={setSettingsTab}
+        onClose={() => setIsSettingsOpen(false)}
+        isMac={isMac}
+        onSaved={() => setSettingsRevision((value) => value + 1)}
       />
     </div>
   )

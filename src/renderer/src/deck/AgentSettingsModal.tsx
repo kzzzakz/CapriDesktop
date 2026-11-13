@@ -165,8 +165,8 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
           </button>}
         </div>
 
-        <div className={`cp-scroll p-5 space-y-4 ${embedded ? '' : 'overflow-y-auto'}`}>
-          {embedded && <p className="text-sm text-[var(--cp-muted)]">Choose who handles chat and vision. Use Save below to apply AI changes; Mac options have their own controls.</p>}
+        <div className={`cp-scroll p-5 space-y-4 overflow-y-auto ${embedded ? 'flex-1 min-h-0' : ''}`}>
+          {embedded && /Mac/i.test(navigator.platform) && <p className="text-sm text-[var(--cp-muted)]">Choose who handles chat and vision. Use Save below to apply AI changes; Mac options have their own tab.</p>}
           <LlmProviderForm
             ref={formRef}
             onProviderChange={(next, nextEngine) => {
@@ -354,7 +354,7 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
     </>
   )
 
-  if (embedded) return <section aria-label="AI and model settings" className="cp-frame flex flex-col">{content}</section>
+  if (embedded) return <section aria-label="AI and model settings" className="flex flex-col h-full min-h-0">{content}</section>
   return (
     <div className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none">
       <div className="cp-frame w-full max-w-xl flex flex-col max-h-[90vh] animate-fade-in" style={{ ['--c' as string]: '14px' }}>

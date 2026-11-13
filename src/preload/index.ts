@@ -238,8 +238,8 @@ const api = {
     setLanguage: (lang: string): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_LANGUAGE, lang),
 
-    speak: (text: string, durationMs?: number): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SPEAK, { text, durationMs }),
+    speak: (text: string, durationMs?: number, speakVoice?: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SPEAK, { text, durationMs, speakVoice }),
 
     onStateChanged: (callback: (state: CompanionEmotionState) => void): (() => void) => {
       const subscription = (_event: IpcRendererEvent, state: CompanionEmotionState): void => callback(state)

@@ -27,7 +27,7 @@ const ROWS: { key: keyof LanguageSettings; icon: React.ReactNode; title: Message
   { key: 'micLang', icon: <Mic size={15} />, title: 'lang_micTitle', help: 'lang_micHelp', auto: 'lang_micAuto' }
 ]
 
-export const LanguageSettingsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+export const LanguageSettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; embedded?: boolean }> = ({ isOpen, onClose, embedded = false }) => {
   const [settings, setSettings] = useState<AllSettings>({ textLang: 'auto', speechLang: 'auto', micLang: 'auto', sttEngine: 'whisper-small' })
   const [savedAt, setSavedAt] = useState(0)
   const effectiveLang = useUiLang()
@@ -51,16 +51,16 @@ export const LanguageSettingsModal: React.FC<{ isOpen: boolean; onClose: () => v
   }
 
   return (
-    <div className="cp-vars fixed inset-0 z-50 flex items-center justify-center bg-black/85" onClick={onClose}>
-      <div className="cp-frame w-[480px] max-w-[92vw]" style={{ ['--c' as string]: '14px' }} onClick={(e) => e.stopPropagation()}>
+    <div className={embedded ? 'contents' : 'cp-vars fixed inset-0 z-50 flex items-center justify-center bg-black/85'} onClick={embedded ? undefined : onClose}>
+      <div className={embedded ? 'flex flex-col h-full min-h-0' : 'cp-frame w-[480px] max-w-[92vw]'} style={{ ['--c' as string]: '14px' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--cp-red-line)]">
           <span className="cp-title text-[18px] text-[var(--cp-red)]">{t('lang_title')}</span>
-          <button onClick={onClose} className="text-[var(--cp-muted)] hover:text-[var(--cp-red-hi)] cursor-pointer" title={t('close')}>
+          {!embedded && <button onClick={onClose} className="text-[var(--cp-muted)] hover:text-[var(--cp-red-hi)] cursor-pointer" title={t('close')}>
             <X size={16} />
-          </button>
+          </button>}
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className={`p-5 space-y-4 ${embedded ? 'cp-scroll flex-1 min-h-0 overflow-y-auto' : ''}`}>
           {ROWS.map((row) => (
             <div key={row.key} className="space-y-1.5">
               <label className="flex items-center gap-2 text-[15px] font-bold uppercase tracking-[0.06em] text-[var(--cp-red)]">
@@ -117,9 +117,9 @@ export const LanguageSettingsModal: React.FC<{ isOpen: boolean; onClose: () => v
             <Check size={13} />
             {t('saved')}
           </span>
-          <button onClick={onClose} className="cp-btn px-5 py-1.5 text-[14px]">
+          {!embedded && <button onClick={onClose} className="cp-btn px-5 py-1.5 text-[14px]">
             {t('done')}
-          </button>
+          </button>}
         </div>
       </div>
     </div>
