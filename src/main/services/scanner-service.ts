@@ -438,8 +438,9 @@ export class ScannerService {
         })
       }
 
-      // On an 8 GB personal Mac, avoid keeping both a vision model and a text model warm.
-      const textModel = isMac ? null : await this.detectTextModel()
+      // On an 8 GB personal Mac, avoid keeping both a vision model and a text model warm. A vision
+      // model that also talks reacts on its own, so the text model isn't needed to watch either
+      const textModel = isMac || (model && this.visionModelTalks(model)) ? null : await this.detectTextModel()
       if (textModel) {
         console.log(`[ScannerService] Preloading text persona model ${textModel} into GPU VRAM...`)
         await llmFetch('http://127.0.0.1:11434/api/generate', {
@@ -1546,6 +1547,14 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
         if (!reactionResult && slow) return
       }
 
+      // A local vision model that also talks (Gemma 3, Qwen2.5-VL): one call that looks and answers,
+      // instead of describing first and loading a second model to talk. Measured on an RTX 2060: 0.4s instead of
+      // 0.9-1.7s with llava + qwen2.5-coder:7b, and one model (2.9 GB of VRAM) instead of two (9.7 GB)
+      if (!reactionResult && visionModel && !isCloudMode() && this.visionModelTalks(visionModel)) {
+        reactionResult = await this.reactToScreenAtOnce(capture.base64, context.join('\n'), lang, 25000, visionModel)
+        if (!this.isWatchingScreen) return
+      }
+
       if (!reactionResult && visionModel && !isCloudMode()) {
         // Multimodal Vision Perception
         const visionPrompt = `Analyze the user's primary screen in 1 or 2 concise, factual sentences.
@@ -1689,7 +1698,12 @@ Be specific and direct.`
    * One call that looks at the screenshot and answers with her spoken line. For cloud models and AI
    * apps, where every call costs seconds (an app, 20-35s). Null if it failed: the caller decides.
    */
-  private async reactToScreenAtOnce(imageBase64: string, context: string, lang: string, timeoutMs: number): Promise<{ summary: string; reaction: string } | null> {
+  /** Vision models that also hold a conversation; llava and moondream only describe what they see */
+  private visionModelTalks(model: string): boolean {
+    return /gemma3|qwen2\.5-?vl|llama3\.2-vision|mistral-small3/i.test(model)
+  }
+
+  private async reactToScreenAtOnce(imageBase64: string, context: string, lang: string, timeoutMs: number, localModel?: string): Promise<{ summary: string; reaction: string } | null> {
     const isEs = lang === 'es'
     const seen = isEs
       ? `La captura de la pantalla de {name} está adjunta: mirala.${context ? `\nAdemás:\n${context}` : ''}`
@@ -1699,14 +1713,17 @@ Be specific and direct.`
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: llmBody({
-          model: getLlmSettings().model || 'cloud-vision',
+          model: localModel || getLlmSettings().model || 'cloud-vision',
+          ...(localModel ? { keep_alive: '15m' } : {}),
           messages: [
             { role: 'system', content: this.watchReactionPrompt(seen, isEs, lang) },
             { role: 'user', content: this.watchReactionAsk(isEs), images: [imageBase64] }
           ],
           stream: false,
           // quick: an AI app answers on the model's fastest thinking level (a one-liner needs no more)
-          options: { temperature: 0.7, num_predict: 90, quick: true }
+          options: localModel
+            ? { temperature: 0.7, num_predict: 90, num_ctx: VISION_NUM_CTX }
+            : { temperature: 0.7, num_predict: 90, quick: true }
         }),
         signal: AbortSignal.timeout(timeoutMs)
       })
