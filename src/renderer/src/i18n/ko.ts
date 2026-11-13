@@ -176,6 +176,8 @@ export const ko: Messages = {
   ob_modelDesc: 'qwen2.5-coder 7B, 내 로컬 두뇌 · 약 4.7GB',
   ob_personaTitle: '내 성격',
   ob_personaDesc: '너에게 맞춘 "capri" 모델',
+  ob_visionTitle: '비전 모델',
+  ob_visionDesc: '화면을 보기 위해: PC에 맞춰 Qwen3-VL 또는 Gemma 3',
 
   llm_title: '카프리 // 두뇌',
   llm_local: '이 PC에서',
@@ -460,7 +462,8 @@ export const ko: Messages = {
   vision_auto: '자동 (설치된 것 중 최고)',
   vision_none: '아직 이미지를 볼 수 있는 모델이 없어요.',
   vision_download: '비전 모델 다운로드',
-  vision_downloadHint: 'qwen2.5vl:3b는 가볍고 화면 글자를 잘 읽어요. gemma3:4b도 볼 수 있어요.',
+  vision_downloadHint: 'qwen3-vl:8b가 가장 잘 봅니다(~6GB, RAM 16GB 필요). gemma3:4b는 더 가볍고 빠릅니다(~3.3GB).',
+  vision_recommended: 'Capri 추천',
   models_installed: '다운로드한 모델',
   models_delete: '모델 삭제',
   models_deleteConfirm: '{model}을(를) 삭제할까요? 나중에 다시 받을 수 있어요.',

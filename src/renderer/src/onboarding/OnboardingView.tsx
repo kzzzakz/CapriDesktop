@@ -1,28 +1,31 @@
 import { MacSettings } from '../components/MacSettings'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Download, X, ChevronRight, ChevronLeft, Mic, Film, Cpu, Brain, Sparkles } from 'lucide-react'
+import { Check, Download, X, ChevronRight, ChevronLeft, Mic, Film, Cpu, Brain, Sparkles, Eye } from 'lucide-react'
 import type { SetupStatus } from '../../../preload/index.d'
 import { LlmProviderForm, LlmProviderFormHandle } from '../components/LlmProviderForm'
 import { MessageKey, toUiLang, translator, UI_LANGUAGES, UiLang } from '../i18n'
 import { useHotkeyLabels } from '../utils/useHotkeys'
 
-type StepId = 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona'
+type StepId = 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona' | 'vision'
 
 const STEP_ICONS: Record<StepId, React.ReactNode> = {
   python: <Mic size={16} />,
   ffmpeg: <Film size={16} />,
   ollama: <Cpu size={16} />,
   model: <Brain size={16} />,
-  persona: <Sparkles size={16} />
+  persona: <Sparkles size={16} />,
+  vision: <Eye size={16} />
 }
 const STEP_TEXT: Record<StepId, [MessageKey, MessageKey]> = {
   python: ['ob_pythonTitle', 'ob_pythonDesc'],
   ffmpeg: ['ob_ffmpegTitle', 'ob_ffmpegDesc'],
   ollama: ['ob_ollamaTitle', 'ob_ollamaDesc'],
   model: ['ob_modelTitle', 'ob_modelDesc'],
-  persona: ['ob_personaTitle', 'ob_personaDesc']
+  persona: ['ob_personaTitle', 'ob_personaDesc'],
+  vision: ['ob_visionTitle', 'ob_visionDesc']
 }
-const LOCAL_ORDER: StepId[] = ['python', 'ffmpeg', 'ollama', 'model', 'persona']
+// The vision model is recommended: without it she still talks, but can't see the screen
+const LOCAL_ORDER: StepId[] = ['python', 'ffmpeg', 'ollama', 'model', 'persona', 'vision']
 const CLOUD_ORDER: StepId[] = ['python', 'ffmpeg']
 const PAGE_TAGS: MessageKey[] = ['ob_page1', 'ob_page2', 'ob_page3', 'ob_page4', 'ob_page5']
 
@@ -39,6 +42,8 @@ function isReady(step: StepId, s: SetupStatus | null): boolean {
       return s.model
     case 'persona':
       return s.persona
+    case 'vision':
+      return s.vision
   }
 }
 
@@ -159,7 +164,7 @@ export const OnboardingView: React.FC = () => {
   const installAll = async () => {
     for (const step of order) {
       if (isReady(step, status)) continue
-      if ((await window.api.platform.status()).platform === 'darwin' && (step === 'model' || step === 'persona')) continue
+      if ((await window.api.platform.status()).platform === 'darwin' && (step === 'model' || step === 'persona' || step === 'vision')) continue
       const ok = await runStep(step)
       // The model and persona need Ollama; stop the chain if a prerequisite failed
       if (!ok && (step === 'ollama' || step === 'model')) break
@@ -320,7 +325,7 @@ export const OnboardingView: React.FC = () => {
                       <span className={ready ? 'text-[var(--cp-cyan)]' : isRunning ? 'text-[var(--cp-yellow)]' : 'text-[var(--cp-red-dim)]'}>{STEP_ICONS[step]}</span>
                       <div className="flex-1 min-w-0">
                         <div className={`text-[15px] font-bold uppercase tracking-[0.08em] ${ready ? 'text-[var(--cp-text)]' : 'text-[var(--cp-red)]'}`}>{t(title)}</div>
-                        <div className="cp-mono text-[11px] text-[var(--cp-muted)] truncate">{step === 'model' && status?.recommendedModel ? status.recommendedModel : t(desc)}</div>
+                        <div className="cp-mono text-[11px] text-[var(--cp-muted)] truncate">{step === 'model' && status?.recommendedModel ? status.recommendedModel : step === 'vision' && status?.recommendedVision ? `${status.recommendedVision} · ${t(desc)}` : t(desc)}</div>
                       </div>
                       {ready ? (
                         <span className="cp-mono flex items-center gap-1.5 text-[12px] uppercase tracking-widest text-[var(--cp-cyan)]">

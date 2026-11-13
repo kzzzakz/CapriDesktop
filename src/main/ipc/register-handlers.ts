@@ -308,7 +308,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETUP_STATUS, () => setupService.getStatus())
 
   ipcMain.handle(IPC_CHANNELS.SETUP_RUN, async (_event, step: SetupStep) => {
-    if (!['python','ffmpeg','ollama','model','persona','whisper'].includes(step)) throw new Error('Unknown setup step')
+    if (!['python','ffmpeg','ollama','model','persona','whisper','vision'].includes(step)) throw new Error('Unknown setup step')
     const ok = await setupService.run(step, (s, line) => windowManager.broadcast(IPC_CHANNELS.SETUP_LOG, { step: s, line }))
     return { ok, status: await setupService.getStatus() }
   })

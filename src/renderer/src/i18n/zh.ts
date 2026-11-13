@@ -176,6 +176,8 @@ export const zh: Messages = {
   ob_modelDesc: 'qwen2.5-coder 7B,我的本地大脑 · 约 4.7 GB',
   ob_personaTitle: '我的个性',
   ob_personaDesc: '为你定制的“capri”模型',
+  ob_visionTitle: '视觉模型',
+  ob_visionDesc: '用来看你的屏幕：根据你的电脑选择 Qwen3-VL 或 Gemma 3',
 
   llm_title: 'Capri // 大脑',
   llm_local: '在这台电脑上',
@@ -460,7 +462,8 @@ export const zh: Messages = {
   vision_auto: '自动（已安装中最好的）',
   vision_none: '还没有安装能看图的模型。',
   vision_download: '下载视觉模型',
-  vision_downloadHint: 'qwen2.5vl:3b 很轻，读屏幕文字效果好；gemma3:4b 也能看。',
+  vision_downloadHint: 'qwen3-vl:8b 看得最清楚（约 6 GB，需要 16 GB 内存）；gemma3:4b 更轻更快（约 3.3 GB）。',
+  vision_recommended: 'Capri 推荐',
   models_installed: '已下载的模型',
   models_delete: '删除模型',
   models_deleteConfirm: '删除 {model}？之后可以重新下载。',

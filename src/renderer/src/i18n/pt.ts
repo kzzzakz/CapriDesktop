@@ -176,6 +176,8 @@ export const pt: Messages = {
   ob_modelDesc: 'qwen2.5-coder 7B, meu cérebro local · ~4.7 GB',
   ob_personaTitle: 'Minha personalidade',
   ob_personaDesc: 'O modelo "capri", feito para você',
+  ob_visionTitle: 'Modelo de visão',
+  ob_visionDesc: 'Para eu ver sua tela: Qwen3-VL ou Gemma 3, conforme seu PC',
 
   llm_title: 'Capri // Cérebro',
   llm_local: 'Neste PC',
@@ -460,7 +462,8 @@ export const pt: Messages = {
   vision_auto: 'Automático (o melhor instalado)',
   vision_none: 'Ainda não há nenhum modelo que consiga ver.',
   vision_download: 'Baixar um modelo de visão',
-  vision_downloadHint: 'qwen2.5vl:3b é leve e lê bem o texto da tela; gemma3:4b também vê.',
+  vision_downloadHint: 'qwen3-vl:8b é o que vê melhor (~6 GB, pede 16 GB de RAM); gemma3:4b é mais leve e rápido (~3,3 GB).',
+  vision_recommended: 'Recomendados para a Capri',
   models_installed: 'Modelos baixados',
   models_delete: 'Apagar modelo',
   models_deleteConfirm: 'Apagar {model}? Dá para baixar de novo depois.',

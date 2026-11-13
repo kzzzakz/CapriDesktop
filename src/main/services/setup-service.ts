@@ -26,7 +26,7 @@ import { windowManager } from '../windows/window-manager'
 import { localizeLine } from '../../shared/lines'
 import { getUserName } from './user-profile'
 
-export type SetupStep = 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona' | 'whisper'
+export type SetupStep = 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona' | 'whisper' | 'vision'
 
 export interface SetupStatus {
   python: { systemPython: string | null; envReady: boolean }
@@ -35,9 +35,19 @@ export interface SetupStatus {
   model: boolean
   persona: boolean
   recommendedModel: string
+  /** A model that sees is installed, for watching the screen and the scanner */
+  vision: boolean
+  recommendedVision: string
 }
 
 export const DEFAULT_MODEL = recommendedLocalModel(process.platform, os.totalmem())
+
+/**
+ * The model she sees the screen with. Qwen3-VL 8B reads drawings, small text and games far better
+ * (~6 GB, wants 16 GB of RAM); Gemma 3 4B is lighter and quicker (~3.3 GB) for smaller PCs
+ */
+export const DEFAULT_VISION_MODEL = os.totalmem() >= 15 * 1024 ** 3 ? 'qwen3-vl:8b' : 'gemma3:4b'
+const VISION_MODEL_NAME = /llava|vision|-vl\b|vl:|qwen2\.5vl|minicpm-v|moondream|bakllava|cogvlm|^gemma3(?::(?!1b)|$)|llama4/i
 
 // Linux distros move to new versions quickly: the voice packages were checked on 3.14 there
 const SUPPORTED_PYTHON = isMac ? /Python 3\.11\./ : isWindows ? /Python 3\.(1[0-3])/ : /Python 3\.(1[0-4])/
@@ -462,7 +472,9 @@ export class SetupService {
       ollama: { installed, running: tags.running, models: tags.models },
       model: tags.models.some((m) => m.startsWith(DEFAULT_MODEL)),
       persona: tags.models.some((m) => m.toLowerCase().startsWith('capri')),
-      recommendedModel: DEFAULT_MODEL
+      recommendedModel: DEFAULT_MODEL,
+      vision: tags.models.some((m) => VISION_MODEL_NAME.test(m)),
+      recommendedVision: DEFAULT_VISION_MODEL
     }
   }
 
@@ -662,6 +674,9 @@ export class SetupService {
           return await this.pullModel(DEFAULT_MODEL, log)
         case 'persona':
           return await this.createPersona(log)
+        case 'vision':
+          await this.pointOllamaAtStorage()
+          return await this.pullModel(DEFAULT_VISION_MODEL, log, 'vision')
       }
     } catch (err: any) {
       log(step, `error: ${err?.message || err}`)
@@ -730,15 +745,16 @@ export class SetupService {
     return findOnPath('ollama') ? 'ollama' : null
   }
 
-  private async pullModel(model: string, log: Logger): Promise<boolean> {
+  private async pullModel(model: string, log: Logger, step: SetupStep = 'model'): Promise<boolean> {
     const cli = await this.ollamaCli()
     if (!cli) {
-      log('model', 'Ollama is not installed yet.')
+      log(step, 'Ollama is not installed yet.')
       return false
     }
     await ollamaService.ensureRunning()
-    log('model', `ollama pull ${model} (${model === 'qwen3:1.7b' ? 'about 1.4 GB' : 'about 4.7 GB'})`)
-    const code = await run(cli, ['pull', model], (l) => log('model', l))
+    const size: Record<string, string> = { 'qwen3:1.7b': 'about 1.4 GB', 'qwen3-vl:8b': 'about 6.1 GB', 'gemma3:4b': 'about 3.3 GB' }
+    log(step, `ollama pull ${model} (${size[model] || 'about 4.7 GB'})`)
+    const code = await run(cli, ['pull', model], (l) => log(step, l))
     return code === 0
   }
 

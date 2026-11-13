@@ -30,6 +30,8 @@ export interface SetupStatus {
   model: boolean
   persona: boolean
   recommendedModel: string
+  vision: boolean
+  recommendedVision: string
 }
 
 import type { PlatformStatus, MacPermission } from '../shared/mac-types'
@@ -207,7 +209,7 @@ export interface IElectronAPI {
   }
   setup: {
     getStatus: () => Promise<SetupStatus>
-    run: (step: 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona' | 'whisper') => Promise<{ ok: boolean; status: SetupStatus }>
+    run: (step: 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona' | 'whisper' | 'vision') => Promise<{ ok: boolean; status: SetupStatus }>
     onLog: (callback: (entry: { step: string; line: string }) => void) => () => void
     finish: () => Promise<boolean>
     open: () => Promise<boolean>

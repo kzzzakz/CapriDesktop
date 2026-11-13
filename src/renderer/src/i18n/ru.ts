@@ -176,6 +176,8 @@ export const ru: Messages = {
   ob_modelDesc: 'qwen2.5-coder 7B, мой локальный мозг · ~4,7 ГБ',
   ob_personaTitle: 'Мой характер',
   ob_personaDesc: 'Модель «capri», настроенная под тебя',
+  ob_visionTitle: 'Модель зрения',
+  ob_visionDesc: 'Чтобы я видела твой экран: Qwen3-VL или Gemma 3, под твой ПК',
 
   llm_title: 'Капри // Мозг',
   llm_local: 'На этом ПК',
@@ -460,7 +462,8 @@ export const ru: Messages = {
   vision_auto: 'Автоматически (лучшая установленная)',
   vision_none: 'Пока не установлено ни одной модели со зрением.',
   vision_download: 'Скачать модель зрения',
-  vision_downloadHint: 'qwen2.5vl:3b лёгкая и хорошо читает текст на экране; gemma3:4b тоже видит.',
+  vision_downloadHint: 'qwen3-vl:8b видит лучше всех (~6 ГБ, нужно 16 ГБ ОЗУ); gemma3:4b легче и быстрее (~3,3 ГБ).',
+  vision_recommended: 'Рекомендуемые для Capri',
   models_installed: 'Скачанные модели',
   models_delete: 'Удалить модель',
   models_deleteConfirm: 'Удалить {model}? Её можно будет скачать снова.',

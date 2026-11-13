@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Eye, HardDrive, Trash2 } from 'lucide-react'
 import type { InstalledPart, LocalModelInfo } from '../../../main/services/installed-parts'
-import { ModelDownload, VISION_MODEL_SUGGESTIONS } from './ModelDownload'
+import { ModelDownload, RECOMMENDED_VISION_MODELS, VISION_MODEL_SUGGESTIONS } from './ModelDownload'
 import { useT } from '../utils/useUiLang'
 
 const size = (bytes: number): string => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`)
@@ -77,6 +77,8 @@ export const LocalModelsPanel: React.FC<{ ollamaRunning: boolean; onModelsChange
           <ModelDownload
             listId="capri-vision-suggestions"
             suggestions={VISION_MODEL_SUGGESTIONS}
+            quickPicks={RECOMMENDED_VISION_MODELS}
+            installed={models.map((m) => m.name)}
             titleKey="vision_download"
             hintKey="vision_downloadHint"
             allowGguf={false}

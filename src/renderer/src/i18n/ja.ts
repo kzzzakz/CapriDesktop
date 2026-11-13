@@ -176,6 +176,8 @@ export const ja: Messages = {
   ob_modelDesc: 'qwen2.5-coder 7B、私のローカルの頭脳 · 約4.7 GB',
   ob_personaTitle: '私の性格',
   ob_personaDesc: 'あなた向けの「capri」モデル',
+  ob_visionTitle: '視覚モデル',
+  ob_visionDesc: '画面を見るために：PCに合わせてQwen3-VLかGemma 3',
 
   llm_title: 'カプリ // 頭脳',
   llm_local: 'このPCで',
@@ -460,7 +462,8 @@ export const ja: Messages = {
   vision_auto: '自動（インストール済みで最適なもの）',
   vision_none: 'まだ画像を見られるモデルがありません。',
   vision_download: '視覚モデルをダウンロード',
-  vision_downloadHint: 'qwen2.5vl:3b は軽くて画面の文字をよく読めます。gemma3:4b も見られます。',
+  vision_downloadHint: 'qwen3-vl:8bが一番よく見えます（約6GB、RAM 16GB推奨）。gemma3:4bは軽くて速い（約3.3GB）。',
+  vision_recommended: 'Capriにおすすめ',
   models_installed: 'ダウンロード済みモデル',
   models_delete: 'モデルを削除',
   models_deleteConfirm: '{model} を削除しますか？あとで再ダウンロードできます。',
