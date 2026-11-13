@@ -21,7 +21,6 @@ import {
   ScannerStatusPayload
 } from '../ipc/channels'
 import { personaIntro } from './system-prompt-store'
-import { systemObserver } from './system-observer'
 import { lookAtScreen, warmScreenWorker } from './screen-worker'
 
 export class ScannerService {
@@ -357,6 +356,7 @@ export class ScannerService {
       }
 
       const VISION_PRIORITIES = [
+        'qwen3-vl',
         'qwen2.5vl',
         'qwen2.5-vl',
         'gemma3:4b',
@@ -1274,7 +1274,7 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
    * the text on it and the window in front, all from the same instant (about a second with the
    * worker open). Null when the worker isn't there: the caller asks for each thing on its own.
    */
-  private async lookAtPrimaryDisplay(): Promise<{
+  private async lookAtPrimaryDisplay(maxSide = 768): Promise<{
     capture: { base64: string; width: number; height: number; rawBuffer: Buffer }
     ocrLines: { text: string; x: number; y: number; w: number; h: number }[]
     fg: { title: string; process: string } | null
@@ -1287,7 +1287,7 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
       w: Math.round(display.bounds.width * scale),
       h: Math.round(display.bounds.height * scale),
       jpeg: true,
-      maxSide: 768,
+      maxSide,
       quality: 85,
       ocr: true,
       fg: true
@@ -1513,7 +1513,11 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
       let capture = sample as NonNullable<typeof sample>
       let ocrLines: { text: string; x: number; y: number; w: number; h: number }[] | null
       let fg: { title: string; process: string } | null
-      const look = await this.lookAtPrimaryDisplay()
+      // Qwen-VL reads the picture at its own size (gemma and llava squash it to a fixed square): a
+      // bigger screenshot shows it a thin stickman as one, not as a circle
+      if (!isCloudMode()) await ollamaService.ensureRunning()
+      const visionModel = await this.detectVisionModel()
+      const look = await this.lookAtPrimaryDisplay(visionModel && /qwen[23](?:\.5)?-?vl/i.test(visionModel) ? 1280 : 768)
       if (look) {
         ;({ capture, ocrLines, fg } = look)
       } else {
@@ -1527,15 +1531,18 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
       this.lastSampleBuffer = capture.rawBuffer
       this.lastScreenOcr = { lines: ocrLines || [], at: capturedAt }
       timing.push(`look ${Date.now() - capturedAt}ms`)
-      const media = systemObserver.getActiveMedia('video') || systemObserver.getActiveMedia('browser') || systemObserver.getActiveMedia()
+      // What she goes by is the screenshot. Besides it only the window in front: its title without
+      // the browser's name ("Opera" became an opera singer), and the program when it isn't a browser
+      // (a game in full screen is the window in front). Never the tabs or a video playing behind the
+      // terminal: models took those as what was on screen
       const context: string[] = []
-      if (media && media.title) context.push(`Video or media playing: "${media.title}" by "${media.artist || media.creator || media.appName || 'Media'}"`)
-      if (fg && fg.title) context.push(`Active foreground window: "${fg.title}" (process: ${fg.process})`)
-      const screenText = screenTextOf(ocrLines)
-      if (screenText) context.push(`Text visible on screen (read by OCR, may have typos):\n${screenText}`)
-
-      if (!isCloudMode()) await ollamaService.ensureRunning()
-      const visionModel = await this.detectVisionModel()
+      const windowTitle = (fg?.title || '').replace(/\s+[-–—]\s+(?:Opera(?: GX)?|Google Chrome|Microsoft\u200b? Edge|Brave|Mozilla Firefox|Vivaldi)\b.*$/i, '').replace(/^\(\d+\)\s*/, '').trim()
+      const program = (fg?.process || '').replace(/\.exe$/i, '')
+      const isBrowser = /^(?:opera|chrome|msedge|brave|firefox|vivaldi|explorer|electron)$/i.test(program)
+      if (windowTitle) context.push(`Window in front: "${windowTitle}"${program && !isBrowser ? ` (program: ${program})` : ''}`)
+      // A small model takes every word as what's on screen: less of the text for one that sees
+      const screenText = screenTextOf(ocrLines, visionModel && this.visionModelTalks(visionModel) ? 400 : 1500)
+      if (screenText) context.push(`Some text on screen (read by OCR, may have typos):\n${screenText}`)
       let visualDescription = ''
       let reactionResult: { summary: string; reaction: string } | null = null
 
@@ -1551,16 +1558,7 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
       // instead of describing first and loading a second model to talk. Measured on an RTX 2060: 0.4s instead of
       // 0.9-1.7s with llava + qwen2.5-coder:7b, and one model (2.9 GB of VRAM) instead of two (9.7 GB)
       if (!reactionResult && visionModel && !isCloudMode() && this.visionModelTalks(visionModel)) {
-        // A 4B model takes every hint as what's on screen: the browser's name ("Opera" became an opera
-        // singer), the process, a video still playing in a tab behind the terminal (a mobile MOBA while
-        // only the terminal was on screen). Just the window in front, without the browser's name, and
-        // a little of its text
-        const window = (fg?.title || '').replace(/\s+[-–—]\s+(?:Opera(?: GX)?|Google Chrome|Microsoft​? Edge|Brave|Mozilla Firefox|Vivaldi)\b.*$/i, '').replace(/^\(\d+\)\s*/, '').trim()
-        const small: string[] = []
-        if (window) small.push(`Window in front: "${window}"`)
-        const shortText = screenTextOf(ocrLines, 400)
-        if (shortText) small.push(`Some text on screen (OCR, may have typos):\n${shortText}`)
-        reactionResult = await this.reactToScreenAtOnce(capture.base64, small.join('\n'), lang, 25000, visionModel)
+        reactionResult = await this.reactToScreenAtOnce(capture.base64, context.join('\n'), lang, 25000, visionModel)
         if (!this.isWatchingScreen) return
       }
 
@@ -1709,7 +1707,7 @@ Be specific and direct.`
    */
   /** Vision models that also hold a conversation; llava and moondream only describe what they see */
   private visionModelTalks(model: string): boolean {
-    return /gemma3|qwen2\.5-?vl|llama3\.2-vision|mistral-small3/i.test(model)
+    return /gemma3|qwen[23](?:\.5)?-?vl|llama3\.2-vision|mistral-small3/i.test(model)
   }
 
   private async reactToScreenAtOnce(imageBase64: string, context: string, lang: string, timeoutMs: number, localModel?: string): Promise<{ summary: string; reaction: string } | null> {
