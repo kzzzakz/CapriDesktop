@@ -5,6 +5,8 @@ import type { AiAppInfo } from '../../../main/services/ai-apps'
 import { MessageKey } from '../i18n'
 import { useT } from '../utils/useUiLang'
 
+const MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
+
 /** Any OpenAI-compatible server works: these only save the user from looking up the address */
 const PRESETS: { id: string; label: string; baseUrl: string }[] = [
   { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
@@ -418,10 +420,11 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
               </div>
             </div>
 
-            <label className="block text-sm">Vision model
+            {/* Cloud vision is only used by the Mac scanner */}
+            {MAC && <label className="block text-sm">Vision model
               <input aria-label="Cloud vision model" className={`${field} cp-mono mt-1`} value={visionModel} onChange={e=>setVisionModel(e.target.value)} placeholder="Image-capable model ID" />
               <span className="block text-xs mt-1">Uses this cloud server and API key. Manual scans send the selected screen image. Live Scan and automatic screen comments send images only after you enable them. Chat keeps its own model.</span>
-            </label>
+            </label>}
 
             <div className="flex items-center gap-3">
               <button type="button" onClick={test} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px] shrink-0">
@@ -434,10 +437,10 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
               )}
             </div>
 
-            <div className="text-xs space-y-1 select-text" role="status">
+            {MAC && <div className="text-xs space-y-1 select-text" role="status">
               <p>{lastRequest ? `Last cloud request: ${lastRequest.host} · ${lastRequest.model} · ${lastRequest.state}${lastRequest.httpStatus ? ` · HTTP ${lastRequest.httpStatus}` : ''}${lastRequest.elapsedMs !== undefined ? ` · ${lastRequest.elapsedMs} ms` : ''} · ${new Date(lastRequest.startedAt).toLocaleTimeString()}` : 'No cloud request recorded yet.'}</p>
               <button type="button" className="cp-btn-ghost px-2 py-1" onClick={async()=>setLastRequest((await window.api.agent.getLlmSettings()).lastRequest || null)}>Refresh request status</button>
-            </div>
+            </div>}
 
             <div className="cp-frame is-warn flex gap-2 px-3 py-2.5 text-[13px] leading-snug text-[var(--cp-text)]">
               <ShieldAlert size={15} className="shrink-0 mt-0.5 text-[var(--cp-yellow)]" />

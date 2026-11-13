@@ -8,6 +8,8 @@ import {
 } from '../../../main/ipc/channels'
 import { useUiLang, UiLang } from '../utils/useUiLang'
 
+const MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
+
 type ResizeDirection = 'move' | 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se'
 
 const SCANNER_I18N: Record<string, Record<UiLang, string>> = {
@@ -804,7 +806,7 @@ export const ScannerView: React.FC = () => {
 
             {/* Right: Scan, Continuous, & Close Buttons */}
             <div className="flex items-center gap-1.5" onMouseDown={(e) => e.stopPropagation()}>
-              <button title="Fit the scanner within this display's usable area" className="px-2 py-1 border border-cyan-500 text-cyan-300 rounded text-[10px] whitespace-nowrap" onClick={async()=>{const b=await window.api.scanner.fitScreen();if(b){boundsRef.current=b;setDimensions({width:b.width,height:b.height})}}}>Fit screen</button>
+              {MAC && <button title="Fit the scanner within this display's usable area" className="px-2 py-1 border border-cyan-500 text-cyan-300 rounded text-[10px] whitespace-nowrap" onClick={async()=>{const b=await window.api.scanner.fitScreen();if(b){boundsRef.current=b;setDimensions({width:b.width,height:b.height})}}}>Fit screen</button>}
               {visionMode === 'cloud' && <span className="text-[10px] text-cyan-300 whitespace-nowrap" title="Scans send images to your selected cloud provider; Live requires your confirmation">Cloud vision</span>}
               {!localAI && visionMode !== 'cloud' && <button className="px-2 py-1 border border-amber-500 text-amber-300 rounded text-[10px]" title="Allow local AI models to run again; scanning can use substantial memory" onClick={async()=>setLocalAI(await window.api.scanner.setLocalAIEnabled(true))}>Enable local AI</button>}
               {/* Scan Button */}

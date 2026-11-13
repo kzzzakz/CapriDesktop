@@ -29,6 +29,7 @@ import {
   Sliders,
   Code2
 } from 'lucide-react'
+const IS_MAC = /Mac/i.test(navigator.platform)
 
 export interface DesktopChatMessage {
   id: string
@@ -170,9 +171,9 @@ export const CompanionView: React.FC = () => {
   useEffect(() => {
     if (!isGamingMode || !window.api?.companion?.setClickThrough) return
     let ignoring = true
-    window.api.companion.setClickThrough(!isDesktopChatOpenRef.current).catch(() => {})
+    window.api.companion.setClickThrough(!(IS_MAC && isDesktopChatOpenRef.current)).catch(() => {})
     const update = (ctrl: boolean) => {
-      const want = !ctrl && !isDesktopChatOpenRef.current
+      const want = !ctrl && !(IS_MAC && isDesktopChatOpenRef.current)
       if (want === ignoring) return
       ignoring = want
       window.api.companion.setClickThrough(want).catch(() => {})
