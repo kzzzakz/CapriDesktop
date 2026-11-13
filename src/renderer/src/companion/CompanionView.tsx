@@ -16,7 +16,7 @@ import { useAgentStore } from '../stores/useAgentStore'
 import dialogueBlipAudio from '../assets/dialogue_blip.wav'
 import patPatGif from '../assets/capri/pat-pat-pet-pet.gif'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
-import { acceleratorFromEvent, DEFAULT_HOTKEYS, HOTKEY_ACTIONS, spokenHotkey } from '../../../shared/hotkeys'
+import { acceleratorFromEvent, ALWAYS_ON_ACTIONS, DEFAULT_HOTKEYS, HOTKEY_ACTIONS, spokenHotkey } from '../../../shared/hotkeys'
 import { useHotkeys, useHotkeyLabels } from '../utils/useHotkeys'
 import {
   X,
@@ -254,6 +254,10 @@ export const CompanionView: React.FC = () => {
   useEffect(() => {
     isSpeakingRef.current = isSpeaking
   }, [isSpeaking])
+  // The screen watcher waits for her to finish talking before looking again: what she says next is fresh
+  useEffect(() => {
+    window.api.companion.setVoiceBusy(isSpeaking || isSynthesizingVoice)
+  }, [isSpeaking, isSynthesizingVoice])
   useEffect(() => {
     isExecutingRef.current = isExecuting
   }, [isExecuting])
@@ -462,7 +466,7 @@ export const CompanionView: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const pressed = acceleratorFromEvent(e)
       // The Gaming Mode key is global all the time, also with her window focused: nothing to do here
-      if (!pressed || !HOTKEY_ACTIONS.some((action) => action !== 'gaming' && hotkeys[action] === pressed)) return
+      if (!pressed || !HOTKEY_ACTIONS.some((action) => !ALWAYS_ON_ACTIONS.includes(action) && hotkeys[action] === pressed)) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
       e.preventDefault()
@@ -499,14 +503,16 @@ export const CompanionView: React.FC = () => {
   const speechQueueRef = useRef<string[]>([])
   const speechPumpingRef = useRef(false)
 
-  const speakWithCapriVoice = (rawText: string) => {
+  /** True when the line was queued; false when it was skipped (empty, a script is playing, the same line is already waiting) */
+  const speakWithCapriVoice = (rawText: string): boolean => {
     const text = localizeLine(rawText, getLineLanguage())
-    if (!text || !text.trim() || isScriptPlayingRef.current) return
+    if (!text || !text.trim() || isScriptPlayingRef.current) return false
     const q = speechQueueRef.current
-    if (q[q.length - 1] === text) return
+    if (q[q.length - 1] === text) return false
     if (q.length >= 4) q.shift() // keep it short: stale chatter goes first
     q.push(text)
     void pumpSpeechQueue()
+    return true
   }
 
   const pumpSpeechQueue = async () => {
@@ -516,8 +522,14 @@ export const CompanionView: React.FC = () => {
       while (speechQueueRef.current.length) {
         const next = speechQueueRef.current.shift() as string
         await playSpeechNow(next)
+        // A line that never reached the speaker (the same one said a moment ago, voice muted) leaves
+        // nothing playing: a "synthesizing" mark left over from it would hold every later line back
+        if (!activeAudioRef.current && !isSpeakingRef.current && isSynthesizingVoiceRef.current) {
+          setIsSynthesizingVoice(false)
+          isSynthesizingVoiceRef.current = false
+        }
         // playSpeechNow returns once playback starts; wait until she finished talking
-        const until = Date.now() + 90000
+        const until = Date.now() + 30000
         while ((isSpeakingRef.current || isSynthesizingVoiceRef.current) && Date.now() < until) {
           await new Promise((r) => setTimeout(r, 150))
         }
@@ -1159,8 +1171,14 @@ export const CompanionView: React.FC = () => {
       }
     })
 
-    const unsubSpeech = window.api.companion.onSpeechChanged(({ text, durationMs, speakVoice }: any) => {
+    const unsubSpeech = window.api.companion.onSpeechChanged(({ text, durationMs, speakVoice, live }: any) => {
       if (isScriptPlayingRef.current) return
+      // A reaction to the screen is only worth saying right away: behind another line it's about
+      // something that already scrolled past (the third TikTok while she talks about the first)
+      if (live && (isSpeakingRef.current || isSynthesizingVoiceRef.current || speechQueueRef.current.length)) {
+        console.log('[CompanionView] Dropping stale screen reaction:', text)
+        return
+      }
       // While she's working on the user's request, background chatter would be stale
       if (isExecutingRef.current) {
         console.log('[CompanionView] Ignoring background comment while executing:', text)
@@ -1335,7 +1353,12 @@ export const CompanionView: React.FC = () => {
               } else {
                 setIsSynthesizingVoice(true)
                 isSynthesizingVoiceRef.current = true
-                speakWithCapriVoice(textToSpeak)
+                // The same line may already be playing (said once as it happened, again as the reply):
+                // skipped, nothing would ever clear the mark and the next lines waited out a 90s timer
+                if (!speakWithCapriVoice(textToSpeak) && !isSpeakingRef.current && !speechPumpingRef.current) {
+                  setIsSynthesizingVoice(false)
+                  isSynthesizingVoiceRef.current = false
+                }
               }
             } else {
               setActiveUserPrompt(null)

@@ -23,6 +23,9 @@ import { localizeLine } from '../../shared/lines'
 import { ToolExecutor } from '../agents/tools/tool-executor'
 import type { HotkeyAction } from '../../shared/hotkeys'
 import { scannerService } from '../services/scanner-service'
+import { cloudSttProvider, STT_ENGINES, type SttEngine } from '../services/cloud-stt'
+import { watchPartyService } from '../services/watch-party-service'
+import { desktopController } from '../services/desktop-controller-service'
 import { boredomService } from '../services/boredom-service'
 import { cyberpunkAdapter } from '../services/game'
 import { CYBERPUNK_GIGS, getNextGig } from '../services/game/adapters/cyberpunk/gigs'
@@ -33,6 +36,9 @@ import { memoryService } from '../services/memory-service'
 import { addKnownApp, listKnownApps, onKnownAppsChanged, removeKnownApp, renameKnownApp, suggestedAppName } from '../services/known-apps'
 import { openKnownApp } from '../services/app-launcher'
 import { ollamaService } from '../services/ollama-service'
+import { isElevated, relaunchElevated } from '../services/admin-mode'
+import { isAiAppId, listAiApps, testAiApp } from '../services/ai-apps'
+import { deleteLocalModel, listInstalledParts, listLocalModels, removeInstalledPart, type InstalledPartId } from '../services/installed-parts'
 import { cyberpunkFoldersState, markCyberpunkFolder, unmarkCyberpunkFolder } from '../services/game/adapters/cyberpunk/cyberpunk-folders'
 
 import { platformStatus, requestPermission, openPermission } from '../services/mac-permissions'
@@ -248,7 +254,8 @@ export function registerIpcHandlers(): void {
         const bounds = win.getBounds()
         const newX = bounds.x + payload.dx
         const newY = bounds.y + payload.dy
-        win.setPosition(newX, newY)
+        // With the size given too: setPosition alone grows the window on scaled screens
+        win.setBounds({ x: newX, y: newY, width: bounds.width, height: bounds.height }, false)
         if (windowManager.isGamingModeActive()) {
           windowManager.setSavedGamingPosition({ x: newX, y: newY })
         } else {
@@ -292,7 +299,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_MUSIC_PLATFORM, () => consciousnessService.getMusicPlatform())
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_MUSIC_PLATFORM, (_event, platform) => consciousnessService.setMusicPlatform(platform))
 
-  ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS, () => consciousnessService.getLanguageSettings())
+  // With the cloud service the saved API key opens, so the window can say whether "cloud" will work
+  const languageSettingsView = () => ({ ...consciousnessService.getLanguageSettings(), cloudStt: cloudSttProvider() })
+  ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS, () => languageSettingsView())
 
   // First-run setup (onboarding window)
   ipcMain.handle(IPC_CHANNELS.SETUP_STATUS, () => setupService.getStatus())
@@ -367,11 +376,15 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_LANGUAGE_SETTINGS, (_event, next: Record<string, string>) => {
-    const saved = consciousnessService.setLanguageSettings(next || {})
+    const { sttEngine, ...langs } = next || {}
+    const saved = consciousnessService.setLanguageSettings({
+      ...langs,
+      ...(STT_ENGINES.includes(sttEngine as SttEngine) ? { sttEngine: sttEngine as SttEngine } : {})
+    })
     // Spoken language differs from the text: load the translation model now, not on the first line
     if (saved.speechLang && saved.speechLang !== 'auto') voiceService.warmTranslator()
     windowManager.broadcast(IPC_CHANNELS.COMPANION_LANGUAGE_CHANGED, consciousnessService.getUiLanguage())
-    return saved
+    return { ...saved, cloudStt: cloudSttProvider() }
   })
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_LANGUAGE, (_event, lang: string) => {
@@ -437,6 +450,15 @@ export function registerIpcHandlers(): void {
     ollamaService.pullModel(String(model ?? ''), (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
   )
   ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL_CANCEL, () => ollamaService.cancelPull())
+  // A .gguf file on this PC, added to Ollama. The file is picked here: the window never passes a path
+  ipcMain.handle(IPC_CHANNELS.OLLAMA_IMPORT_GGUF, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const options: Electron.OpenDialogOptions = { properties: ['openFile'], filters: [{ name: 'GGUF', extensions: ['gguf'] }] }
+    const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const file = picked.filePaths[0]
+    if (picked.canceled || !file) return false
+    return ollamaService.importGguf(file, (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
+  })
 
   // Cyberpunk 2077 in any folder, or under Mod Organizer: the user can show Capri where
   ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDERS_GET, () => cyberpunkFoldersState())
@@ -628,6 +650,34 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_SET, (_event, action: HotkeyAction, accelerator: string) => windowManager.setHotkey(action, String(accelerator)))
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_RESET, () => windowManager.resetHotkeys())
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_GET, () => consciousnessService.getGamingOpacity())
+  // Local models, each with its size and whether it sees, and the parts the setup installed
+  ipcMain.handle(IPC_CHANNELS.MODELS_LIST, () => listLocalModels())
+  ipcMain.handle(IPC_CHANNELS.MODEL_DELETE, async (_event, name: string) => (await deleteLocalModel(String(name ?? ''))) ? listLocalModels() : null)
+  ipcMain.handle(IPC_CHANNELS.VISION_MODEL_GET, () => consciousnessService.getScannerVisionModel())
+  ipcMain.handle(IPC_CHANNELS.VISION_MODEL_SET, (_event, model: string) => {
+    consciousnessService.setScannerVisionModel(String(model || 'auto'))
+    return consciousnessService.getScannerVisionModel()
+  })
+  ipcMain.handle(IPC_CHANNELS.PARTS_LIST, () => listInstalledParts())
+  ipcMain.handle(IPC_CHANNELS.PART_REMOVE, (_event, id: string) => (['voiceEnv', 'whisper', 'ffmpeg'].includes(id) ? removeInstalledPart(id as InstalledPartId) : listInstalledParts()))
+
+  // The user's AI apps, as her model
+  ipcMain.handle(IPC_CHANNELS.AI_APPS_LIST, () => listAiApps())
+  ipcMain.handle(IPC_CHANNELS.AI_APPS_TEST, (_event, app: string, model: string) =>
+    isAiAppId(app) ? testAiApp(app, String(model || '')) : { ok: false, error: 'other' }
+  )
+
+  // Running as administrator, for games that run as administrator
+  ipcMain.handle(IPC_CHANNELS.ADMIN_GET, () => ({ enabled: consciousnessService.getRunAsAdmin(), elevated: isElevated() }))
+  ipcMain.handle(IPC_CHANNELS.ADMIN_SET, async (_event, enabled: boolean) => {
+    consciousnessService.setRunAsAdmin(!!enabled)
+    // Turned on: she restarts as administrator now. Turned off: from her next start
+    const relaunching = !!enabled && !isElevated() ? await relaunchElevated() : false
+    return { enabled: consciousnessService.getRunAsAdmin(), elevated: isElevated(), relaunching }
+  })
+  // Her size, normal and in Gaming Mode
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_GET, () => ({ desktop: consciousnessService.getCompanionScale('desktop'), gaming: consciousnessService.getCompanionScale('gaming') }))
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_SET, (_event, kind: string, value: number) => windowManager.setCompanionScale(kind === 'gaming' ? 'gaming' : 'desktop', Number(value)))
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_SET, (_event, value: number) => {
     consciousnessService.setGamingOpacity(value)
     const saved = consciousnessService.getGamingOpacity()
@@ -723,8 +773,21 @@ export function registerIpcHandlers(): void {
     return scannerService.setContinuous(enabled)
   })
 
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_START, async () => {
+    return await scannerService.startFullscreenWatch()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_STOP, () => {
+    return scannerService.stopFullscreenWatch()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_TOGGLE, async () => {
+    return await scannerService.toggleFullscreenWatch()
+  })
+
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_LINE_DONE, (_event, id: number) => scriptPlayer.onLineDone(id))
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_CANCEL, () => scriptPlayer.cancel())
+  ipcMain.on(IPC_CHANNELS.COMPANION_VOICE_BUSY, (_event, busy: boolean) => scannerService.setVoiceBusy(!!busy))
 
   ipcMain.handle(IPC_CHANNELS.SCANNER_SET_IGNORE_MOUSE, (_event, ignore: boolean) => {
     windowManager.setScannerIgnoreMouse(ignore)
@@ -757,5 +820,55 @@ export function registerIpcHandlers(): void {
     if (isMac) return false
     const gig = gigId ? CYBERPUNK_GIGS.find((g) => g.id === gigId) || getNextGig() : getNextGig()
     return await cyberpunkAdapter.markGig(gig)
+  })
+
+  // Watch Party & Autonomous PC Control
+  ipcMain.handle('watchParty:getStatus', () => {
+    return watchPartyService.getStatus()
+  })
+
+  ipcMain.handle('watchParty:startTiktok', async () => {
+    return await watchPartyService.startTiktokParty()
+  })
+
+  ipcMain.handle('watchParty:startYoutube', async () => {
+    return await watchPartyService.startYoutubeParty()
+  })
+
+  ipcMain.handle('watchParty:startGaming', async () => {
+    return await watchPartyService.startGamingParty()
+  })
+
+  ipcMain.handle('watchParty:stop', () => {
+    return watchPartyService.stopParty(true)
+  })
+
+  ipcMain.handle('watchParty:next', async () => {
+    return await watchPartyService.nextTiktok()
+  })
+
+  ipcMain.handle('watchParty:like', async () => {
+    return await watchPartyService.likeTiktok()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_CONTROLLER_ACTION, async (_event, action: string, params?: Record<string, unknown>) => {
+    switch (action) {
+      case 'scroll':
+        return await desktopController.scroll((params?.direction as 'down' | 'up') || 'down', typeof params?.amount === 'number' ? params.amount : 360)
+      case 'key':
+        return await desktopController.pressKey(params?.key as any)
+      case 'click':
+        return await desktopController.click(typeof params?.x === 'number' ? params.x : -1, typeof params?.y === 'number' ? params.y : -1)
+      case 'tiktok_next':
+        return await desktopController.tiktokNext()
+      case 'tiktok_like':
+        return await desktopController.tiktokLike()
+      case 'tiktok_prev':
+        return await desktopController.tiktokPrev()
+      case 'tiktok_pause':
+        return await desktopController.tiktokPause()
+      default:
+        return false
+    }
   })
 }

@@ -7,8 +7,10 @@ import type { WindowManager } from './window-manager'
 let tray: Tray | null = null
 let unsubscribeLanguage: (() => void) | null = null
 let unsubscribeGaming: (() => void) | null = null
+let unsubscribeAway: (() => void) | null = null
 
 function showCompanion(windowManager: WindowManager): void {
+  if (windowManager.isAway()) windowManager.setAway(false)
   if (windowManager.isDeckVisible()) {
     windowManager.hideDeck()
     return
@@ -26,6 +28,7 @@ function updateMenu(windowManager: WindowManager): void {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: localizeLine('Show Capri', lang), click: () => showCompanion(windowManager) },
     { label: localizeLine('Dev Deck', lang), click: () => windowManager.toggleDeck() },
+    { label: localizeLine('Hide Capri', lang), type: 'checkbox', checked: windowManager.isAway(), click: () => windowManager.toggleAway() },
     {
       label: localizeLine('Gaming Mode', lang),
       type: 'checkbox',
@@ -45,6 +48,7 @@ export function createTray(windowManager: WindowManager): void {
   updateMenu(windowManager)
   unsubscribeLanguage = consciousnessService.onLanguageChanged(() => updateMenu(windowManager))
   unsubscribeGaming = windowManager.onGamingModeChanged(() => updateMenu(windowManager))
+  unsubscribeAway = windowManager.onAwayChanged(() => updateMenu(windowManager))
   app.once('before-quit', destroyTray)
 }
 
@@ -53,6 +57,8 @@ export function destroyTray(): void {
   unsubscribeLanguage = null
   unsubscribeGaming?.()
   unsubscribeGaming = null
+  unsubscribeAway?.()
+  unsubscribeAway = null
   app.removeListener('before-quit', destroyTray)
   if (tray && !tray.isDestroyed()) tray.destroy()
   tray = null

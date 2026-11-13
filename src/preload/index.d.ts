@@ -5,6 +5,8 @@ import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
 import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
 import type { ModelPullProgress } from '../main/services/ollama-service'
+import type { InstalledPart, LocalModelInfo } from '../main/services/installed-parts'
+import type { AiAppInfo } from '../main/services/ai-apps'
 import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -17,7 +19,8 @@ import {
   ScannerBounds,
   ScannerStatusPayload,
   ScannerScanResult,
-  ScannerEventPayload
+  ScannerEventPayload,
+  WatchPartyStatusPayload
 } from '../main/ipc/channels'
 
 export interface SetupStatus {
@@ -105,16 +108,21 @@ export interface IElectronAPI {
     ) => () => void
     scriptLineDone: (id: number) => void
     cancelScript: () => void
+    setVoiceBusy: (busy: boolean) => void
     onToggleChat: (callback: () => void) => () => void
     getUserProfile: () => Promise<{ name: string; hasName: boolean; onboardingDone: boolean }>
     getMusicPlatform: () => Promise<'youtube_music' | 'spotify'>
     setMusicPlatform: (platform: 'youtube_music' | 'spotify') => Promise<'youtube_music' | 'spotify'>
     setUserName: (name: string) => Promise<string>
     onUserNameChanged: (callback: (name: string) => void) => () => void
-    getLanguageSettings: () => Promise<{ textLang: string; speechLang: string; micLang: string }>
-    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string }) => Promise<{ textLang: string; speechLang: string; micLang: string }>
+    getLanguageSettings: () => Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }>
+    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string; sttEngine?: string }) => Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }>
     onGamingModeChanged: (callback: (enabled: boolean) => void) => () => void
     getGamingOpacity: () => Promise<number>
+    getScale: () => Promise<{ desktop: number; gaming: number }>
+    getAdminMode: () => Promise<{ enabled: boolean; elevated: boolean }>
+    setAdminMode: (enabled: boolean) => Promise<{ enabled: boolean; elevated: boolean; relaunching: boolean }>
+    setScale: (kind: 'desktop' | 'gaming', value: number) => Promise<number>
     setGamingOpacity: (value: number) => Promise<number>
     onGamingOpacityChanged: (callback: (value: number) => void) => () => void
     moveBy: (dx: number, dy: number) => Promise<{ x: number; y: number } | null>
@@ -132,7 +140,7 @@ export interface IElectronAPI {
     setLanguage: (lang: string) => Promise<string>
     speak: (text: string, durationMs?: number) => Promise<boolean>
     onStateChanged: (callback: (state: CompanionEmotionState) => void) => () => void
-    onSpeechChanged: (callback: (payload: { text: string; durationMs: number; speakVoice?: boolean }) => void) => () => void
+    onSpeechChanged: (callback: (payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean }) => void) => () => void
     onLanguageChanged: (callback: (lang: string) => void) => () => void
   }
   agent: {
@@ -167,6 +175,16 @@ export interface IElectronAPI {
     // Downloading local models
     pullModel: (model: string) => Promise<boolean>
     cancelPullModel: () => Promise<void>
+    importGgufModel: () => Promise<boolean>
+    listAiApps: () => Promise<AiAppInfo[]>
+    testAiApp: (app: string, model: string) => Promise<{ ok: boolean; error?: string; detail?: string }>
+    // Local models and installed parts
+    listLocalModels: () => Promise<LocalModelInfo[]>
+    deleteLocalModel: (name: string) => Promise<LocalModelInfo[] | null>
+    getVisionModel: () => Promise<string>
+    setVisionModel: (model: string) => Promise<string>
+    listInstalledParts: () => Promise<InstalledPart[]>
+    removeInstalledPart: (id: InstalledPart['id']) => Promise<InstalledPart[]>
     onPullProgress: (callback: (progress: ModelPullProgress) => void) => () => void
     // Where Cyberpunk 2077 and her mod are
     getCyberpunkFolders: () => Promise<CyberpunkFoldersState>
@@ -250,8 +268,24 @@ export interface IElectronAPI {
     setBounds: (bounds: Partial<ScannerBounds>) => Promise<boolean>
     scan: (query?: string) => Promise<ScannerScanResult>
     setContinuous: (enabled: boolean) => Promise<boolean>
+    startWatchScreen: () => Promise<boolean>
+    stopWatchScreen: () => Promise<boolean>
+    toggleWatchScreen: () => Promise<boolean>
     setIgnoreMouse: (ignore: boolean) => Promise<boolean>
     onEvent: (callback: (event: ScannerEventPayload) => void) => () => void
+  }
+  watchParty: {
+    getStatus: () => Promise<WatchPartyStatusPayload>
+    startTiktok: () => Promise<boolean>
+    startYoutube: () => Promise<boolean>
+    startGaming: () => Promise<boolean>
+    stop: () => Promise<boolean>
+    next: () => Promise<boolean>
+    like: () => Promise<boolean>
+    onStateChanged?: (callback: (payload: WatchPartyStatusPayload) => void) => () => void
+  }
+  desktopController: {
+    action: (action: string, params?: Record<string, unknown>) => Promise<boolean>
   }
 }
 

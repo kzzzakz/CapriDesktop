@@ -3,12 +3,11 @@ import { assetPath } from '../services/app-paths'
 import { BrowserWindow, screen, app } from 'electron'
 import { join } from 'path'
 
-export function createCompanionWindow(): BrowserWindow {
+export function createCompanionWindow(size: { width: number; height: number } = { width: 420, height: 520 }): BrowserWindow {
   const primaryDisplay = screen.getPrimaryDisplay()
   const { workArea } = primaryDisplay
 
-  const width = 420
-  const height = 520
+  const { width, height } = size
   const x = workArea.x + workArea.width - width - 20
   const y = workArea.y + workArea.height - height - 20
 

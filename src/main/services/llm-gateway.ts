@@ -13,10 +13,12 @@ import { app, safeStorage } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { scriptPath } from './app-paths'
+import { aiAppStatus, closeAiAppSessions, isAiAppId, runAiApp, warmAiApp, type AiAppId } from './ai-apps'
 import { personalize } from './user-profile'
 import { DEFAULT_SYSTEM_PROMPT, getSystemPromptPersona } from './system-prompt-store'
 
-export type LlmProvider = 'local' | 'cloud'
+/** 'app': an AI app installed on this PC (Antigravity, Claude Code, Codex): preset says which, model its model */
+export type LlmProvider = 'local' | 'cloud' | 'app'
 export type LlmErrorCode = 'auth' | 'quota' | 'model' | 'network' | 'insecure' | 'other'
 
 export interface LlmPublicSettings {
@@ -105,9 +107,23 @@ function keyWouldLeakInClear(baseUrl: string, key: string): boolean {
   return !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
 }
 
+/** Her thinking happens outside Ollama: a cloud API or one of the user's AI apps */
 export function isCloudMode(): boolean {
   const s = load()
+  if (s.provider === 'app') return isAiAppId(s.preset)
   return s.provider === 'cloud' && !!s.baseUrl && !!s.model
+}
+
+/** One of the user's AI apps answers: a whole program starts per question, so 20s+ each */
+export function isAiAppMode(): boolean {
+  const s = load()
+  return s.provider === 'app' && isAiAppId(s.preset)
+}
+
+/** Opens ahead the app session that answers her quick lines (she starts watching the screen) */
+export function warmQuickAnswers(): void {
+  const s = load()
+  if (s.provider === 'app' && isAiAppId(s.preset)) warmAiApp(s.preset, s.model, true)
 }
 
 export function getLocalModel(): string {
@@ -132,10 +148,19 @@ export function getLlmSettings(): LlmPublicSettings {
 export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; error?: string; settings: LlmPublicSettings } {
   const current = load()
   const next: StoredSettings = { ...current }
-  if (update.provider === 'local' || update.provider === 'cloud') next.provider = update.provider
+  if (update.provider === 'local' || update.provider === 'cloud' || update.provider === 'app') next.provider = update.provider
   if (typeof update.preset === 'string') next.preset = update.preset
   if (typeof update.model === 'string') next.model = update.model.trim()
   if (typeof update.visionModel === 'string') next.visionModel = update.visionModel.trim()
+
+  // An AI app keeps no address or key of its own: the cloud ones stay saved for when the user goes back
+  if (next.provider === 'app') {
+    if (!isAiAppId(next.preset)) return { success: false, error: 'missing-model', settings: getLlmSettings() }
+    persist({ ...current, provider: next.provider, preset: next.preset, model: next.model })
+    // The app opens now and stays open: the first question doesn't wait for it to start
+    warmAiApp(next.preset, next.model)
+    return { success: true, settings: getLlmSettings() }
+  }
   if (typeof update.baseUrl === 'string') next.baseUrl = normalizeBase(update.baseUrl)
 
   if (next.provider === 'cloud') {
@@ -159,10 +184,28 @@ export function setLlmSettings(update: LlmSettingsUpdate): { success: boolean; e
   }
 
   persist(next)
+  closeAiAppSessions()
   return { success: true, settings: getLlmSettings() }
 }
 
+/** Capri starts with an AI app as her brain: it opens right away and stays open */
+export function warmBrainApp(): void {
+  const s = load()
+  if (s.provider === 'app' && isAiAppId(s.preset)) warmAiApp(s.preset, s.model)
+}
+
 /** The typed key if there is one, otherwise the saved key only if it belongs to that same server */
+/**
+ * The API the brain settings hold a key for, also while an AI app answers (the key from before stays
+ * saved). Cloud transcription uses it, so it needs no account of its own.
+ */
+export function savedApiCredentials(): { baseUrl: string; key: string } | null {
+  const s = load()
+  const key = savedKey()
+  if (!s.baseUrl || !key || keyWouldLeakInClear(s.baseUrl, key)) return null
+  return { baseUrl: normalizeBase(s.baseUrl), key }
+}
+
 function keyFor(baseUrl: string, typedKey?: string): string {
   if (typedKey) return typedKey.trim()
   return sameOrigin(load().baseUrl, baseUrl) ? savedKey() : ''
@@ -177,7 +220,8 @@ function authHeaders(key: string): Record<string, string> {
 function classify(status: number): LlmErrorCode {
   if (status === 401 || status === 403) return 'auth'
   if (status === 402 || status === 429) return 'quota'
-  if (status === 400 || status === 404 || status === 422) return 'model'
+  // 410: NVIDIA's answer for a model that reached its end of life
+  if (status === 400 || status === 404 || status === 410 || status === 422) return 'model'
   return 'other'
 }
 
@@ -193,6 +237,8 @@ export async function listCloudModels(baseUrlRaw: string, typedKey?: string): Pr
     const models = (data.data || data.models || [])
       .map((m) => String(m.id || (m as { name?: string }).name || '').replace(/^models\//, ''))
       .filter(Boolean)
+      // Some providers (NVIDIA) list embedding, reranking and safety models too: those can't chat
+      .filter((id) => !/embed|rerank|retriever|reward|guard|safety|topic-control|parse|clip|whisper|tts|ocr/i.test(id))
       .sort((a, b) => a.localeCompare(b))
     return { ok: true, models }
   } catch {
@@ -206,7 +252,7 @@ export async function testCloudConnection(baseUrlRaw: string, model: string, typ
   const key = keyFor(baseUrl, typedKey)
   if (keyWouldLeakInClear(baseUrl, key)) return { ok: false, error: 'insecure' }
   try {
-    const res = await postChat(
+    const res = await postChatApi(
       baseUrl,
       key,
       { model, messages: [{ role: 'user', content: 'Reply with: ok' }], max_tokens: 16 },
@@ -253,7 +299,18 @@ function relaxBody(body: Body, errorText: string): Body | null {
 /** Parameters a provider and model turned down once: not sent again, so each message is one request */
 const refusedParams = new Map<string, Set<string>>()
 
-async function postChat(baseUrl: string, key: string, payload: Body, signal?: AbortSignal | null): Promise<Response> {
+/** One chat request through an AI app, answered like the API would: errors keep their HTTP status */
+async function appChat(app: AiAppId, model: string, payload: Body, signal?: AbortSignal | null, quick = false): Promise<Response> {
+  try {
+    return jsonResponse(await runAiApp(app, payload, model, signal, quick))
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw err
+    console.warn(`[LlmGateway] ${app} failed:`, (err as Error)?.message || err)
+    return jsonResponse({ error: { message: String((err as Error)?.message || err) } }, aiAppStatus(err))
+  }
+}
+
+async function postChatApi(baseUrl: string, key: string, payload: Body, signal?: AbortSignal | null): Promise<Response> {
   const route = `${baseUrl}|${String(payload.model ?? '')}`
   const refused = refusedParams.get(route)
   let body: Body = { ...payload }
@@ -398,12 +455,20 @@ async function ollamaAnswer(res: Response, stream: boolean, kind: 'chat' | 'gene
 export async function llmFetch(input: string, init?: RequestInit): Promise<Response> {
   if (!isCloudMode()) return fetch(input, init)
 
-  const { baseUrl, model } = load()
+  const settings = load()
+  const viaApp = settings.provider === 'app'
+  const { baseUrl } = settings
+  // An app on its default model still needs a name for the callers that list models
+  const model = viaApp ? settings.model || settings.preset : settings.model
   const route = new URL(input).pathname
-  const key = keyFor(baseUrl)
-  if (keyWouldLeakInClear(baseUrl, key)) return jsonResponse({ error: 'insecure' }, 403)
+  const key = viaApp ? '' : keyFor(baseUrl)
+  if (!viaApp && keyWouldLeakInClear(baseUrl, key)) return jsonResponse({ error: 'insecure' }, 403)
   const signal = init?.signal
   const req: Body = typeof init?.body === 'string' ? JSON.parse(init.body) : {}
+  // A one-line reaction to the screen: an app answers it on the model's fastest thinking level
+  const quick = !!(req.options as Body | undefined)?.quick
+  const postChat = (_base: string, _key: string, payload: Body, sig?: AbortSignal | null): Promise<Response> =>
+    viaApp ? appChat(settings.preset as AiAppId, settings.model, payload, sig, quick) : postChatApi(baseUrl, key, payload, sig)
 
   if (route.endsWith('/api/tags')) {
     return jsonResponse({ models: [...LOCAL_MODEL_ALIASES, model].map((name) => ({ name })) })
@@ -452,7 +517,7 @@ export function cloudErrorCode(err: unknown): LlmErrorCode {
 export function cloudErrorDetail(err: unknown): string {
   const cause = (err as { cause?: { message?: string } })?.cause?.message
   return String(cause || (err as Error)?.message || err)
-    .replace(/\b(?:sk|gsk|xai|key|AIza)[-_A-Za-z0-9]{12,}/g, '***')
+    .replace(/\b(?:sk|gsk|xai|key|AIza|nvapi)[-_A-Za-z0-9]{12,}/g, '***')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 160)

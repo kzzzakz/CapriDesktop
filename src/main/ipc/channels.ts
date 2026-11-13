@@ -47,6 +47,7 @@ export const IPC_CHANNELS = {
   COMPANION_SCRIPT_EVENT: 'companion:scriptEvent',
   COMPANION_SCRIPT_LINE_DONE: 'companion:scriptLineDone',
   COMPANION_SCRIPT_CANCEL: 'companion:scriptCancel',
+  COMPANION_VOICE_BUSY: 'companion:voiceBusy',
   WINDOW_FORWARDED_MOUSE: 'window:forwardedMouse',
   COMPANION_TOGGLE_CHAT: 'companion:toggleChat',
   VOICE_TOGGLE_ALWAYS_LISTENING: 'voice:toggleAlwaysListening',
@@ -117,11 +118,26 @@ export const IPC_CHANNELS = {
   APPS_CHANGED: 'apps:changed',
   // Downloading local models (Capri // Brain)
   OLLAMA_PULL: 'ollama:pull',
+  COMPANION_SCALE_GET: 'companion:getScale',
+  ADMIN_GET: 'admin:get',
+  // The user's AI apps (Antigravity, Claude Code, Codex) as her model
+  AI_APPS_LIST: 'aiApps:list',
+  AI_APPS_TEST: 'aiApps:test',
+  // Local models and installed parts (Capri // Brain)
+  MODELS_LIST: 'models:list',
+  MODEL_DELETE: 'models:delete',
+  VISION_MODEL_GET: 'models:getVision',
+  VISION_MODEL_SET: 'models:setVision',
+  PARTS_LIST: 'parts:list',
+  PART_REMOVE: 'parts:remove',
+  ADMIN_SET: 'admin:set',
+  COMPANION_SCALE_SET: 'companion:setScale',
   // Where Cyberpunk 2077 and Capri's mod are (Apps window)
   CYBERPUNK_FOLDERS_GET: 'cyberpunk:getFolders',
   CYBERPUNK_FOLDER_PICK: 'cyberpunk:pickFolder',
   CYBERPUNK_FOLDER_REMOVE: 'cyberpunk:removeFolder',
   OLLAMA_PULL_CANCEL: 'ollama:pullCancel',
+  OLLAMA_IMPORT_GGUF: 'ollama:importGguf',
   OLLAMA_PULL_PROGRESS: 'ollama:pullProgress',
   LLM_GET_SETTINGS: 'llm:getSettings',
   LLM_SET_SETTINGS: 'llm:setSettings',
@@ -179,7 +195,14 @@ export const IPC_CHANNELS = {
   SCANNER_SCAN: 'scanner:scan',
   SCANNER_SET_CONTINUOUS: 'scanner:setContinuous',
   SCANNER_SET_IGNORE_MOUSE: 'scanner:setIgnoreMouse',
-  SCANNER_EVENT: 'scanner:event'
+  SCANNER_WATCH_SCREEN_START: 'scanner:watchScreenStart',
+  SCANNER_WATCH_SCREEN_STOP: 'scanner:watchScreenStop',
+  SCANNER_WATCH_SCREEN_TOGGLE: 'scanner:watchScreenToggle',
+  SCANNER_EVENT: 'scanner:event',
+
+  // Watch Party & Desktop Control
+  WATCH_PARTY_STATE_CHANGED: 'watchParty:stateChanged',
+  DESKTOP_CONTROLLER_ACTION: 'desktopController:action'
 } as const
 
 export type CompanionEmotionState =
@@ -266,6 +289,8 @@ export interface ScannerStatusPayload {
   isScanning: boolean
   isContinuous: boolean
   bounds: ScannerBounds
+  isWatchingScreen?: boolean
+  isFullscreenWatch?: boolean
 }
 
 export interface ScannerScanResult {
@@ -280,9 +305,12 @@ export interface ScannerEventPayload {
   type: 'scanning' | 'result' | 'error' | 'status'
   isScanning?: boolean
   isContinuous?: boolean
+  isWatchingScreen?: boolean
+  isFullscreenWatch?: boolean
   result?: ScannerScanResult
   tags?: string[]
   error?: string
+  reaction?: string
 }
 
 /** A hand-written script playing part by part (see services/script) */
@@ -291,3 +319,23 @@ export type ScriptEventPayload =
   | { kind: 'end' }
   | { kind: 'look'; look: 'ojos' | 'ojos2' | 'closed' | 'thinking' | 'asustada' | null }
   | { kind: 'line'; id: number; text: string; audioDataUrl?: string; look?: 'ojos' | 'ojos2' | 'closed' | 'thinking' | 'asustada' }
+
+export type WatchPartyMode = 'idle' | 'tiktok' | 'youtube' | 'gaming'
+
+export interface WatchPartyCursor {
+  x: number
+  y: number
+  visible: boolean
+  isClicking?: boolean
+  isScrolling?: boolean
+  targetLabel?: string
+}
+
+export interface WatchPartyStatusPayload {
+  mode: WatchPartyMode
+  active: boolean
+  isBrowsingFeed: boolean
+  candidateTitle?: string
+  lastReaction?: string
+  cursor?: WatchPartyCursor
+}

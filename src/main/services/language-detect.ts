@@ -20,7 +20,7 @@ const WORDS: Record<LatinLang, string> = {
   en: `the you your what why how where when who are was were can could will would should have has does did create make open
     close play song file desktop homework scan look see tell give with this that from for please about stop change switch language
     draw sketch paint dog cat house sun heart hello hi hey good morning night bye goodbye thanks thank and but not my me i'm it's
-    don't there here want need think know like just do is show`,
+    don't there here want need think know like just do is show lock pick ban select choose cancel`,
   pt: `você voce voces vocês não nao tudo obrigado obrigada estou fazer fazendo fala falar falando beleza valeu muito muita
     muitos muitas pra pro pras pros meu minha meus minhas seu sua seus suas dele dela deles delas olá ola ajuda ajudar fechar fecha
     arquivo pasta tarefa lição licao computador tela jogo jogar então entao também tambem demais agora cadê cade comigo pode podem

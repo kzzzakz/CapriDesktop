@@ -73,7 +73,7 @@ export const OnboardingView: React.FC = () => {
       if (p.hasName) setName((typed) => typed || p.name)
     }).catch(() => {})
   }, [])
-  const [provider, setProvider] = useState<'local' | 'cloud'>('local')
+  const [provider, setProvider] = useState<'local' | 'cloud' | 'app'>('local')
   const [status, setStatus] = useState<SetupStatus | null>(null)
   const [running, setRunning] = useState<StepId | null>(null)
   const [moving, setMoving] = useState(false)
@@ -86,7 +86,7 @@ export const OnboardingView: React.FC = () => {
   const t = useMemo(() => translator(lang), [lang])
   // When the setup runs again after a rebind, the last page names the keys she really uses
   const hotkeyLabels = useHotkeyLabels()
-  const order = provider === 'cloud' ? CLOUD_ORDER : LOCAL_ORDER
+  const order = provider !== 'local' ? CLOUD_ORDER : LOCAL_ORDER
 
   useEffect(() => {
     window.api.setup.getStatus().then(setStatus).catch(() => {})
@@ -293,7 +293,7 @@ export const OnboardingView: React.FC = () => {
                 </div>
               </div>
             )}
-            <PageHead index={3} tag={t(PAGE_TAGS[3])} title={t('ob_setupTitle')} sub={provider === 'cloud' ? t('ob_setupSubCloud') : t('ob_setupSub')} />
+            <PageHead index={3} tag={t(PAGE_TAGS[3])} title={t('ob_setupTitle')} sub={provider !== 'local' ? t('ob_setupSubCloud') : t('ob_setupSub')} />
 
             <MacSettings />
             <div className="flex items-center gap-3">

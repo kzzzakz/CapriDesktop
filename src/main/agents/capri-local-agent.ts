@@ -16,7 +16,7 @@ import { offerDesktopTools } from '../../shared/platform-policy'
 import { platformStatus } from '../services/mac-permissions'
 import { scriptPlayer } from '../services/script/script-player'
 import { ensureRequestedLook, requestedLook, splitByLooks, stripLookTags } from '../services/script/look-tags'
-import { isMac, isWindows } from '../services/platform'
+import { listProcessNames, isMac, isWindows } from '../services/platform'
 import { clearLanguageOf, detectLanguage, type DetectedLang } from '../services/language-detect'
 import { cloudErrorCode, cloudErrorDetail, isCloudMode, llmFetch, type LlmErrorCode } from '../services/llm-gateway'
 import * as os from 'os'
@@ -37,6 +37,7 @@ import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '
 import { consciousnessService } from '../services/consciousness-service'
 import { getSystemPromptPersona, personaIntro } from '../services/system-prompt-store'
 import { scannerService } from '../services/scanner-service'
+import { watchPartyService } from '../services/watch-party-service'
 import { boredomService } from '../services/boredom-service'
 import { proactiveDialogueService } from '../services/proactive-dialogue-service'
 import { paintDrawerService } from '../services/paint-drawer-service'
@@ -49,10 +50,13 @@ import { CodingAgent, isCodingRequest } from './coding-agent'
 import { updateService } from '../services/update-service'
 import { cleanAppRequest } from '../services/app-finder'
 import { commandInEnglish } from './command-translations'
+import { parseValorantCommand } from '../services/valorant/command-parser'
+import { valorantAgentSelect, valorantPickMessage } from '../services/valorant/agent-select-service'
+import { leaveValorantQueue, startValorantQueue, valorantIsTheOpenGame, valorantQueueMessage } from '../services/valorant/matchmaking-service'
 import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
 import { memoryService } from '../services/memory-service'
 import { listKnownApps } from '../services/known-apps'
-import { appRequestInEnglish, fixedCommandLanguage, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
+import { appRequestInEnglish, fixedCommandLanguage, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isStopWatchScreenRequest, isUpdateInOtherLanguage, isVersionRequest, isWatchScreenRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
  * Deleting is only allowed when the user asked to delete and named that file or folder
@@ -560,6 +564,38 @@ export class CapriLocalAgent extends EventEmitter {
       return
     }
 
+    // Interactive Watch Party & PC Co-Browsing (TikTok scroll/likes, YouTube feed navigation, generic gaming)
+    const partyResult = await watchPartyService.handleVoiceCommand(trimmed, (msg) => this.emitAssistant(msg))
+    if (partyResult.handled) {
+      if (partyResult.reply) {
+        this.emitAssistant(partyResult.reply)
+      }
+      this.finishSession()
+      return
+    }
+
+    if (isWatchScreenRequest(trimmed) || isWatchScreenRequest(norm)) {
+      void scannerService.startFullscreenWatch()
+      this.emitAssistant(
+        isSpanish
+          ? '[happy] ¡Activando escaneo de pantalla completa, choomba! Voy a estar atenta a lo que estés jugando o mirando.'
+          : "[happy] Activating full-screen live watch, choomba! I'll be watching whatever you're playing or viewing."
+      )
+      this.finishSession()
+      return
+    }
+
+    if (isStopWatchScreenRequest(trimmed) || isStopWatchScreenRequest(norm)) {
+      void scannerService.stopFullscreenWatch()
+      this.emitAssistant(
+        isSpanish
+          ? '[happy] ¡Listo, desactivo el escaneo de pantalla, choomba!'
+          : '[happy] Stopped screen watch, choomba!'
+      )
+      this.finishSession()
+      return
+    }
+
     if (isVersionRequest(trimmed)) {
       this.emitAssistant(updateService.versionLine(activeLang))
       this.finishSession()
@@ -987,6 +1023,47 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // League of Legends (LCU) Client Interceptor: Multi-Intent & Compound Plans, Accept, Auto-Accept, Pick, Ban
+    // VALORANT agent select: selects and locks the agent the user asked for, now or when it starts
+    let valorantCmd = parseValorantCommand(norm)
+    // "busca partida" with no game named: VALORANT when it is the game that is open
+    if (valorantCmd.searchWithoutGame && valorantIsTheOpenGame(await listProcessNames().catch(() => null))) {
+      valorantCmd = parseValorantCommand(`${norm} valorant`)
+    }
+    if (valorantCmd.isValorant) {
+      if (valorantCmd.wantsLeaveQueue) {
+        this.emitAssistant(valorantQueueMessage(await leaveValorantQueue()))
+        this.finishSession()
+        return
+      }
+      if (valorantCmd.wantsCancel) {
+        this.emitAssistant(
+          valorantAgentSelect.cancelAgentRequest() ? "Valorant agent pick cancelled, {name}." : "There was no Valorant agent pick waiting, {name}."
+        )
+        this.finishSession()
+        return
+      }
+      const said: string[] = []
+      if (valorantCmd.wantsSearch) {
+        const queued = await startValorantQueue(valorantCmd.queue)
+        console.log(`[Capri Agent] Valorant search: ${queued.status}`)
+        said.push(valorantQueueMessage(queued))
+      }
+      if (valorantCmd.agentQuery) {
+        const agent = valorantCmd.agent
+        if (!agent) {
+          said.push(`Couldn't find an agent named "${valorantCmd.agentQuery}" in Valorant, {name}. Double check the name!`)
+        } else {
+          const result = await valorantAgentSelect.requestAgent(agent.uuid, agent.name)
+          console.log(`[Capri Agent] Valorant agent ${agent.name}: ${result.status}`)
+          // After starting the search the client message would only repeat itself
+          if (result.status !== 'cancelled' && !(said.length && result.status === 'client_not_running')) said.push(valorantPickMessage(result.status, agent.name))
+        }
+      }
+      if (said.length) this.emitAssistant(said.join(' '))
+      this.finishSession()
+      return
+    }
+
     const lolCmd = parseLolCommand(norm)
     if (lolCmd.isLolCommand) {
       if (isMac) { this.emitAssistant('League of Legends integration is not supported in this Mac release.'); this.finishSession(); return }

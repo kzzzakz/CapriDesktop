@@ -611,9 +611,9 @@ test('native system settings are bounded, verified and never silently run arbitr
 })
 
 test('upstream configurable hotkeys keep Mac modifiers and preserve other platform defaults',()=>{
- assert.deepEqual(defaultHotkeys('darwin'),{talk:'Alt+Super+V',listen:'Alt+Super+L',chat:'Alt+Super+C'})
- assert.deepEqual(defaultHotkeys('win32'),{talk:'Down',listen:'Right',chat:'Left'})
- assert.deepEqual(defaultHotkeys('linux'),{talk:'Down',listen:'Right',chat:'Left'})
+ assert.deepEqual(defaultHotkeys('darwin'),{talk:'Alt+Super+V',listen:'Alt+Super+L',chat:'Alt+Super+C',gaming:'Alt+Super+M',away:'Alt+Super+A'})
+ assert.deepEqual(defaultHotkeys('win32'),{talk:'Down',listen:'Right',chat:'Left',gaming:'Control+Alt+M',away:'Control+Alt+H'})
+ assert.deepEqual(defaultHotkeys('linux'),{talk:'Down',listen:'Right',chat:'Left',gaming:'Control+Alt+M',away:'Control+Alt+H'})
  assert.equal(normalizeHotkeys({listen:'Control+Alt+K'}).listen,'Control+Alt+K')
  assert.equal(clampGamingOpacity(.1),.2)
  assert.equal(clampGamingOpacity(2),1)

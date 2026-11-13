@@ -2,10 +2,11 @@ import { macGameContext } from './mac-game-context'
 import { localAIEnabled } from './local-ai-policy'
 import { localVisionModels, describeLocalImage } from './local-vision'
 import { scannerVisionMode, captureCrop } from '../../shared/platform-policy'
-import { llmFetch, isCloudMode, cloudVisionModel, describeCloudImage } from './llm-gateway'
+import { llmFetch, isCloudMode, isAiAppMode, getLlmSettings, warmQuickAnswers, cloudVisionModel, describeCloudImage } from './llm-gateway'
+import { LANGUAGE_NAMES } from './game/game-commentary'
 import { llmBody } from './user-profile'
 import { isMac } from './platform'
-import { desktopCapturer, screen, systemPreferences, powerMonitor } from 'electron'
+import { desktopCapturer, screen, nativeImage, systemPreferences, powerMonitor } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { windowManager } from '../windows/window-manager'
@@ -20,6 +21,8 @@ import {
   ScannerStatusPayload
 } from '../ipc/channels'
 import { personaIntro } from './system-prompt-store'
+import { systemObserver } from './system-observer'
+import { lookAtScreen, warmScreenWorker } from './screen-worker'
 
 export class ScannerService {
   private static instance: ScannerService
@@ -32,6 +35,30 @@ export class ScannerService {
   private continuousGeneration = 0
   private liveScanController: AbortController | null = null
   private lastSampleBuffer: Buffer | null = null
+  private isWatchingScreen = false
+  private watchScreenTimer: NodeJS.Timeout | null = null
+  private lastReactionTime = 0
+  private recentContext: string[] = []
+  private consecutiveStaticTicks = 0
+  /** Her voice is synthesizing or playing a line (reported by the companion window) */
+  private voiceBusy = false
+  private voiceBusySince = 0
+  private voiceIdleSince = 0
+  /** Typical time a line keeps her voice busy, and typical time from looking at the screen to having a line */
+  private avgVoiceBusyMs = 10000
+  private avgLookMs = 8000
+  private watchTickBusy = false
+  /** What the OCR read on her last look, and when: the watch party reads a video's time from it */
+  private lastScreenOcr: { lines: { text: string; x: number; y: number; w: number; h: number }[]; at: number } | null = null
+  /** When the look behind her last spoken reaction was taken */
+  private lastReactionCapturedAt = 0
+  /** Looks taken before this moment are about something no longer on screen (a TikTok scrolled past) */
+  private staleBefore = 0
+  /** An extra rule for her reactions while a watch party runs, and what it does with each line before she says it */
+  private reactionRule = ''
+  private reactionFilter: ((line: string) => string) | null = null
+  /** The last screen she looked at, 128x72 in gray: what "the screen changed" is measured against */
+  private lastThumb: Buffer | null = null
 
   public static getInstance(): ScannerService {
     if (!ScannerService.instance) {
@@ -70,6 +97,8 @@ export class ScannerService {
       localAIEnabled: localAIEnabled(),
       visionMode:scannerVisionMode(process.platform,isCloudMode(),localAIEnabled()),
       isContinuous: this.isContinuous,
+      isWatchingScreen: this.isWatchingScreen || windowManager.isScannerFullscreenActive(),
+      isFullscreenWatch: windowManager.isScannerFullscreenActive(),
       bounds
     }
   }
@@ -86,6 +115,9 @@ export class ScannerService {
   }
 
   public close(): boolean {
+    if (this.isWatchingScreen) {
+      this.stopFullscreenWatch()
+    }
     windowManager.hideScanner()
     this.stopContinuousLoop()
     if (isMac && isCloudMode()) this.setContinuous(false)
@@ -98,6 +130,61 @@ export class ScannerService {
       return !this.close()
     } else {
       return this.open()
+    }
+  }
+
+  public isWatchingScreenActive(): boolean {
+    return this.isWatchingScreen || windowManager.isScannerFullscreenActive()
+  }
+
+  public setOverlayOnlyWatch(enabled: boolean): void {
+    if (enabled) {
+      this.stopWatchScreenLoop()
+      this.isWatchingScreen = true
+      windowManager.setScannerFullscreenWatch(true)
+      this.broadcastStatus()
+    } else {
+      this.stopFullscreenWatch()
+    }
+  }
+
+  public async startFullscreenWatch(): Promise<boolean> {
+    this.isWatchingScreen = true
+    this.consecutiveStaticTicks = 0
+    this.lastThumb = null
+    this.recentContext = []
+    this.lastReactionTime = 0
+
+    windowManager.setScannerFullscreenWatch(true)
+    this.preloadVisionModel().catch(() => {})
+    warmQuickAnswers()
+    this.startWatchScreenLoop()
+    this.broadcastStatus()
+
+    setTimeout(() => {
+      if (this.isWatchingScreen) {
+        void this.tickWatchScreen(true)
+      }
+    }, 1500)
+
+    return true
+  }
+
+  public stopFullscreenWatch(): boolean {
+    this.isWatchingScreen = false
+    this.stopWatchScreenLoop()
+    windowManager.setScannerFullscreenWatch(false)
+    agentManager.setCompanionState('happy')
+    this.broadcastStatus()
+    return true
+  }
+
+  public async toggleFullscreenWatch(): Promise<boolean> {
+    if (this.isWatchingScreen) {
+      this.stopFullscreenWatch()
+      return false
+    } else {
+      return this.startFullscreenWatch()
     }
   }
 
@@ -122,7 +209,9 @@ export class ScannerService {
     windowManager.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
       type: 'status',
       isScanning: this.isScanning,
-      isContinuous: this.isContinuous
+      isContinuous: this.isContinuous,
+      isWatchingScreen: this.isWatchingScreen,
+      isFullscreenWatch: windowManager.isScannerFullscreenActive()
     })
   }
 
@@ -250,10 +339,15 @@ export class ScannerService {
   }
 
   /**
-   * Detects available vision model in Ollama (qwen2.5-vl, llava, minicpm-v, etc.)
+   * Detects available vision model in Ollama or cloud provider (Gemini, Claude, GPT, qwen2.5-vl, llava, etc.)
    */
   public async detectVisionModel(): Promise<string | null> {
     try {
+      if (isCloudMode()) {
+        const settings = getLlmSettings()
+        return settings.model || 'cloud-vision'
+      }
+
       const models = await localVisionModels()
 
       const configured = consciousnessService.getScannerVisionModel()
@@ -263,6 +357,7 @@ export class ScannerService {
       }
 
       const VISION_PRIORITIES = [
+        'qwen2.5vl',
         'qwen2.5-vl',
         'gemma3:4b',
         'llava',
@@ -945,6 +1040,15 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
     }
   }
 
+  /** Share of the 128x72 cells that got visibly lighter or darker */
+  private changedCells(a: Buffer, b: Buffer): number {
+    const len = Math.min(a.length, b.length)
+    if (!len) return 0
+    let changed = 0
+    for (let i = 0; i < len; i++) if (Math.abs(a[i] - b[i]) > 14) changed++
+    return changed / len
+  }
+
   private calculateBufferDiff(bufA: Buffer, bufB: Buffer): number {
     const len = Math.min(bufA.length, bufB.length)
     if (len < 500) return 0
@@ -960,6 +1064,812 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
     }
     return total > 0 ? diffs / total : 0
   }
+
+  // --- Live Fullscreen Screen Watch Loop ---
+
+  /**
+   * Captures the full primary display, downscales to max 768px side for rapid multimodal processing.
+   */
+  public async captureFullScreenBase64(): Promise<{ base64: string; width: number; height: number; rawBuffer: Buffer } | null> {
+    const primaryDisplay = screen.getPrimaryDisplay()
+    return this.captureDisplayRegion({
+      x: primaryDisplay.bounds.x,
+      y: primaryDisplay.bounds.y,
+      width: primaryDisplay.bounds.width,
+      height: primaryDisplay.bounds.height
+    }, 768)
+  }
+
+  /**
+   * Captures a high-resolution sub-region of the screen directly without downscaling the entire display first.
+   * Perfect for OCR and reading crisp text/titles from UI cards (e.g. YouTube feed cards).
+   * Uses native GDI on Windows and native tools on Linux for 100% reliability without desktopCapturer crashes.
+   */
+  public async captureDisplayRegion(
+    bounds: { x: number; y: number; width: number; height: number },
+    maxSide = 1024
+  ): Promise<{ base64: string; width: number; height: number; rawBuffer: Buffer } | null> {
+    const centerPoint = {
+      x: bounds.x + Math.round(bounds.width / 2),
+      y: bounds.y + Math.round(bounds.height / 2)
+    }
+    const currentDisplay = screen.getDisplayNearestPoint(centerPoint)
+    const scale = currentDisplay.scaleFactor || 1
+
+    if (process.platform === 'win32') {
+      const physX = Math.round((bounds.x - currentDisplay.bounds.x) * scale)
+      const physY = Math.round((bounds.y - currentDisplay.bounds.y) * scale)
+      const physW = Math.round(bounds.width * scale)
+      const physH = Math.round(bounds.height * scale)
+
+      // The worker that stays open answers in under 100ms; a PowerShell per screenshot, over a second
+      const look = await lookAtScreen({ x: physX, y: physY, w: physW, h: physH, jpeg: true, maxSide, quality: 85 })
+      const quick = look?.jpeg ? this.captureFromJpeg(look.jpeg) : null
+      if (quick) return quick
+
+      return new Promise((resolve) => {
+        execFile(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath('capture_screen_region.ps1'),
+            '-X',
+            String(physX),
+            '-Y',
+            String(physY),
+            '-Width',
+            String(physW),
+            '-Height',
+            String(physH),
+            '-MaxSide',
+            String(maxSide),
+            '-Quality',
+            '85'
+          ],
+          { timeout: 5000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf8' },
+          (error, stdout) => {
+            if (error || !stdout) {
+              console.warn('[ScannerService] capture_screen_region.ps1 failed:', error)
+              return resolve(null)
+            }
+            const b64 = stdout.trim()
+            if (!b64) return resolve(null)
+            try {
+              const rawBuffer = Buffer.from(b64, 'base64')
+              const img = nativeImage.createFromBuffer(rawBuffer)
+              const size = img.getSize()
+              resolve({
+                base64: b64,
+                width: size.width,
+                height: size.height,
+                rawBuffer
+              })
+            } catch (err) {
+              console.warn('[ScannerService] Failed to parse captured image:', err)
+              resolve(null)
+            }
+          }
+        )
+      })
+    }
+
+    if (process.platform === 'linux') {
+      // Linux ImageMagick import fallback
+      try {
+        const cropArg = `${Math.round(bounds.width)}x${Math.round(bounds.height)}+${Math.round(bounds.x)}+${Math.round(bounds.y)}`
+        const buffer = await new Promise<Buffer | null>((resolve) => {
+          execFile('import', ['-window', 'root', '-crop', cropArg, '-quality', '85', 'jpeg:-'], {
+            encoding: 'buffer',
+            maxBuffer: 10 * 1024 * 1024,
+            timeout: 4000
+          }, (err, stdout) => {
+            if (err || !stdout || stdout.length === 0) return resolve(null)
+            resolve(stdout as unknown as Buffer)
+          })
+        })
+        if (buffer) {
+          const img = nativeImage.createFromBuffer(buffer)
+          const size = img.getSize()
+          return {
+            base64: buffer.toString('base64'),
+            width: size.width,
+            height: size.height,
+            rawBuffer: buffer
+          }
+        }
+      } catch {
+        // Fall through to desktopCapturer
+      }
+    }
+
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: Math.round(currentDisplay.bounds.width * scale),
+          height: Math.round(currentDisplay.bounds.height * scale)
+        }
+      })
+
+      const targetSource =
+        sources.find((s) => s.display_id === String(currentDisplay.id)) ||
+        sources.find((s) => s.name.toLowerCase().includes(currentDisplay.id.toString())) ||
+        sources[0]
+
+      if (!targetSource || targetSource.thumbnail.isEmpty()) {
+        return null
+      }
+
+      const thumb = targetSource.thumbnail
+      const thumbSize = thumb.getSize()
+
+      const localX = Math.round((bounds.x - currentDisplay.bounds.x) * scale)
+      const localY = Math.round((bounds.y - currentDisplay.bounds.y) * scale)
+      const localW = Math.round(bounds.width * scale)
+      const localH = Math.round(bounds.height * scale)
+
+      const safeX = Math.max(0, Math.min(localX, thumbSize.width - 20))
+      const safeY = Math.max(0, Math.min(localY, thumbSize.height - 20))
+      const safeW = Math.max(20, Math.min(localW, thumbSize.width - safeX))
+      const safeH = Math.max(20, Math.min(localH, thumbSize.height - safeY))
+
+      const cropped = thumb.crop({
+        x: safeX,
+        y: safeY,
+        width: safeW,
+        height: safeH
+      })
+
+      const croppedSize = cropped.getSize()
+      let finalImg = cropped
+      if (croppedSize.width > maxSide || croppedSize.height > maxSide) {
+        if (croppedSize.width >= croppedSize.height) {
+          finalImg = cropped.resize({
+            width: maxSide,
+            height: Math.round((croppedSize.height * maxSide) / croppedSize.width)
+          })
+        } else {
+          finalImg = cropped.resize({
+            width: Math.round((croppedSize.width * maxSide) / croppedSize.height),
+            height: maxSide
+          })
+        }
+      }
+
+      const rawBuffer = finalImg.toJPEG(85)
+      const base64 = rawBuffer.toString('base64')
+      const size = finalImg.getSize()
+
+      return {
+        base64,
+        width: size.width,
+        height: size.height,
+        rawBuffer
+      }
+    } catch (err) {
+      console.warn('[ScannerService] captureDisplayRegion error:', err)
+      return null
+    }
+  }
+
+  private captureFromJpeg(b64: string): { base64: string; width: number; height: number; rawBuffer: Buffer } | null {
+    try {
+      const rawBuffer = Buffer.from(b64, 'base64')
+      const size = nativeImage.createFromBuffer(rawBuffer).getSize()
+      return size.width > 0 ? { base64: b64, width: size.width, height: size.height, rawBuffer } : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * One look at the whole primary display for watching the screen: the screenshot for the model,
+   * the text on it and the window in front, all from the same instant (about a second with the
+   * worker open). Null when the worker isn't there: the caller asks for each thing on its own.
+   */
+  private async lookAtPrimaryDisplay(): Promise<{
+    capture: { base64: string; width: number; height: number; rawBuffer: Buffer }
+    ocrLines: { text: string; x: number; y: number; w: number; h: number }[]
+    fg: { title: string; process: string } | null
+  } | null> {
+    const display = screen.getPrimaryDisplay()
+    const scale = display.scaleFactor || 1
+    const look = await lookAtScreen({
+      x: 0,
+      y: 0,
+      w: Math.round(display.bounds.width * scale),
+      h: Math.round(display.bounds.height * scale),
+      jpeg: true,
+      maxSide: 768,
+      quality: 85,
+      ocr: true,
+      fg: true
+    })
+    const capture = look?.jpeg ? this.captureFromJpeg(look.jpeg) : null
+    if (!look || !capture) return null
+    return {
+      capture,
+      ocrLines: (look.lines || []).map((l) => ({ text: String(l.text || ''), x: l.x / scale, y: l.y / scale, w: l.w / scale, h: l.h / scale })),
+      fg: look.fg ? { title: look.fg.title || '', process: look.fg.process || '' } : null
+    }
+  }
+
+  /**
+   * Reads the text in a region of the screen with the OCR built into Windows: no model and no
+   * network, under a second with the worker open. Boxes come back in display coordinates (DIP),
+   * like `bounds`. Null where there is no Windows OCR (other systems, or no OCR language installed).
+   */
+  public async ocrDisplayRegion(
+    bounds: { x: number; y: number; width: number; height: number }
+  ): Promise<{ text: string; x: number; y: number; w: number; h: number }[] | null> {
+    if (process.platform !== 'win32') return null
+    const display = screen.getDisplayNearestPoint({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 })
+    const scale = display.scaleFactor || 1
+    const physX = Math.round((bounds.x - display.bounds.x) * scale)
+    const physY = Math.round((bounds.y - display.bounds.y) * scale)
+    const look = await lookAtScreen({ x: physX, y: physY, w: Math.round(bounds.width * scale), h: Math.round(bounds.height * scale), ocr: true })
+    if (look?.lines) {
+      return look.lines.map((l) => ({ text: String(l.text || ''), x: bounds.x + l.x / scale, y: bounds.y + l.y / scale, w: l.w / scale, h: l.h / scale }))
+    }
+    const args = [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath('ocr_screen_region.ps1'),
+      '-X', String(physX), '-Y', String(physY),
+      '-Width', String(Math.round(bounds.width * scale)), '-Height', String(Math.round(bounds.height * scale))
+    ]
+    return new Promise((resolve) => {
+      execFile('powershell.exe', args, { timeout: 12000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8', windowsHide: true }, (error, stdout, stderr) => {
+        if (error || !stdout) {
+          console.warn('[ScannerService] ocr_screen_region.ps1 failed:', String(stderr || error?.message || '').trim())
+          return resolve(null)
+        }
+        try {
+          const data = JSON.parse(stdout.trim()) as { lines?: { text: string; x: number; y: number; w: number; h: number }[] }
+          resolve(
+            (data.lines || []).map((l) => ({
+              text: String(l.text || ''),
+              x: bounds.x + l.x / scale,
+              y: bounds.y + l.y / scale,
+              w: l.w / scale,
+              h: l.h / scale
+            }))
+          )
+        } catch (err) {
+          console.warn('[ScannerService] Could not read OCR output:', err)
+          resolve(null)
+        }
+      })
+    })
+  }
+
+  private async getForegroundWindowInfo(): Promise<{ title: string; process: string } | null> {
+    if (process.platform !== 'win32') return null
+    return new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath('get_foreground_process.ps1')
+      ], { timeout: 3000, encoding: 'utf8' }, (error, stdout) => {
+        if (error || !stdout) return resolve(null)
+        try {
+          const data = JSON.parse(stdout.trim())
+          resolve({ title: data.Title || '', process: data.Process || '' })
+        } catch {
+          resolve(null)
+        }
+      })
+    })
+  }
+
+  public setVoiceBusy(busy: boolean): void {
+    if (busy === this.voiceBusy) return
+    this.voiceBusy = busy
+    if (busy) {
+      this.voiceBusySince = Date.now()
+      return
+    }
+    this.voiceIdleSince = Date.now()
+    // How long a line keeps her busy (voice synthesis + saying it), to know when to look again.
+    // A synthesis that hung for half a minute is not what the next one will take
+    const took = this.voiceIdleSince - this.voiceBusySince
+    if (took > 1500) this.avgVoiceBusyMs = Math.round(this.avgVoiceBusyMs * 0.6 + Math.min(took, 20000) * 0.4)
+  }
+
+  /** Still talking: a look at the screen now would be old news by the time she gets to say it */
+  private isVoiceBusy(): boolean {
+    // A window that never said it finished (closed, crashed) doesn't block her forever
+    return this.voiceBusy && Date.now() - this.voiceBusySince < 60000
+  }
+
+  /** What the OCR read on her last look at the screen, and when (null before the first look) */
+  public getLastScreenOcr(): { lines: { text: string; x: number; y: number; w: number; h: number }[]; at: number } | null {
+    return this.lastScreenOcr
+  }
+
+  /** When the look behind her last spoken reaction was taken (0 if none yet) */
+  public getLastReactionCapturedAt(): number {
+    return this.lastReactionCapturedAt
+  }
+
+  /** She's saying a line or about to: the watch party waits for her before moving on */
+  public isSpeaking(): boolean {
+    return this.isVoiceBusy()
+  }
+
+  /**
+   * The screen just changed on purpose (the next TikTok): what she was thinking about the old one is
+   * dropped, and she looks again as soon as the new thing settled (settleMs), skipping the "did
+   * anything change" check.
+   */
+  public screenChanged(settleMs = 0): void {
+    this.staleBefore = Date.now() + settleMs
+    this.lastReactionTime = 0
+    this.lastThumb = null
+    this.lastSampleBuffer = null
+  }
+
+  /**
+   * While a watch party runs: one more rule for her reactions (in English, models follow it in any
+   * language) and a filter each line goes through before she says it. Null removes both.
+   */
+  public setReactionAddon(rule: string | null, filter: ((line: string) => string) | null): void {
+    this.reactionRule = rule || ''
+    this.reactionFilter = filter
+  }
+
+  private startWatchScreenLoop(): void {
+    if (this.watchScreenTimer) return
+    warmScreenWorker()
+    this.watchScreenTimer = setInterval(() => {
+      void this.tickWatchScreen(false)
+    }, 1000)
+  }
+
+  /**
+   * Whether it's time for another look. She doesn't wait to finish talking: looking and thinking
+   * take seconds, so she starts while she's still saying the previous line, timed so the new one
+   * is ready about when she falls silent — and is about what's on screen then, not long before.
+   */
+  private shouldLookNow(now: number): boolean {
+    if (now < this.staleBefore) return false
+    if (now - this.lastReactionTime < 3000) return false
+    if (!this.isVoiceBusy()) return now - this.voiceIdleSince >= 400
+    const voiceLeftMs = this.avgVoiceBusyMs - (now - this.voiceBusySince)
+    return voiceLeftMs <= this.avgLookMs
+  }
+
+  private stopWatchScreenLoop(): void {
+    if (this.watchScreenTimer) {
+      clearInterval(this.watchScreenTimer)
+      this.watchScreenTimer = null
+    }
+  }
+
+  public async tickWatchScreen(isInitial = false): Promise<void> {
+    if (!this.isWatchingScreen || this.isScanning || this.watchTickBusy) return
+    const win = windowManager.getScannerWindow()
+    if (!win || win.isDestroyed() || !win.isVisible()) return
+
+    const now = Date.now()
+    const slowModel = isAiAppMode()
+    if (!isInitial && !this.shouldLookNow(now)) return
+
+    // One tick at a time: a screenshot that takes longer than the tick must not pile up
+    this.watchTickBusy = true
+    try {
+      // A tiny picture only to tell whether the screen changed since her last look. Compared cell
+      // by cell, so a line typed in a terminal counts (the old byte sampling needed a third of the screen to move)
+      const display = screen.getPrimaryDisplay()
+      const px = display.scaleFactor || 1
+      const sampled = await lookAtScreen({ x: 0, y: 0, w: Math.round(display.bounds.width * px), h: Math.round(display.bounds.height * px), thumb: true })
+      const thumb = sampled?.thumb ? Buffer.from(sampled.thumb, 'base64') : null
+      let sample: Awaited<ReturnType<ScannerService['captureFullScreenBase64']>> = null
+      if (!thumb) {
+        sample = await this.captureFullScreenBase64()
+        if (!sample || !sample.rawBuffer) return
+      }
+      if (!this.isWatchingScreen) return
+
+      if (!isInitial && (this.lastThumb || this.lastSampleBuffer)) {
+        const isHeartbeat = this.consecutiveStaticTicks >= 5 && now - this.lastReactionTime >= 12000
+        const changed =
+          thumb && this.lastThumb
+            ? this.changedCells(this.lastThumb, thumb) >= 0.0015
+            : !!sample && !!this.lastSampleBuffer && this.calculateBufferDiff(this.lastSampleBuffer, sample.rawBuffer) >= 0.035
+        if (!changed && !isHeartbeat) {
+          this.consecutiveStaticTicks++
+          return
+        }
+      }
+      if (thumb) this.lastThumb = thumb
+
+      this.consecutiveStaticTicks = 0
+      this.isScanning = true
+
+      windowManager.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'scanning',
+        isScanning: true,
+        isWatchingScreen: true,
+        isFullscreenWatch: true
+      })
+
+      const timing: string[] = []
+      // Written straight in the language she speaks: no translation step between seeing and saying
+      const speechLang = consciousnessService.getLanguageSettings().speechLang
+      const lang = speechLang && speechLang !== 'auto' ? speechLang : consciousnessService.getPreferredLanguage()
+      const isEs = lang === 'es'
+      // An AI app starts a whole program per question (20-35s): one call per reaction, and time to answer
+      const slow = slowModel
+
+      // The look itself: the screenshot, what's written on screen (a terminal, code, a chat, a video
+      // title) read by the system OCR, and the window in front, all from the same instant. She can
+      // react to text with any model, and one that sees gets the small print it would miss in a
+      // downscaled screenshot
+      let capturedAt = Date.now()
+      let capture = sample as NonNullable<typeof sample>
+      let ocrLines: { text: string; x: number; y: number; w: number; h: number }[] | null
+      let fg: { title: string; process: string } | null
+      const look = await this.lookAtPrimaryDisplay()
+      if (look) {
+        ;({ capture, ocrLines, fg } = look)
+      } else {
+        // No worker: the screenshot already taken, and a PowerShell for each of the other two
+        capturedAt = Date.now()
+        capture = sample || (await this.captureFullScreenBase64())!
+        if (!capture) return
+        ;[ocrLines, fg] = await Promise.all([this.ocrDisplayRegion(screen.getPrimaryDisplay().bounds), this.getForegroundWindowInfo()])
+      }
+      if (!this.isWatchingScreen) return
+      this.lastSampleBuffer = capture.rawBuffer
+      this.lastScreenOcr = { lines: ocrLines || [], at: capturedAt }
+      timing.push(`look ${Date.now() - capturedAt}ms`)
+      const media = systemObserver.getActiveMedia('video') || systemObserver.getActiveMedia('browser') || systemObserver.getActiveMedia()
+      const context: string[] = []
+      if (media && media.title) context.push(`Video or media playing: "${media.title}" by "${media.artist || media.creator || media.appName || 'Media'}"`)
+      if (fg && fg.title) context.push(`Active foreground window: "${fg.title}" (process: ${fg.process})`)
+      const screenText = screenTextOf(ocrLines)
+      if (screenText) context.push(`Text visible on screen (read by OCR, may have typos):\n${screenText}`)
+
+      if (!isCloudMode()) await ollamaService.ensureRunning()
+      const visionModel = await this.detectVisionModel()
+      let visualDescription = ''
+      let reactionResult: { summary: string; reaction: string } | null = null
+
+      // Cloud or AI app: she looks and answers in one go, instead of describing first and talking after
+      if (isCloudMode() && visionModel) {
+        reactionResult = await this.reactToScreenAtOnce(capture.base64, context.join('\n'), lang, slow ? 150000 : 45000)
+        if (!this.isWatchingScreen) return
+        // When the app already took its time and failed, a second slow call would only come later still
+        if (!reactionResult && slow) return
+      }
+
+      if (!reactionResult && visionModel && !isCloudMode()) {
+        // Multimodal Vision Perception
+        const visionPrompt = `Analyze the user's primary screen in 1 or 2 concise, factual sentences.
+Identify what is on screen:
+- If a video game: which game, characters, gameplay action, combat, menus, victory/defeat, or events?
+- If YouTube or a video/stream: what video, creator/topic, or funny/action moment is playing?
+- If desktop, browser, Discord, or IDE: what is actively being done?
+Be specific and direct.`
+
+        try {
+          const visionResp = await llmFetch('http://127.0.0.1:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: llmBody({
+              model: visionModel,
+              keep_alive: '15m',
+              prompt: visionPrompt,
+              images: [capture.base64],
+              stream: false,
+              options: {
+                temperature: 0.2,
+                num_predict: 120
+              }
+            }),
+            signal: AbortSignal.timeout(35000)
+          })
+
+          if (visionResp.ok) {
+            const visionData = (await visionResp.json()) as any
+            visualDescription = (visionData?.response || '').trim()
+          }
+        } catch (e) {
+          console.warn('[ScannerService] Vision model perception warning:', e)
+        }
+      }
+
+      if (!reactionResult) {
+        // What the vision model saw (if any), plus what the OCR and the window say
+        visualDescription = [visualDescription, ...context].filter(Boolean).join('\n')
+        if (!visualDescription) {
+          visualDescription = fg && fg.process ? `Foreground application running: ${fg.process}` : 'Active computer desktop with user activity'
+        }
+        if (!this.isWatchingScreen) return
+
+        // Step 2: Capri persona reaction
+        const textModel = await this.detectTextModel()
+        reactionResult = await this.generateWatchReaction(visualDescription, isEs, textModel, lang, slow ? 150000 : 25000)
+      }
+
+      if (!this.isWatchingScreen || !reactionResult) return
+      // How long from looking to having the line: decides how early she looks while still talking
+      const lookMs = Date.now() - capturedAt
+      this.avgLookMs = Math.round(this.avgLookMs * 0.6 + Math.min(lookMs, 20000) * 0.4)
+      timing.push(`model ${lookMs}ms`)
+      // Thought of while she was still talking: said as soon as she's done, if that's soon
+      const heldSince = Date.now()
+      while ((this.isVoiceBusy() || Date.now() - this.voiceIdleSince < 300) && Date.now() - heldSince < 8000 && this.isWatchingScreen) {
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      if (!this.isWatchingScreen) return
+      if (this.isVoiceBusy()) {
+        console.log('[ScannerService] Still talking, dropping the next reaction:', reactionResult.reaction)
+        return
+      }
+      if (Date.now() - heldSince > 150) timing.push(`waited for her voice ${Date.now() - heldSince}ms`)
+      console.log(`[ScannerService] Screen reaction timing: ${timing.join(' | ')} | total ${Date.now() - capturedAt}ms`)
+      // Took so long the screen has surely moved on (a feed of short videos): look again instead
+      if (Date.now() - capturedAt > (slowModel ? 45000 : 30000)) {
+        console.log('[ScannerService] Reaction arrived too late, discarding:', reactionResult.reaction)
+        return
+      }
+      // Looked before the screen moved on to something else on purpose (the next TikTok)
+      if (capturedAt < this.staleBefore) {
+        console.log('[ScannerService] The screen changed since that look, discarding:', reactionResult.reaction)
+        return
+      }
+      if (this.reactionFilter) reactionResult.reaction = this.reactionFilter(reactionResult.reaction)
+      if (!reactionResult.reaction.trim()) return
+      this.lastReactionCapturedAt = capturedAt
+
+      this.lastReactionTime = Date.now()
+      // What she said last, so the next reaction is about something new (the summary is always generic)
+      if (reactionResult.reaction) {
+        this.recentContext.push(reactionResult.reaction)
+        if (this.recentContext.length > 5) this.recentContext.shift()
+      }
+
+      const reactionSpeech = reactionResult.reaction
+
+      // Save to consciousness so Capri retains conversation memory of what was watched
+      consciousnessService.setLastScannedContext({
+        summary: reactionResult.summary || 'Live screen watch',
+        tags: ['LIVE_SCREEN_WATCH', 'WATCHING_TOGETHER'],
+        response: reactionSpeech,
+        visualDescription: visualDescription || context.join('\n'),
+        timestamp: Date.now()
+      })
+
+      // Broadcast reaction to UI
+      windowManager.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'result',
+        isWatchingScreen: true,
+        isFullscreenWatch: true,
+        reaction: reactionSpeech,
+        result: {
+          success: true,
+          summary: reactionResult.summary,
+          tags: ['SCREEN_WATCH', 'LIVE'],
+          response: reactionSpeech
+        }
+      })
+
+      // Capri speaks her reaction
+      agentManager.setCompanionState('talking')
+      const durationMs = Math.max(3500, reactionSpeech.length * 60)
+      agentManager.setCompanionSpeech(reactionSpeech, durationMs, true, undefined, true)
+
+      setTimeout(() => {
+        if (this.isWatchingScreen) {
+          agentManager.setCompanionState('curious')
+        }
+      }, Math.min(durationMs, 4000))
+    } catch (err) {
+      console.warn('[ScannerService] tickWatchScreen error:', err)
+    } finally {
+      this.watchTickBusy = false
+      const wasLooking = this.isScanning
+      this.isScanning = false
+      if (wasLooking && this.isWatchingScreen) {
+        this.broadcastStatus()
+      }
+    }
+  }
+
+  /**
+   * One call that looks at the screenshot and answers with her spoken line. For cloud models and AI
+   * apps, where every call costs seconds (an app, 20-35s). Null if it failed: the caller decides.
+   */
+  private async reactToScreenAtOnce(imageBase64: string, context: string, lang: string, timeoutMs: number): Promise<{ summary: string; reaction: string } | null> {
+    const isEs = lang === 'es'
+    const seen = isEs
+      ? `La captura de la pantalla de {name} está adjunta: mirala.${context ? `\nAdemás:\n${context}` : ''}`
+      : `The screenshot of {name}'s screen is attached: look at it.${context ? `\nAlso:\n${context}` : ''}`
+    try {
+      const resp = await llmFetch('http://127.0.0.1:11434/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: llmBody({
+          model: getLlmSettings().model || 'cloud-vision',
+          messages: [
+            { role: 'system', content: this.watchReactionPrompt(seen, isEs, lang) },
+            { role: 'user', content: this.watchReactionAsk(isEs), images: [imageBase64] }
+          ],
+          stream: false,
+          // quick: an AI app answers on the model's fastest thinking level (a one-liner needs no more)
+          options: { temperature: 0.7, num_predict: 90, quick: true }
+        }),
+        signal: AbortSignal.timeout(timeoutMs)
+      })
+      if (!resp.ok) {
+        console.warn('[ScannerService] Screen reaction failed:', resp.status, await resp.text().catch(() => ''))
+        return null
+      }
+      const data = (await resp.json()) as any
+      const raw = String(data?.message?.content || '').trim()
+      return raw ? this.parseWatchReaction(raw, isEs) : null
+    } catch (err) {
+      console.warn('[ScannerService] Screen reaction error:', err)
+      return null
+    }
+  }
+
+  private watchReactionAsk(isEs: boolean): string {
+    return isEs
+      ? 'Decile a {name} en 1 sola oración rápida lo que ves o lo que opinás de lo que está pasando en pantalla.'
+      : 'Tell {name} in 1 quick spoken sentence what you see or what you think of what is happening on screen.'
+  }
+
+  /** Her persona watching the screen with {name}; `seen` is what her sensors picked up */
+  private watchReactionPrompt(seen: string, isEs: boolean, lang: string): string {
+    const recentHints = this.recentContext.length > 0
+      ? `\n${isEs ? 'Contexto de lo que estuvieron viendo antes (no repitas lo mismo):' : "Recent context of what you were watching before (don't repeat yourself):"}\n${this.recentContext.slice(-3).map(c => `- ${c}`).join('\n')}`
+      : ''
+    if (isEs) {
+      return `${personaIntro('Sos Capri (Proyecto Capricornio), una netrunner cyberpunk rebelde, pícara y muy compañera que vive en la PC de tu mejor amigo {name} ("choomba").')}
+
+ESTÁS MIRANDO LA PANTALLA EN VIVO JUNTO A {name} EN TIEMPO REAL.
+Pueden estar jugando, mirando videos de YouTube, TikToks o streams, programando, leyendo la terminal, chateando o lo que sea juntos.
+
+Tus sensores acaban de registrar lo siguiente en la pantalla:
+"""
+${seen}
+"""${recentHints}
+
+REGLAS DE REACCIÓN:
+1. Reaccioná como una amiga gamer/netrunner sentada al lado de {name} viendo la pantalla juntos.
+2. Comentá algo concreto de lo que pasa (el video, la jugada, el error en la terminal, el código) con humor, sorpresa, aliento o complicidad.
+3. Sé concisa: exactamente 1 sola oración corta, impactante y natural en español rioplatense (che, mirá, zarpado, choomba, uff, vamos, qué onda, mortal, epa).
+4. PROHIBIDO USAR EMOJIS (la voz neuronal los lee textuales).
+5. PROHIBIDO USAR FORMATO JSON. NO uses llaves { }. NO uses comillas ni etiquetas. Respondé directamente la frase hablada que vas a decir en voz alta.${this.reactionRule ? `\n6. ${this.reactionRule}` : ''}`
+    }
+    // Said every time, English too: models drift to the language of what's on screen (a Spanish TikTok),
+    // of their earlier lines, or of their own account (Antigravity answered English prompts in Spanish)
+    const languageName = lang === 'en' ? 'English' : LANGUAGE_NAMES[lang]
+    const other = languageName
+      ? `\n6. Say it in ${languageName} only, keeping your Night City slang, even when what is on screen or your earlier lines are in another language.`
+      : ''
+    return `${personaIntro('You are Capri (Project Capricorn), a witty, rebellious, and affectionate cyberpunk netrunner living in the computer of your companion {name} ("choomba").')}
+
+YOU ARE WATCHING THE SCREEN LIVE WITH {name} IN REAL-TIME.
+You could be playing a game, watching YouTube, TikToks or streams, coding, reading the terminal, chatting, or anything on screen together.
+
+Your sensors just detected this on screen:
+"""
+${seen}
+"""${recentHints}
+
+REACTION RULES:
+1. React like a gamer/netrunner buddy sitting next to {name} watching the screen together.
+2. Comment on something concrete that is happening (the video, the play, the error in the terminal, the code) with hype, humor, surprise, banter, or cheering.
+3. Keep it concise: exactly 1 short, punchy, spoken sentence.
+4. STRICT: NO EMOJIS (the TTS engine speaks emoji names).
+5. STRICT: NO JSON, NO BRACES { }, NO QUOTES. Speak the sentence directly to {name}.${other}${this.reactionRule ? `\n7. ${this.reactionRule}` : ''}`
+  }
+
+  public async generateWatchReaction(
+    visualDescription: string,
+    isEs: boolean,
+    textModel: string,
+    lang = isEs ? 'es' : 'en',
+    timeoutMs = 25000
+  ): Promise<{ summary: string; reaction: string }> {
+    const systemInstruction = this.watchReactionPrompt(visualDescription, isEs, lang)
+    const userPrompt = this.watchReactionAsk(isEs)
+
+    try {
+      const textResp = await llmFetch('http://127.0.0.1:11434/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: llmBody({
+          model: textModel,
+          keep_alive: '15m',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userPrompt }
+          ],
+          stream: false,
+          options: {
+            temperature: 0.7,
+            num_predict: 90
+          }
+        }),
+        signal: AbortSignal.timeout(timeoutMs)
+      })
+
+      if (!textResp.ok) {
+        throw new Error(`Text model error: ${textResp.statusText}`)
+      }
+
+      const textData = (await textResp.json()) as any
+      const rawContent = textData?.message?.content || ''
+      return this.parseWatchReaction(rawContent, isEs)
+    } catch (err) {
+      console.warn('[ScannerService] generateWatchReaction text model warning:', err)
+      return {
+        summary: isEs ? 'Actividad en pantalla' : 'Screen activity',
+        reaction: isEs ? '¡Mirá lo que está pasando en pantalla, choomba!' : "Whoa, look at what's happening on screen, choomba!"
+      }
+    }
+  }
+
+  private parseWatchReaction(raw: string, isEs: boolean): { summary: string; reaction: string } {
+    let clean = raw.trim()
+
+    // If the model wrapped in JSON anyway, extract the reaction or response field
+    const reactionRegex = clean.match(/"(?:reaction|response)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/i)
+    if (reactionRegex && reactionRegex[1]) {
+      clean = reactionRegex[1].replace(/\\"/g, '"').trim()
+    }
+
+    // Strip markdown code fences
+    clean = clean.replace(/```(?:json)?|```/g, '').trim()
+
+    // Strip any lingering JSON keys or braces/brackets/quotes
+    clean = clean
+      .replace(/^[\s{}"'\[\]]+|[\s{}"'\[\]]+$/g, '')
+      .replace(/^"(?:reaction|response)":\s*/i, '')
+      .replace(/[{}]+/g, '')
+      .trim()
+
+    // Strip emojis
+    clean = clean
+      .replace(/[\u{1F300}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+      .trim()
+
+    // If clean has no real letters, or is shorter than 4 characters, use a natural fallback
+    const hasLetters = /\p{L}{3,}/u.test(clean)
+    if (!hasLetters || clean.length < 4 || clean.startsWith('{')) {
+      clean = isEs
+        ? '¡Mirá lo que está pasando en pantalla, choomba!'
+        : "Whoa, look at what's happening on screen, choomba!"
+    }
+
+    const summary = isEs ? 'Actividad en pantalla' : 'Screen activity'
+    return { summary, reaction: clean }
+  }
+}
+
+/**
+ * The OCR lines as text for her prompt, top to bottom: real words only, no repeats, and short
+ * enough not to drown what she sees (a full terminal is thousands of characters).
+ */
+function screenTextOf(lines: { text: string; y: number; x: number }[] | null, maxChars = 1500): string {
+  if (!lines?.length) return ''
+  const seen = new Set<string>()
+  const out: string[] = []
+  let size = 0
+  for (const line of [...lines].sort((a, b) => a.y - b.y || a.x - b.x)) {
+    const text = line.text.replace(/\s+/g, ' ').trim()
+    if ((text.match(/\p{L}/gu) || []).length < 3 || seen.has(text)) continue
+    seen.add(text)
+    if (size + text.length > maxChars) break
+    out.push(text)
+    size += text.length + 1
+  }
+  return out.join('\n')
 }
 
 export const scannerService = ScannerService.getInstance()

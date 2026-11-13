@@ -5,6 +5,7 @@ import { useAgentStore } from '../stores/useAgentStore'
 import { useT } from '../utils/useUiLang'
 import { MemorySettings } from './MemorySettings'
 import { ModelDownload } from './ModelDownload'
+import { LocalModelsPanel } from './LocalModelsPanel'
 import type { SystemPromptPayload } from '../../../main/ipc/channels'
 
 interface AgentSettingsModalProps {
@@ -18,7 +19,9 @@ interface AgentSettingsModalProps {
 export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, onClose, embedded = false, onSaved }) => {
   const t = useT()
   const { llmModel, ollamaRunning, ollamaModels, setLlmConfig, setOllamaStatus } = useAgentStore()
-  const [provider, setProvider] = useState<'local' | 'cloud'>('local')
+  const [provider, setProvider] = useState<'local' | 'cloud' | 'app'>('local')
+  // On this PC: Ollama, or LM Studio for .gguf models
+  const [engine, setEngine] = useState<'ollama' | 'lmstudio'>('ollama')
   const [modelInput, setModelInput] = useState(llmModel)
   const [isScanning, setIsScanning] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -92,7 +95,7 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
       if (!(await formRef.current?.save())) return
       // The system prompt is saved only if it was loaded and changed (applies from the next message)
       if (promptLoaded && promptText !== savedPrompt) await window.api.agent.setSystemPrompt(promptText)
-      if (provider === 'local' && modelInput) {
+      if (provider === 'local' && engine === 'ollama' && modelInput) {
         setLlmConfig({ model: modelInput })
         await window.api.agent.setConfig({ model: modelInput })
       }
@@ -164,9 +167,16 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
 
         <div className={`cp-scroll p-5 space-y-4 ${embedded ? '' : 'overflow-y-auto'}`}>
           {embedded && <p className="text-sm text-[var(--cp-muted)]">Choose who handles chat and vision. Use Save below to apply AI changes; Mac options have their own controls.</p>}
-          <LlmProviderForm ref={formRef} onProviderChange={next => { setProvider(next); setFeedback('') }} />
+          <LlmProviderForm
+            ref={formRef}
+            onProviderChange={(next, nextEngine) => {
+              setProvider(next)
+              setEngine(nextEngine ?? 'ollama')
+              setFeedback('')
+            }}
+          />
 
-          {provider === 'local' && (
+          {provider === 'local' && engine === 'ollama' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-[14px]">
                 <span className={`flex items-center gap-2 ${ollamaRunning ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}`}>
@@ -205,6 +215,9 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
               />
             </div>
           )}
+
+          {/* Below the thinking models: the ones that see, and what the setup installed */}
+          <LocalModelsPanel ollamaRunning={ollamaRunning} onModelsChanged={() => void scan()} />
 
           {/* How she calls the user */}
           <div className="space-y-1">
@@ -316,7 +329,7 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
           </div>
 
           {/* What she remembers about the user */}
-          <MemorySettings isCloud={provider === 'cloud'} />
+          <MemorySettings isCloud={provider !== 'local'} />
         </div>
 
         {feedback && <p role="status" className="px-5 pb-3 text-sm text-[var(--cp-cyan)]">{feedback}</p>}

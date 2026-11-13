@@ -33,6 +33,7 @@ import { launchMacApp, quitMacApp } from '../../services/mac-desktop'
 import { spotifyService } from '../../services/spotify-service'
 import { clipService } from '../../services/clip-service'
 import { askWhereAppIs, openInstalledApp, protocolIsRegistered } from '../../services/app-launcher'
+import { launchRiotProduct, riotProductFor, RIOT_PRODUCT_NAMES } from '../../services/riot-games'
 import { cleanAppRequest } from '../../services/app-finder'
 
 /** Containers and binary formats: handling them as text destroys them for good */
@@ -936,6 +937,19 @@ export class ToolExecutor {
         return { success: true, output: 'Opened Notepad.' }
       }
 
+      // Riot games open through the Riot Client, from wherever Riot installed it. When that doesn't
+      // work: the Start menu's own shortcut, then her list of apps, then she asks where it is
+      const riotProduct = isWindows ? riotProductFor(rawTarget) : null
+      if (riotProduct) {
+        const gameName = RIOT_PRODUCT_NAMES[riotProduct]
+        const launched = await launchRiotProduct(riotProduct)
+        if (launched.ok) return { success: true, output: `Started ${gameName} through the Riot Client.` }
+        console.warn(`[ToolExecutor] ${gameName} through the Riot Client: ${launched.reason}`)
+        const opened = await openInstalledApp(gameName)
+        if (opened) return { success: true, output: `Launched ${opened} successfully!` }
+        return await ToolExecutor.appNotFound(gameName, args)
+      }
+
       // Games & Universal App Discovery (LoL, Cyberpunk, Palworld, Steam, Riot, Shortcuts)
       const gameLaunch = this.resolveGameLaunch(rawTarget)
       if (gameLaunch && (!gameLaunch.protocol || (await protocolIsRegistered(gameLaunch.protocol)))) {
@@ -1268,53 +1282,6 @@ export class ToolExecutor {
       // Only as a word of its own at the start: "epic games store" keeps its name
       .replace(/^(?:juego|game|app|aplicacion|programa)\s+/i, '')
       .trim()
-
-    // League of Legends / LoL
-    if (q === 'lol' || q.includes('league of legends') || q.includes('league') || q.includes('legends')) {
-      const leagueClient = 'C:\\Riot Games\\League of Legends\\LeagueClient.exe'
-      const riotClient = 'C:\\Riot Games\\Riot Client\\RiotClientServices.exe'
-      if (fs.existsSync(leagueClient)) {
-        return {
-          name: 'League of Legends',
-          command: `powershell -Command "Start-Process -FilePath '${leagueClient}'"`
-        }
-      }
-      if (fs.existsSync(riotClient)) {
-        return {
-          name: 'League of Legends',
-          command: `powershell -Command "Start-Process -FilePath '${riotClient}' -ArgumentList '--launch-product=league_of_legends --launch-patchline=live'"`
-        }
-      }
-    }
-
-    // Teamfight Tactics / TFT
-    if (q === 'tft' || q.includes('teamfight tactics')) {
-      const tftClient = 'C:\\Riot Games\\Teamfight Tactics\\Live\\TFTClient.exe'
-      if (fs.existsSync(tftClient)) {
-        return {
-          name: 'Teamfight Tactics',
-          command: `powershell -Command "Start-Process -FilePath '${tftClient}'"`
-        }
-      }
-    }
-
-    // Valorant
-    if (q === 'valorant' || q === 'val') {
-      const valClient = 'C:\\Riot Games\\VALORANT\\live\\VALORANT.exe'
-      const riotClient = 'C:\\Riot Games\\Riot Client\\RiotClientServices.exe'
-      if (fs.existsSync(valClient)) {
-        return {
-          name: 'VALORANT',
-          command: `powershell -Command "Start-Process -FilePath '${valClient}'"`
-        }
-      }
-      if (fs.existsSync(riotClient)) {
-        return {
-          name: 'VALORANT',
-          command: `powershell -Command "Start-Process -FilePath '${riotClient}' -ArgumentList '--launch-product=valorant --launch-patchline=live'"`
-        }
-      }
-    }
 
     // Steam Installed Games Discovery (reads all appmanifest_*.acf in real-time)
     const steamGames = this.getSteamGames()

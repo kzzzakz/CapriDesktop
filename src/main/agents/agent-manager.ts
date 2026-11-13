@@ -167,7 +167,7 @@ export class AgentManager extends EventEmitter {
 
       // Make Capri appear right in front of everything on screen
       const companionWin = windowManager.getCompanionWindow()
-      if (companionWin && !companionWin.isDestroyed()) {
+      if (companionWin && !companionWin.isDestroyed() && !windowManager.isAway()) {
         companionWin.show()
         companionWin.setAlwaysOnTop(true, 'screen-saver')
         companionWin.moveTop()
@@ -208,11 +208,12 @@ export class AgentManager extends EventEmitter {
   }
 
   /** `why` is what led her to say it, so she can answer if she's asked about it later */
-  public setCompanionSpeech(text: string, durationMs = 4000, speakVoice = false, why?: string): void {
-    if (scriptPlayer.isPlaying()) return
+  /** `live`: a reaction to what's on screen right now. Said only if she's free, never queued (it would be stale) */
+  public setCompanionSpeech(text: string, durationMs = 4000, speakVoice = false, why?: string, live = false): void {
+    if (scriptPlayer.isPlaying() || windowManager.isAway()) return
     const line = personalize(localizeLine(text, consciousnessService.getPreferredLanguage()))
     this.capriLocal.noteOwnLine(line, why)
-    windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: line, durationMs, speakVoice })
+    windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: line, durationMs, speakVoice, live })
   }
 
   public getConfig(): AgentConfigPayload {
@@ -227,7 +228,7 @@ export class AgentManager extends EventEmitter {
   }
 
   public async detectOllama(): Promise<{ running: boolean; models: string[] }> {
-    if (isCloudMode()) return { running: true, models: [getLlmSettings().model] }
+    if (isCloudMode()) return { running: true, models: [getLlmSettings().model || getLlmSettings().preset] }
     return await ollamaService.ensureRunning()
   }
 
