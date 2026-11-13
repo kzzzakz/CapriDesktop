@@ -217,6 +217,26 @@ test('an optional agent descriptor before the name is ignored', () => {
   assert.equal(parseValorantCommand('elegí a ahri').isValorant, false)
 })
 
+test('queue parsing distinguishes non-competitive from competitive requests', () => {
+  for (const phrase of [
+    'busca partida no competitiva en valorant',
+    'BUSCA PARTIDA NO COMPETITIVA EN VALORANT',
+    'busca partida no   competitiva en valorant',
+    'busca partida unrated en valorant'
+  ]) {
+    assert.equal(parseValorantCommand(phrase).queue, 'unrated', phrase)
+  }
+  for (const phrase of [
+    'busca partida competitiva en valorant',
+    'find a competitive match in valorant',
+    'find a ranked match in valorant',
+    'busca partida no\tcompetitiva en valorant',
+    'busca partida no\u00a0competitiva en valorant'
+  ]) {
+    assert.equal(parseValorantCommand(phrase).queue, 'competitive', phrase)
+  }
+})
+
 test('league requests stay in league', () => {
   for (const phrase of ['elegí a ahri', 'pickeá jinx', 'buscá partida y pickeá jinx', 'ban ahri y pickeá a ahri']) {
     const command = parseValorantCommand(phrase)
