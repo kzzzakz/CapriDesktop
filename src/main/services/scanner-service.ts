@@ -1624,7 +1624,11 @@ Be specific and direct.`
         return
       }
       if (this.reactionFilter) reactionResult.reaction = this.reactionFilter(reactionResult.reaction)
-      if (!reactionResult.reaction.trim()) return
+      reactionResult.reaction = this.withoutRepeats(reactionResult.reaction)
+      if (!reactionResult.reaction.trim()) {
+        console.log('[ScannerService] Nothing new to say, skipping this reaction')
+        return
+      }
       this.lastReactionCapturedAt = capturedAt
 
       this.lastReactionTime = Date.now()
@@ -1719,6 +1723,49 @@ Be specific and direct.`
     }
   }
 
+  /**
+   * Drops the sentences she already said in her last reactions (a small model copies its earlier lines
+   * almost word for word) and the ones repeated inside this reaction. Keeps two sentences at most.
+   * Empty when nothing new is left: better silent than saying the same thing again.
+   */
+  private withoutRepeats(text: string): string {
+    const words = (sentence: string): Set<string> =>
+      new Set(
+        sentence
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/\p{Diacritic}/gu, '')
+          .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+          .split(/\s+/)
+          .filter((w) => w.length > 2)
+      )
+    const sentences = (t: string): string[] => t.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean)
+    const alike = (a: Set<string>, b: Set<string>): boolean => {
+      let shared = 0
+      for (const w of a) if (b.has(w)) shared++
+      return shared / Math.min(a.size, b.size) >= 0.6
+    }
+    const said = this.recentContext.flatMap(sentences).map(words).filter((w) => w.size > 0)
+    const kept: string[] = []
+    const keptWords: Set<string>[] = []
+    const clean = text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    for (const sentence of sentences(clean)) {
+      const w = words(sentence)
+      if (w.size === 0) {
+        // "Wow!" alone is fine as an opener, never as the whole reaction
+        if (kept.length < 2) kept.push(sentence)
+        continue
+      }
+      if (said.some((s) => alike(w, s)) || keptWords.some((s) => alike(w, s))) continue
+      kept.push(sentence)
+      keptWords.push(w)
+      if (keptWords.length >= 2) break
+    }
+    // A leftover like "What's next, choom?" isn't a reaction
+    const total = keptWords.reduce((n, w) => n + w.size, 0)
+    return total >= 4 ? kept.join(' ') : ''
+  }
+
   private watchReactionAsk(isEs: boolean): string {
     return isEs
       ? 'Decile a {name} en 1 sola oración rápida lo que ves o lo que opinás de lo que está pasando en pantalla.'
@@ -1728,7 +1775,7 @@ Be specific and direct.`
   /** Her persona watching the screen with {name}; `seen` is what her sensors picked up */
   private watchReactionPrompt(seen: string, isEs: boolean, lang: string): string {
     const recentHints = this.recentContext.length > 0
-      ? `\n${isEs ? 'Contexto de lo que estuvieron viendo antes (no repitas lo mismo):' : "Recent context of what you were watching before (don't repeat yourself):"}\n${this.recentContext.slice(-3).map(c => `- ${c}`).join('\n')}`
+      ? `\n${isEs ? 'Frases que YA dijiste (decí algo totalmente distinto, sin reusar sus palabras ni su idea):' : 'Lines you ALREADY said (say something completely different, never reuse their words or their idea):'}\n${this.recentContext.slice(-3).map(c => `- ${c}`).join('\n')}`
       : ''
     if (isEs) {
       return `${personaIntro('Sos Capri (Proyecto Capricornio), una netrunner cyberpunk rebelde, pícara y muy compañera que vive en la PC de tu mejor amigo {name} ("choomba").')}
