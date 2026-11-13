@@ -1705,9 +1705,12 @@ Be specific and direct.`
 
   private async reactToScreenAtOnce(imageBase64: string, context: string, lang: string, timeoutMs: number, localModel?: string): Promise<{ summary: string; reaction: string } | null> {
     const isEs = lang === 'es'
+    // A small local model (Gemma 3 4B) talks about the window title or the song playing instead of the
+    // picture, and makes things up: it writes down what it actually sees first, then talks about that
+    const grounded = !!localModel
     const seen = isEs
-      ? `La captura de la pantalla de {name} está adjunta: mirala.${context ? `\nAdemás:\n${context}` : ''}`
-      : `The screenshot of {name}'s screen is attached: look at it.${context ? `\nAlso:\n${context}` : ''}`
+      ? `La captura de la pantalla de {name} está adjunta: mirala, es lo principal.${context ? `\nPistas de apoyo (pueden no tener que ver con la imagen):\n${context}` : ''}`
+      : `The screenshot of {name}'s screen is attached: look at it, it comes first.${context ? `\nSide hints (may have nothing to do with the picture):\n${context}` : ''}`
     try {
       const resp = await llmFetch('http://127.0.0.1:11434/api/chat', {
         method: 'POST',
@@ -1716,13 +1719,13 @@ Be specific and direct.`
           model: localModel || getLlmSettings().model || 'cloud-vision',
           ...(localModel ? { keep_alive: '15m' } : {}),
           messages: [
-            { role: 'system', content: this.watchReactionPrompt(seen, isEs, lang) },
-            { role: 'user', content: this.watchReactionAsk(isEs), images: [imageBase64] }
+            { role: 'system', content: this.watchReactionPrompt(seen, isEs, lang, grounded) },
+            { role: 'user', content: grounded ? this.groundedAsk(isEs) : this.watchReactionAsk(isEs), images: [imageBase64] }
           ],
           stream: false,
           // quick: an AI app answers on the model's fastest thinking level (a one-liner needs no more)
           options: localModel
-            ? { temperature: 0.7, num_predict: 90, num_ctx: VISION_NUM_CTX }
+            ? { temperature: 0.5, num_predict: 150, num_ctx: VISION_NUM_CTX }
             : { temperature: 0.7, num_predict: 90, quick: true }
         }),
         signal: AbortSignal.timeout(timeoutMs)
@@ -1732,7 +1735,16 @@ Be specific and direct.`
         return null
       }
       const data = (await resp.json()) as any
-      const raw = String(data?.message?.content || '').trim()
+      let raw = String(data?.message?.content || '').trim()
+      if (grounded && raw) {
+        const say = raw.match(/\**\s*(?:SAY|DIGO|DICE)\s*\**\s*[:：]\s*([\s\S]+)/i)
+        const saw = raw.match(/\**\s*(?:SEE|VEO|VE)\s*\**\s*[:：]\s*([\s\S]*?)(?=\**\s*(?:SAY|DIGO|DICE)\s*\**\s*[:：]|$)/i)
+        if (saw?.[1]?.trim()) console.log('[ScannerService] She sees:', saw[1].trim())
+        // No SAY (Gemma often writes the two lines without their labels): the last line is what she says
+        const lines = raw.replace(/\**\s*(?:SEE|VEO|VE)\s*\**\s*[:：][^\n]*\n?/i, '').split('\n').map((l) => l.trim()).filter(Boolean)
+        if (!say && !saw && lines.length > 1) console.log('[ScannerService] She sees:', lines.slice(0, -1).join(' '))
+        raw = say ? say[1].trim() : lines.length > 1 ? lines[lines.length - 1] : lines.join(' ')
+      }
       return raw ? this.parseWatchReaction(raw, isEs) : null
     } catch (err) {
       console.warn('[ScannerService] Screen reaction error:', err)
@@ -1765,7 +1777,17 @@ Be specific and direct.`
     const said = this.recentContext.flatMap(sentences).map(words).filter((w) => w.size > 0)
     const kept: string[] = []
     const keptWords: Set<string>[] = []
-    const clean = text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    let clean = text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    // The same opening every time ("Seriously, Valen, you're..."): the short leading bits before a comma
+    // go when a recent line started with them, and the rest is said as it is
+    // (an interjection of up to 3 words, plus a name or "choom" right after it)
+    const openerRe = /^([^,.!?]{1,24}),\s*(?:[^\s,.!?]+(?:\s[^\s,.!?]+)?,\s*)?/
+    const opener = (t: string): string => (t.match(openerRe)?.[1] || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+    const start = opener(clean)
+    if (start && start.length <= 20 && this.recentContext.some((r) => opener(r) === start)) {
+      const rest = clean.replace(openerRe, '')
+      if (rest) clean = rest.charAt(0).toUpperCase() + rest.slice(1)
+    }
     for (const sentence of sentences(clean)) {
       const w = words(sentence)
       if (w.size === 0) {
@@ -1783,6 +1805,12 @@ Be specific and direct.`
     return total >= 4 ? kept.join(' ') : ''
   }
 
+  private groundedAsk(isEs: boolean): string {
+    return isEs
+      ? 'Respondé en 2 líneas.\nVEO: en pocas palabras, lo que hay de verdad en la imagen (solo lo que se ve, nada inventado).\nDIGO: 1 sola oración rápida que le decís a {name} sobre eso.'
+      : 'Answer in 2 lines.\nSEE: in a few words, what is really in the picture (only what is visible, nothing made up).\nSAY: 1 quick spoken sentence you tell {name} about it.'
+  }
+
   private watchReactionAsk(isEs: boolean): string {
     return isEs
       ? 'Decile a {name} en 1 sola oración rápida lo que ves o lo que opinás de lo que está pasando en pantalla.'
@@ -1790,9 +1818,9 @@ Be specific and direct.`
   }
 
   /** Her persona watching the screen with {name}; `seen` is what her sensors picked up */
-  private watchReactionPrompt(seen: string, isEs: boolean, lang: string): string {
+  private watchReactionPrompt(seen: string, isEs: boolean, lang: string, grounded = false): string {
     const recentHints = this.recentContext.length > 0
-      ? `\n${isEs ? 'Frases que YA dijiste (decí algo totalmente distinto, sin reusar sus palabras ni su idea):' : 'Lines you ALREADY said (say something completely different, never reuse their words or their idea):'}\n${this.recentContext.slice(-3).map(c => `- ${c}`).join('\n')}`
+      ? `\n${isEs ? 'Frases que YA dijiste (decí algo totalmente distinto: otra idea, otras palabras y otro arranque, no empieces igual):' : 'Lines you ALREADY said (say something completely different: another idea, other words and another opening, never start the same way):'}\n${this.recentContext.slice(-3).map(c => `- ${c}`).join('\n')}`
       : ''
     if (isEs) {
       return `${personaIntro('Sos Capri (Proyecto Capricornio), una netrunner cyberpunk rebelde, pícara y muy compañera que vive en la PC de tu mejor amigo {name} ("choomba").')}
@@ -1810,7 +1838,7 @@ REGLAS DE REACCIÓN:
 2. Comentá algo concreto de lo que pasa (el video, la jugada, el error en la terminal, el código) con humor, sorpresa, aliento o complicidad.
 3. Sé concisa: exactamente 1 sola oración corta, impactante y natural en español rioplatense (che, mirá, zarpado, choomba, uff, vamos, qué onda, mortal, epa).
 4. PROHIBIDO USAR EMOJIS (la voz neuronal los lee textuales).
-5. PROHIBIDO USAR FORMATO JSON. NO uses llaves { }. NO uses comillas ni etiquetas. Respondé directamente la frase hablada que vas a decir en voz alta.${this.reactionRule ? `\n6. ${this.reactionRule}` : ''}`
+5. PROHIBIDO USAR FORMATO JSON. NO uses llaves { } ni comillas, y nunca pongas tu nombre adelante (nada de "Capri:").${grounded ? '' : ' NO uses etiquetas. Respondé directamente la frase hablada que vas a decir en voz alta.'}${this.reactionRule ? `\n6. ${this.reactionRule}` : ''}`
     }
     // Said every time, English too: models drift to the language of what's on screen (a Spanish TikTok),
     // of their earlier lines, or of their own account (Antigravity answered English prompts in Spanish)
@@ -1833,7 +1861,7 @@ REACTION RULES:
 2. Comment on something concrete that is happening (the video, the play, the error in the terminal, the code) with hype, humor, surprise, banter, or cheering.
 3. Keep it concise: exactly 1 short, punchy, spoken sentence.
 4. STRICT: NO EMOJIS (the TTS engine speaks emoji names).
-5. STRICT: NO JSON, NO BRACES { }, NO QUOTES. Speak the sentence directly to {name}.${other}${this.reactionRule ? `\n7. ${this.reactionRule}` : ''}`
+5. STRICT: NO JSON, NO BRACES { }, NO QUOTES, never put your name in front (no "Capri:"). Speak the sentence directly to {name}.${other}${this.reactionRule ? `\n7. ${this.reactionRule}` : ''}`
   }
 
   public async generateWatchReaction(
@@ -1893,6 +1921,9 @@ REACTION RULES:
 
     // Strip markdown code fences
     clean = clean.replace(/```(?:json)?|```/g, '').trim()
+
+    // A script-style speaker label ("Capri: "...""), which the voice would read out loud
+    clean = clean.replace(/^[\s*"'“”]*(?:capri(?:corn(?:io)?)?|reaction|reacci[oó]n|response|respuesta|say|digo)\s*\**\s*[:：]\s*/i, '').trim()
 
     // Strip any lingering JSON keys or braces/brackets/quotes
     clean = clean
