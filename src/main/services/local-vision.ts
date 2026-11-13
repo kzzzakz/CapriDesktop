@@ -1,4 +1,11 @@
 /** Vision always uses the local Ollama endpoint, independently of cloud text settings. */
+
+/**
+ * Context for every call to the vision model, always the same: a different size makes Ollama load it
+ * again (40-50s from disk). A screenshot takes 600-3000 tokens, so 4096 is enough, and it keeps llava
+ * at 4.7 GB instead of 8.7 GB when the Ollama app is set to 32k, so it fits next to her text model.
+ */
+export const VISION_NUM_CTX = process.platform === 'darwin' ? 2048 : 4096
 export async function localVisionModels(): Promise<string[]> {
   const response = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) })
   if (!response.ok) throw new Error(`Local Ollama model list failed (${response.status}).`)
@@ -8,7 +15,7 @@ export async function localVisionModels(): Promise<string[]> {
 export async function describeLocalImage(model: string, base64: string, prompt: string, releaseAfterUse: boolean): Promise<string> {
   const response = await fetch('http://127.0.0.1:11434/api/generate', {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({model, images:[base64], prompt, stream:false, keep_alive:releaseAfterUse ? 0 : '15m', options:{temperature:0.2,num_predict:220,num_ctx:2048}}),
+    body: JSON.stringify({model, images:[base64], prompt, stream:false, keep_alive:releaseAfterUse ? 0 : '15m', options:{temperature:0.2,num_predict:220,num_ctx:VISION_NUM_CTX}}),
     signal: AbortSignal.timeout(90000),
   })
   if (!response.ok) throw new Error(`Local vision model failed (${response.status}). Check that the installed model supports images.`)

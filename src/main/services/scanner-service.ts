@@ -1,6 +1,6 @@
 import { macGameContext } from './mac-game-context'
 import { localAIEnabled } from './local-ai-policy'
-import { localVisionModels, describeLocalImage } from './local-vision'
+import { localVisionModels, describeLocalImage, VISION_NUM_CTX } from './local-vision'
 import { scannerVisionMode, captureCrop } from '../../shared/platform-policy'
 import { llmFetch, isCloudMode, isAiAppMode, getLlmSettings, warmQuickAnswers, cloudVisionModel, describeCloudImage } from './llm-gateway'
 import { LANGUAGE_NAMES } from './game/game-commentary'
@@ -431,7 +431,8 @@ export class ScannerService {
           headers: { 'Content-Type': 'application/json' },
           body: llmBody({
             model,
-            keep_alive: isMac ? 0 : '15m'
+            keep_alive: isMac ? 0 : '15m',
+            options: { num_ctx: VISION_NUM_CTX }
           }),
           signal: AbortSignal.timeout(90000)
         })
@@ -800,7 +801,8 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
                 stream: false,
                 options: {
                   temperature: 0.2,
-                  num_predict: 180
+                  num_predict: 180,
+                  num_ctx: VISION_NUM_CTX
                 }
               }),
               signal: AbortSignal.timeout(60000)
@@ -1565,7 +1567,8 @@ Be specific and direct.`
               stream: false,
               options: {
                 temperature: 0.2,
-                num_predict: 120
+                num_predict: 120,
+                num_ctx: VISION_NUM_CTX
               }
             }),
             signal: AbortSignal.timeout(35000)

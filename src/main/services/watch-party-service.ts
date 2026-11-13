@@ -6,6 +6,7 @@ import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
 import { llmFetch, isAiAppMode } from './llm-gateway'
 import { llmBody } from './user-profile'
+import { VISION_NUM_CTX } from './local-vision'
 import { readFeedCards, type FeedCard } from './youtube-feed-reader'
 import { IPC_CHANNELS, WatchPartyCursor, WatchPartyMode, WatchPartyStatusPayload } from '../ipc/channels'
 
@@ -575,7 +576,7 @@ If there is no text or title visible, reply "NONE".`
           prompt,
           images: [captured.base64],
           stream: false,
-          options: { temperature: 0.1, num_predict: 250 }
+          options: { temperature: 0.1, num_predict: 250, num_ctx: VISION_NUM_CTX }
         }),
         signal: AbortSignal.timeout(25000)
       })
