@@ -583,7 +583,7 @@ export class SystemObserver {
             const proc = row.proc
             const rawTitle = row.title
 
-            if (!rawTitle || rawTitle === 'N/D' || rawTitle === 'OleMainThreadWndName') continue
+            if (!rawTitle || /^(?:N\/D|N\/A)$/i.test(rawTitle) || rawTitle === 'OleMainThreadWndName') continue
             if (proc.includes('nombre de imagen') || proc.includes('image name')) continue
             if (/^(?:Nueva pesta[ñn]a|New Tab|Sin t[ií]tulo)$/i.test(rawTitle)) continue
 
