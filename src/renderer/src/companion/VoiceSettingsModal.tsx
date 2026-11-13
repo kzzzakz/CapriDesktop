@@ -311,20 +311,6 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
             </select>
             <span className="block text-[13px] text-stone-400">{t('music_platformHelp')}</span>
           </label>
-
-          <label className="block space-y-2">
-            <span className="text-stone-300 font-bold tracking-wide">{t('music_platformTitle')}</span>
-            <select
-              value={musicPlatform}
-              onChange={(e) => setMusicPlatform(e.target.value as 'youtube_music' | 'spotify')}
-              className="cp-input w-full px-3 py-2 text-[15px] cursor-pointer"
-              style={{ colorScheme: 'dark' }}
-            >
-              <option value="youtube_music">YouTube Music</option>
-              <option value="spotify">Spotify</option>
-            </select>
-            <span className="block text-[13px] text-stone-400">{t('music_platformHelp')}</span>
-          </label>
           {/* Provider Tabs */}
           <div>
             <label className="text-stone-300 font-bold tracking-wide block mb-2 flex items-center gap-2">

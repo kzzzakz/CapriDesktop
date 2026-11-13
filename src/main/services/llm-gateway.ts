@@ -9,14 +9,14 @@ import { getCloudRequestStatus, trackedCloudFetch, type CloudRequestStatus } fro
  * The API key is encrypted with the OS keychain (safeStorage) and never reaches the renderer.
  */
 
-import { CodexError, runCodex } from './codex-runner'
+import { CodexError } from './codex-runner'
 import { ClaudeCodeError, runClaudeCode, type ClaudeModel } from './claude-code-runner'
 import { app, dialog, safeStorage, type BrowserWindow } from 'electron'
 import { toUiLang, translator } from '../../renderer/src/i18n'
 import * as fs from 'fs'
 import * as path from 'path'
 import { scriptPath } from './app-paths'
-import { aiAppStatus, closeAiAppSessions, isAiAppId, runAiApp, warmAiApp, type AiAppId } from './ai-apps'
+import { aiAppStatus, closeAiAppSessions, isAiAppId, runAiApp, testAiApp, warmAiApp, type AiAppId } from './ai-apps'
 import { personalize } from './user-profile'
 import { DEFAULT_SYSTEM_PROMPT, getSystemPromptPersona } from './system-prompt-store'
 
@@ -609,12 +609,8 @@ export async function testClaudeConnection(model: ClaudeModel): Promise<{ ok: bo
 }
 
 export async function testCodexConnection(model: string): Promise<{ ok: boolean; error?: LlmErrorCode }> {
-  try {
-    await runCodex({ messages: [{ role: 'user', content: 'Reply with: ok' }] }, model)
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, error: cloudErrorCode(error) }
-  }
+  const { ok, error } = await testAiApp('codex', model)
+  return { ok, error }
 }
 
 /** Explicit image request using the configured cloud server/key and a separate vision model. */
