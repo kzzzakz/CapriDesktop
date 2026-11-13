@@ -154,8 +154,22 @@ export const CompanionView: React.FC = () => {
         set(false)
         return
       }
+      // Only where her picture is really drawn: the video fitted inside its box (object-contain), not
+      // the whole wide box around it
+      const video = art.querySelector('video')
+      if (video && video.videoWidth && video.videoHeight) {
+        const v = video.getBoundingClientRect()
+        const fit = Math.min(v.width / video.videoWidth, v.height / video.videoHeight)
+        const w = video.videoWidth * fit
+        const h = video.videoHeight * fit
+        const left = v.left + (v.width - w) / 2
+        const top = v.top + (v.height - h) / 2
+        const pad = 6
+        set(!(e.clientX >= left - pad && e.clientX <= left + w + pad && e.clientY >= top - pad && e.clientY <= top + h + pad))
+        return
+      }
       const box = art.getBoundingClientRect()
-      const half = (Math.min(box.width, box.height) * 0.72) / 2
+      const half = (Math.min(box.width, box.height) * 0.5) / 2
       const inside = Math.abs(e.clientX - (box.left + box.width / 2)) <= half && e.clientY >= box.top && e.clientY <= box.bottom
       set(!inside)
     }
@@ -164,6 +178,26 @@ export const CompanionView: React.FC = () => {
       window.removeEventListener('mousemove', onMove)
       set(false)
     }
+  }, [isGamingMode])
+
+  // Ctrl + mouse wheel over her makes her bigger or smaller (the same size as the slider in Settings > Capri)
+  useEffect(() => {
+    if (!window.api?.companion?.setScale) return
+    let busy = false
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || (IS_MAC && e.metaKey)) || !document.querySelector('[data-capri-art]')?.contains(e.target as Node)) return
+      e.preventDefault()
+      if (busy) return
+      busy = true
+      const kind = isGamingMode ? 'gaming' : 'desktop'
+      window.api.companion
+        .getScale()
+        .then((scale) => window.api.companion.setScale(kind, scale[kind] + (e.deltaY < 0 ? 0.1 : -0.1)))
+        .catch(() => {})
+        .finally(() => setTimeout(() => (busy = false), 120))
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
   }, [isGamingMode])
 
   // Gaming Mode: Capri is click-through so she never steals clicks from the game.

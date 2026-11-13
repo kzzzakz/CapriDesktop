@@ -296,7 +296,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
           <MicPicker />
           <SoundSettings />
           <HotkeySettings />
-          <BehaviorSettings />
+          {/* In the settings window these have a tab of their own (Capri) */}
+          {!embedded && <BehaviorSettings />}
           <label className="block space-y-2">
             <span className="text-stone-300 font-bold tracking-wide">{t('music_platformTitle')}</span>
             <select
