@@ -1,0 +1,2 @@
+[excited] ¡Actualización grande, {name}!
+[happy] Ahora puedo mirar tu pantalla y reaccionar a lo que hacés, y podemos ver YouTube o TikTok juntos: hasta elijo videos de tu feed. [giggles] Me acuerdo de vos entre sesiones, y podés cambiarme el tamaño con Ctrl y la rueda del mouse. Mi cerebro puede ser Antigravity, Claude Code, Codex, NVIDIA o un modelo .gguf, y la instalación te baja un modelo que ve. [playful] En Ajustes hay una pestaña de Supporters donde leo lo que escribió cada uno y le contesto con mis palabras, y además fijo tu agente de VALORANT y busco partida.

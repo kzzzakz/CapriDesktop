@@ -1,3 +1,4 @@
+import { isMac } from '../platform'
 import { EventEmitter } from 'events'
 import { GameAdapter, GameEvent } from './types'
 import { reactionEngine } from './reaction-engine'
@@ -80,7 +81,7 @@ export class GameEventBus extends EventEmitter {
   }
 
   public start(): void {
-    if (this.running) return
+    if (isMac || this.running) return
     this.running = true
     console.log('[GameEventBus] Starting Game Event Bus...')
 

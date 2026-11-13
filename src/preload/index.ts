@@ -1,5 +1,13 @@
+import type { ScreenCommentStatus } from '../shared/mac-types'
+import type { DesktopPreferences } from '../shared/mac-types'
+import type { PlacementCommand } from '../shared/placement'
 import type { LlmPublicSettings, LlmSettingsUpdate } from '../main/services/llm-gateway'
 import type { MemoryAddResult, MemorySnapshot } from '../main/services/memory-service'
+import type { KnownApp, KnownAppResult } from '../main/services/known-apps'
+import type { ModelPullProgress } from '../main/services/ollama-service'
+import type { InstalledPart, LocalModelInfo } from '../main/services/installed-parts'
+import type { AiAppInfo } from '../main/services/ai-apps'
+import type { CyberpunkFolderInfo, CyberpunkFoldersState } from '../main/services/game/adapters/cyberpunk/cyberpunk-folders'
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type { HotkeyAction, HotkeyProblem, Hotkeys } from '../shared/hotkeys'
 import {
@@ -13,7 +21,8 @@ import {
   ScannerBounds,
   ScannerStatusPayload,
   ScannerScanResult,
-  ScannerEventPayload
+  ScannerEventPayload,
+  WatchPartyStatusPayload
 } from '../main/ipc/channels'
 
 // Linux: mouse moves over a click-through window arrive from the main process (Electron only
@@ -36,7 +45,34 @@ ipcRenderer.on(IPC_CHANNELS.WINDOW_FORWARDED_MOUSE, (_event, m: { x: number; y: 
   }
 })
 
+import type { PlatformStatus, MacPermission } from '../shared/mac-types'
+import type { SpotifySettings, SpotifyMethod, SpotifyDevice } from '../main/services/spotify-service'
+
 const api = {
+  desktop: {
+    commentStatus: (): Promise<ScreenCommentStatus> => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_COMMENT_STATUS),
+    openSettings: (voice = false): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_OPEN_SETTINGS, voice),
+    onOpenVoiceSettings: (callback:()=>void):(()=>void) => {const listener=()=>callback();ipcRenderer.on('desktop:open-voice-settings',listener);return ()=>ipcRenderer.removeListener('desktop:open-voice-settings',listener)},
+    onOpenSettings: (callback:()=>void):(()=>void) => {const listener=()=>callback();ipcRenderer.on('desktop:open-settings',listener);return ()=>{ipcRenderer.removeListener('desktop:open-settings',listener)}},
+    configure: (update:{screenCommentMinutes?:number;gameCommentMinutes?:number;speechModel?:'base'|'small'}):Promise<DesktopPreferences> => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_CONFIGURE,update),
+    preferences: ():Promise<DesktopPreferences> => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_PREFERENCES),
+    setOpenAtLogin: (enabled:boolean):Promise<DesktopPreferences> => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_LOGIN,enabled),
+    place: (target:PlacementCommand):Promise<DesktopPreferences> => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_PLACE,target)
+  },
+  platform: {
+    status: (): Promise<PlatformStatus> => ipcRenderer.invoke(IPC_CHANNELS.PLATFORM_STATUS),
+    requestPermission: (permission: MacPermission): Promise<PlatformStatus> => ipcRenderer.invoke(IPC_CHANNELS.PLATFORM_PERMISSION, permission),
+    openPermission: (permission: MacPermission): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.PLATFORM_OPEN_PERMISSION, permission)
+  },
+  spotify: {
+    settings: (): Promise<SpotifySettings> => ipcRenderer.invoke(IPC_CHANNELS.SPOTIFY_SETTINGS),
+    configure: (settings: {method?: SpotifyMethod; clientId?: string; deviceId?: string}): Promise<SpotifySettings> => ipcRenderer.invoke(IPC_CHANNELS.SPOTIFY_CONFIGURE, settings),
+    connect: (): Promise<{success: boolean; output: string}> => ipcRenderer.invoke(IPC_CHANNELS.SPOTIFY_CONNECT),
+    disconnect: (): Promise<SpotifySettings> => ipcRenderer.invoke(IPC_CHANNELS.SPOTIFY_DISCONNECT),
+    devices: (): Promise<SpotifyDevice[]> => ipcRenderer.invoke(IPC_CHANNELS.SPOTIFY_DEVICES),
+    play: (query: string): Promise<{success: boolean; output: string}> => ipcRenderer.invoke(IPC_CHANNELS.SPOTIFY_PLAY, query)
+  },
+
   // Deck Window Controls
   deck: {
     toggle: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.DECK_TOGGLE),
@@ -90,6 +126,8 @@ const api = {
 
   // Companion Character Controls & Events
   companion: {
+    setChatActive: (active:boolean): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_CHAT_ACTIVE, active),
+    showMenu: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_MENU),
     setState: (state: CompanionEmotionState): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_STATE, state),
 
@@ -114,6 +152,7 @@ const api = {
     },
     scriptLineDone: (id: number): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_SCRIPT_LINE_DONE, id),
     cancelScript: (): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_SCRIPT_CANCEL),
+    setVoiceBusy: (busy: boolean): void => ipcRenderer.send(IPC_CHANNELS.COMPANION_VOICE_BUSY, busy),
 
     listDisplays: (): Promise<{ id: number; label: string; width: number; height: number; primary: boolean; current: boolean }[]> => ipcRenderer.invoke(IPC_CHANNELS.DISPLAYS_LIST),
     moveToDisplay: (id: number): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.DISPLAYS_MOVE, id),
@@ -135,10 +174,10 @@ const api = {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.COMPANION_USER_NAME_CHANGED, sub)
     },
 
-    getLanguageSettings: (): Promise<{ textLang: string; speechLang: string; micLang: string }> =>
+    getLanguageSettings: (): Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS),
 
-    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string }): Promise<{ textLang: string; speechLang: string; micLang: string }> =>
+    setLanguageSettings: (next: { textLang?: string; speechLang?: string; micLang?: string; sttEngine?: string }): Promise<{ textLang: string; speechLang: string; micLang: string; sttEngine: string; cloudStt?: string | null }> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_LANGUAGE_SETTINGS, next),
 
     onToggleChat: (callback: () => void): (() => void) => {
@@ -148,6 +187,14 @@ const api = {
     },
 
     getGamingOpacity: (): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.GAMING_OPACITY_GET),
+
+    getScale: (): Promise<{ desktop: number; gaming: number }> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SCALE_GET),
+
+    getAdminMode: (): Promise<{ enabled: boolean; elevated: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.ADMIN_GET),
+
+    setAdminMode: (enabled: boolean): Promise<{ enabled: boolean; elevated: boolean; relaunching: boolean }> => ipcRenderer.invoke(IPC_CHANNELS.ADMIN_SET, enabled),
+
+    setScale: (kind: 'desktop' | 'gaming', value: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SCALE_SET, kind, value),
 
     setGamingOpacity: (value: number): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.GAMING_OPACITY_SET, value),
 
@@ -190,8 +237,12 @@ const api = {
     setLanguage: (lang: string): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SET_LANGUAGE, lang),
 
-    speak: (text: string, durationMs?: number): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SPEAK, { text, durationMs }),
+    speak: (text: string, durationMs?: number, speakVoice?: boolean, cameo?: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SPEAK, { text, durationMs, speakVoice, cameo }),
+    endCameo: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_END_CAMEO),
+    rememberSupporter: (name: string, message: string, line: string): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.COMPANION_REMEMBER_SUPPORTER, { name, message, line }),
+    warmSupporters: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_WARM_SUPPORTERS),
 
     onStateChanged: (callback: (state: CompanionEmotionState) => void): (() => void) => {
       const subscription = (_event: IpcRendererEvent, state: CompanionEmotionState): void => callback(state)
@@ -202,11 +253,11 @@ const api = {
     },
 
     onSpeechChanged: (
-      callback: (payload: { text: string; durationMs: number; speakVoice?: boolean }) => void
+      callback: (payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean }) => void
     ): (() => void) => {
       const subscription = (
         _event: IpcRendererEvent,
-        payload: { text: string; durationMs: number; speakVoice?: boolean }
+        payload: { text: string; durationMs: number; speakVoice?: boolean; live?: boolean }
       ): void => callback(payload)
       ipcRenderer.on(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, subscription)
       return (): void => {
@@ -267,6 +318,48 @@ const api = {
         ipcRenderer.removeListener(IPC_CHANNELS.MEMORY_CHANGED, subscription)
       }
     },
+
+    // The apps she knows by name (Dev Deck > Apps)
+    listApps: (): Promise<KnownApp[]> => ipcRenderer.invoke(IPC_CHANNELS.APPS_LIST),
+    pickApp: (): Promise<KnownAppResult | null> => ipcRenderer.invoke(IPC_CHANNELS.APPS_PICK),
+    renameApp: (id: string, name: string): Promise<KnownAppResult> => ipcRenderer.invoke(IPC_CHANNELS.APPS_RENAME, id, name),
+    removeApp: (id: string): Promise<KnownApp[]> => ipcRenderer.invoke(IPC_CHANNELS.APPS_REMOVE, id),
+    openApp: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.APPS_OPEN, id),
+    onAppsChanged: (callback: (apps: KnownApp[]) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, apps: KnownApp[]): void => callback(apps)
+      ipcRenderer.on(IPC_CHANNELS.APPS_CHANGED, subscription)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.APPS_CHANGED, subscription)
+      }
+    },
+
+    // Downloading local models
+    pullModel: (model: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL, model),
+    cancelPullModel: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_PULL_CANCEL),
+    importGgufModel: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_IMPORT_GGUF),
+
+    listAiApps: (): Promise<AiAppInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.AI_APPS_LIST),
+    testAiApp: (app: string, model: string): Promise<{ ok: boolean; error?: string; detail?: string }> => ipcRenderer.invoke(IPC_CHANNELS.AI_APPS_TEST, app, model),
+
+    // Local models and installed parts
+    listLocalModels: (): Promise<LocalModelInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.MODELS_LIST),
+    deleteLocalModel: (name: string): Promise<LocalModelInfo[] | null> => ipcRenderer.invoke(IPC_CHANNELS.MODEL_DELETE, name),
+    getVisionModel: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.VISION_MODEL_GET),
+    setVisionModel: (model: string): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.VISION_MODEL_SET, model),
+    listInstalledParts: (): Promise<InstalledPart[]> => ipcRenderer.invoke(IPC_CHANNELS.PARTS_LIST),
+    removeInstalledPart: (id: InstalledPart['id']): Promise<InstalledPart[]> => ipcRenderer.invoke(IPC_CHANNELS.PART_REMOVE, id),
+    onPullProgress: (callback: (progress: ModelPullProgress) => void): (() => void) => {
+      const subscription = (_event: IpcRendererEvent, progress: ModelPullProgress): void => callback(progress)
+      ipcRenderer.on(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, subscription)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, subscription)
+      }
+    },
+
+    // Where Cyberpunk 2077 and her mod are
+    getCyberpunkFolders: (): Promise<CyberpunkFoldersState> => ipcRenderer.invoke(IPC_CHANNELS.CYBERPUNK_FOLDERS_GET),
+    pickCyberpunkFolder: (): Promise<{ state: CyberpunkFoldersState; info: CyberpunkFolderInfo } | null> => ipcRenderer.invoke(IPC_CHANNELS.CYBERPUNK_FOLDER_PICK),
+    removeCyberpunkFolder: (folder: string): Promise<CyberpunkFoldersState> => ipcRenderer.invoke(IPC_CHANNELS.CYBERPUNK_FOLDER_REMOVE, folder),
 
     getLlmSettings: (): Promise<LlmPublicSettings> => ipcRenderer.invoke(IPC_CHANNELS.LLM_GET_SETTINGS),
 
@@ -429,6 +522,8 @@ const api = {
 
   // Neural Scanner Mode (Screen Region Vision)
   scanner: {
+    fitScreen: (): Promise<ScannerBounds | null> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_FIT_SCREEN),
+    setLocalAIEnabled: (enabled:boolean): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_LOCAL_AI,enabled),
     open: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_OPEN),
     close: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_CLOSE),
     toggle: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_TOGGLE),
@@ -439,6 +534,9 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.SCANNER_SCAN, query),
     setContinuous: (enabled: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.SCANNER_SET_CONTINUOUS, enabled),
+    startWatchScreen: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_WATCH_SCREEN_START),
+    stopWatchScreen: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_WATCH_SCREEN_STOP),
+    toggleWatchScreen: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SCANNER_WATCH_SCREEN_TOGGLE),
     setIgnoreMouse: (ignore: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.SCANNER_SET_IGNORE_MOUSE, ignore),
     onEvent: (callback: (event: ScannerEventPayload) => void): (() => void) => {
@@ -448,6 +546,28 @@ const api = {
         ipcRenderer.removeListener(IPC_CHANNELS.SCANNER_EVENT, subscription)
       }
     }
+  },
+
+  // Watch Party & Desktop Control
+  watchParty: {
+    getStatus: (): Promise<WatchPartyStatusPayload> => ipcRenderer.invoke('watchParty:getStatus'),
+    startTiktok: (): Promise<boolean> => ipcRenderer.invoke('watchParty:startTiktok'),
+    startYoutube: (): Promise<boolean> => ipcRenderer.invoke('watchParty:startYoutube'),
+    startGaming: (): Promise<boolean> => ipcRenderer.invoke('watchParty:startGaming'),
+    stop: (): Promise<boolean> => ipcRenderer.invoke('watchParty:stop'),
+    next: (): Promise<boolean> => ipcRenderer.invoke('watchParty:next'),
+    like: (): Promise<boolean> => ipcRenderer.invoke('watchParty:like'),
+    onStateChanged: (callback: (payload: WatchPartyStatusPayload) => void): (() => void) => {
+      const sub = (_e: IpcRendererEvent, payload: WatchPartyStatusPayload): void => callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.WATCH_PARTY_STATE_CHANGED, sub)
+      return (): void => {
+        ipcRenderer.removeListener(IPC_CHANNELS.WATCH_PARTY_STATE_CHANGED, sub)
+      }
+    }
+  },
+  desktopController: {
+    action: (action: string, params?: Record<string, unknown>): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_CONTROLLER_ACTION, action, params)
   }
 }
 

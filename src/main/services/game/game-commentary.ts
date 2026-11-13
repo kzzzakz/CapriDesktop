@@ -21,7 +21,7 @@ const GAME_FOLDER_PATTERNS = [
 ]
 
 /** Games whose installer location varies: the window title gives their name */
-const KNOWN_GAME_PROCESS = /^(?:cs2|csgo|dota2|palworld(?:-win64-shipping)?|robloxplayerbeta|fortniteclient-win64-shipping|gta5|overwatch|r5apex|apex|rocketleague|eldenring|witcher3|valorant(?:-win64-shipping)?|minecraft\.windows|osu!)$/i
+const KNOWN_GAME_PROCESS = /^(?:cs2|csgo|dota2|palworld(?:-win64-shipping)?|roblox|robloxplayerbeta|fortniteclient-win64-shipping|gta5|overwatch|r5apex|apex|rocketleague|eldenring|witcher3|valorant(?:-win64-shipping)?|minecraft\.windows|osu!|ultrakill(?:\.exe)?)$/i
 
 /** Installed next to games, but they aren't games */
 const NOT_A_GAME = /wallpaper\s*engine|soundpad|steamvr|steamworks|redistributable|proton|launcher|crash\s*report|anticheat|easyanticheat|unins\d*|setup|rpg\s*maker|blender|riot client|install/i
@@ -31,6 +31,7 @@ const HAS_OWN_ADAPTER = /league of legends|cyberpunk\s*2077|valorant|wuthering w
 
 export interface ForegroundApp {
   windowId?: string
+  bounds?: { x:number; y:number; width:number; height:number }
   title: string
   process: string
   path: string
@@ -44,7 +45,7 @@ export function isGameForeground(app: ForegroundApp): boolean {
     detectGameName(app) !== null
 }
 
-export function detectGameName(app: ForegroundApp): string | null {
+export function detectGameName(app: ForegroundApp, includeAdapted = false): string | null {
   const exe = app.path.split(/[\\/]/).pop() || ''
   if (NOT_A_GAME.test(exe) || NOT_A_GAME.test(app.process) || HAS_OWN_ADAPTER.test(app.process)) return null
 
@@ -56,11 +57,11 @@ export function detectGameName(app: ForegroundApp): string | null {
       break
     }
   }
-  if (!name && KNOWN_GAME_PROCESS.test(app.process)) name = app.title.trim() || app.process
+  if (!name && (KNOWN_GAME_PROCESS.test(app.process) || (/wine|crossover|whisky|preloader/i.test(app.process) && /^ultrakill(?:\s|$)/i.test(app.title)))) name = /^ultrakill/i.test(app.process + app.title) ? 'ULTRAKILL' : app.title.trim() || app.process
   if (!name) return null
 
   name = name.replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!name || NOT_A_GAME.test(name) || HAS_OWN_ADAPTER.test(name) || HAS_OWN_ADAPTER.test(app.title)) return null
+  if (!name || NOT_A_GAME.test(name) || (!includeAdapted && (HAS_OWN_ADAPTER.test(name) || HAS_OWN_ADAPTER.test(app.title)))) return null
   return name
 }
 

@@ -1,3 +1,4 @@
+import { recommendedLocalModel } from '../../shared/platform-policy'
 /**
  * First-run setup: Python voice environment, FFmpeg, Ollama and the local models.
  * Downloads go through winget / pip and stream their output to the onboarding window.
@@ -14,8 +15,8 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import { spawn, execFile } from 'child_process'
-import { localFfmpegPath, pythonEnvDir, scriptPath, toolsDir, venvPython } from './app-paths'
-import { findOnPath, isWindows, killProcesses, linuxInstallCommand, linuxPackageManager } from './platform'
+import { speechModelsDir, voiceDataDir, localFfmpegPath, pythonEnvDir, scriptPath, toolsDir, venvPython } from './app-paths'
+import { findOnPath, isMac, isWindows, killProcesses, linuxInstallCommand, linuxPackageManager } from './platform'
 import { ollamaService } from './ollama-service'
 import { voiceService } from './voice-service'
 import { createHash } from 'crypto'
@@ -25,7 +26,7 @@ import { windowManager } from '../windows/window-manager'
 import { localizeLine } from '../../shared/lines'
 import { getUserName } from './user-profile'
 
-export type SetupStep = 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona'
+export type SetupStep = 'python' | 'ffmpeg' | 'ollama' | 'model' | 'persona' | 'whisper' | 'vision'
 
 export interface SetupStatus {
   python: { systemPython: string | null; envReady: boolean }
@@ -33,12 +34,23 @@ export interface SetupStatus {
   ollama: { installed: boolean; running: boolean; models: string[] }
   model: boolean
   persona: boolean
+  recommendedModel: string
+  /** A model that sees is installed, for watching the screen and the scanner */
+  vision: boolean
+  recommendedVision: string
 }
 
-export const DEFAULT_MODEL = 'qwen2.5-coder:7b'
+export const DEFAULT_MODEL = recommendedLocalModel(process.platform, os.totalmem())
+
+/**
+ * The model she sees the screen with. Qwen3-VL 8B reads drawings, small text and games far better
+ * (~6 GB, wants 16 GB of RAM); Gemma 3 4B is lighter and quicker (~3.3 GB) for smaller PCs
+ */
+export const DEFAULT_VISION_MODEL = os.totalmem() >= 15 * 1024 ** 3 ? 'qwen3-vl:8b' : 'gemma3:4b'
+const VISION_MODEL_NAME = /llava|vision|-vl\b|vl:|qwen2\.5vl|minicpm-v|moondream|bakllava|cogvlm|^gemma3(?::(?!1b)|$)|llama4/i
 
 // Linux distros move to new versions quickly: the voice packages were checked on 3.14 there
-const SUPPORTED_PYTHON = isWindows ? /Python 3\.(1[0-3])/ : /Python 3\.(1[0-4])/
+const SUPPORTED_PYTHON = isMac ? /Python 3\.11\./ : isWindows ? /Python 3\.(1[0-3])/ : /Python 3\.(1[0-4])/
 
 /** Direct-download fallbacks used when winget is not available */
 const PYTHON_INSTALLER_URL = 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe'
@@ -52,9 +64,38 @@ const LINUX_FFMPEG_URL = `https://github.com/BtbN/FFmpeg-Builds/releases/downloa
 
 type Logger = (step: SetupStep | 'storage', line: string) => void
 
-function run(cmd: string, args: string[], onLine: (l: string) => void, opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<number> {
+/**
+ * Windows answers "access denied" (Node: spawn EPERM) or "in use" (EBUSY) while an antivirus is still
+ * scanning a program that was just downloaded, or while the download's file is not closed yet. That
+ * passes in a few seconds, so she tries again before giving up, and then says which program it was.
+ */
+const BLOCKED = new Set(['EPERM', 'EACCES', 'EBUSY'])
+
+async function run(cmd: string, args: string[], onLine: (l: string) => void, opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<number> {
+  for (let attempt = 1; ; attempt++) {
+    const result = await runOnce(cmd, args, onLine, opts)
+    if (typeof result === 'number') return result
+    if (!BLOCKED.has(result) || attempt >= 5) {
+      onLine(`error: spawn ${result} (${cmd})`)
+      if (BLOCKED.has(result)) onLine(`Windows did not let Capri start ${path.basename(cmd)}. An antivirus, Smart App Control or a folder protection may be blocking it: allow it there, or run the setup with Capri opened as administrator.`)
+      return 1
+    }
+    onLine(`${path.basename(cmd)} is still locked (${result}), probably by the antivirus scanning it. Trying again...`)
+    await new Promise((r) => setTimeout(r, attempt * 2000))
+  }
+}
+
+/** The exit code, or the error code when the program could not even start */
+function runOnce(cmd: string, args: string[], onLine: (l: string) => void, opts: { cwd?: string; env?: NodeJS.ProcessEnv }): Promise<number | string> {
   return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { windowsHide: true, cwd: opts.cwd, env: opts.env || process.env })
+    let proc: ReturnType<typeof spawn>
+    try {
+      proc = spawn(cmd, args, { windowsHide: true, cwd: opts.cwd, env: opts.env || process.env })
+    } catch (err: any) {
+      // EPERM and EBUSY come out of spawn() itself, not as an error event
+      resolve(String(err?.code || 'EPERM'))
+      return
+    }
     const feed = (buf: Buffer) =>
       buf
         .toString()
@@ -62,9 +103,10 @@ function run(cmd: string, args: string[], onLine: (l: string) => void, opts: { c
         .map((l) => l.trim())
         .filter(Boolean)
         .forEach(onLine)
-    proc.stdout.on('data', feed)
-    proc.stderr.on('data', feed)
-    proc.on('error', (err) => {
+    proc.stdout?.on('data', feed)
+    proc.stderr?.on('data', feed)
+    proc.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code && BLOCKED.has(err.code)) return resolve(err.code)
       onLine(`error: ${err.message}`)
       resolve(1)
     })
@@ -93,6 +135,13 @@ export class SetupService {
 
   /** A real Python 3.10-3.13 (the Microsoft Store "python" alias doesn't count) */
   private async findSystemPython(): Promise<string | null> {
+    if (isMac) {
+      for (const py of [findOnPath('python3.11'), '/opt/homebrew/opt/python@3.11/bin/python3.11', '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11'].filter((p): p is string => !!p)) {
+        const result = await quick(py, ['--version'])
+        if (result.ok && SUPPORTED_PYTHON.test(result.out)) return py
+      }
+      return null
+    }
     if (!isWindows) {
       for (const cmd of ['python3.12', 'python3.11', 'python3.13', 'python3.10', 'python3.14', 'python3', 'python']) {
         const r = await quick(cmd, ['--version'])
@@ -234,6 +283,10 @@ export class SetupService {
         return true
       }
 
+      if(isMac && plan.items.some(item=>item.kind==='models') && !ollamaService.servingModelsDir()) {
+        const external=await fetch('http://127.0.0.1:11434/',{signal:AbortSignal.timeout(1200)}).then(r=>r.ok).catch(()=>false)
+        if(external) {say('Quit standalone Ollama before moving its Capri-managed model folder. No files were changed.');return false}
+      }
       // Their files stay open while they run, and Windows wouldn't let them be deleted
       say('Closing Ollama and her hearing while everything moves...')
       stopped = true
@@ -241,6 +294,8 @@ export class SetupService {
       if (isWindows) {
         await quick('taskkill', ['/IM', 'ollama app.exe', '/F'])
         await quick('taskkill', ['/IM', 'ollama.exe', '/F'])
+      } else if(isMac) {
+        await ollamaService.stop() // only a server Capri owns; do not kill unrelated Mac processes
       } else {
         killProcesses(['ollama'])
       }
@@ -302,7 +357,14 @@ export class SetupService {
       }
       await this.pointOllamaAtStorage()
 
-      if (rebuildEnv) await this.installVoiceEnv(log, false)
+      if (rebuildEnv && !(await this.installVoiceEnv(log, false))) {
+        // Never delete the usable old environment if rebuilding at the destination failed.
+        setStorageRoot(previous)
+        await this.pointOllamaAtStorage()
+        say('Voice setup failed at the new location. The previous location and files have been retained.')
+        await resume()
+        return false
+      }
 
       for (const item of plan.items) {
         await fs.promises.rm(item.from, { recursive: true, force: true }).catch(() => say(`Couldn't delete ${item.from}, you can do it by hand.`))
@@ -409,7 +471,10 @@ export class SetupService {
       ffmpeg,
       ollama: { installed, running: tags.running, models: tags.models },
       model: tags.models.some((m) => m.startsWith(DEFAULT_MODEL)),
-      persona: tags.models.some((m) => m.toLowerCase().startsWith('capri'))
+      persona: tags.models.some((m) => m.toLowerCase().startsWith('capri')),
+      recommendedModel: DEFAULT_MODEL,
+      vision: tags.models.some((m) => VISION_MODEL_NAME.test(m)),
+      recommendedVision: DEFAULT_VISION_MODEL
     }
   }
 
@@ -463,7 +528,11 @@ export class SetupService {
           }
         }
       }
-      await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())))
+      await new Promise<void>((resolve, reject) => {
+        out.once('close', () => resolve())
+        out.once('error', reject)
+        out.end()
+      })
       return true
     } catch (err: any) {
       log(step, `Download failed: ${err?.message || err}`)
@@ -558,6 +627,14 @@ export class SetupService {
     this.busy = true
     try {
       switch (step) {
+        case 'whisper': {
+          if (!isMac) return false
+          if (!(await this.voiceEnvReady())) {log(step, 'Install the Python voice environment first.'); return false}
+          log(step, 'Downloading the selected speech model (base about 150 MB; small about 500 MB). Future recognition runs offline on CPU.')
+          const ok = (await run(venvPython(), [scriptPath('capri_voice.py'), 'prepare-whisper'], l => log(step, l), {env: {...process.env, CAPRI_VOICE_DIR: voiceDataDir(), CAPRI_WHISPER_DIR: speechModelsDir()}})) === 0
+          if(ok) voiceService.restartWorker()
+          return ok
+        }
         case 'python': {
           const ok = await this.installVoiceEnv(log)
           // It may have started before Whisper was here, and it wouldn't notice on its own
@@ -565,6 +642,10 @@ export class SetupService {
           return ok
         }
         case 'ffmpeg':
+          if (isMac) {
+            if (!(await this.hasFfmpeg())) log(step, 'Install FFmpeg yourself: brew install ffmpeg. Then refresh setup.')
+            return this.hasFfmpeg()
+          }
           if (!isWindows) {
             if (!(await this.hasFfmpeg())) await this.installFfmpegLinux(log)
             return this.hasFfmpeg()
@@ -574,6 +655,10 @@ export class SetupService {
           if (!(await this.hasFfmpeg())) await this.installFfmpegDirect(log)
           return this.hasFfmpeg()
         case 'ollama': {
+          if (isMac) {
+            if (!ollamaService.findOllamaBinary()) { log(step, 'Install Ollama from https://ollama.com/download/mac, then run this step again.'); return false }
+            return (await ollamaService.ensureRunning()).running
+          }
           if (!isWindows) {
             if (!ollamaService.findOllamaBinary()) await this.installOllamaLinux(log)
           } else {
@@ -589,6 +674,9 @@ export class SetupService {
           return await this.pullModel(DEFAULT_MODEL, log)
         case 'persona':
           return await this.createPersona(log)
+        case 'vision':
+          await this.pointOllamaAtStorage()
+          return await this.pullModel(DEFAULT_VISION_MODEL, log, 'vision')
       }
     } catch (err: any) {
       log(step, `error: ${err?.message || err}`)
@@ -600,6 +688,7 @@ export class SetupService {
 
   private async installVoiceEnv(log: Logger, mayAskForPassword = true): Promise<boolean> {
     let sys = await this.findSystemPython()
+    if (!sys && isMac) { log('python', 'Install Python yourself: brew install python@3.11. Then run this step again.'); return false }
     if (!sys) {
       log('python', 'Python 3.11 not found, installing it...')
       if (isWindows) {
@@ -626,13 +715,13 @@ export class SetupService {
     const createEnv = async () => {
       log('python', `Creating the voice environment in ${envDir}`)
       if (!isWindows) fs.rmSync(envDir, { recursive: true, force: true })
-      const [cmd, ...pre] = (sys as string).split(' ')
+      const [cmd, ...pre] = /^py -3\.\d+$/.test(sys as string) ? (sys as string).split(' ') : [sys as string]
       const code = await run(cmd, [...pre, '-m', 'venv', envDir], (l) => log('python', l))
       return code === 0 && (await envUsable())
     }
     if (!(await envUsable())) {
       let created = await createEnv()
-      if (!created && !isWindows && mayAskForPassword) {
+      if (!created && !isWindows && !isMac && mayAskForPassword) {
         log('python', 'This Python has no venv module, installing it...')
         if (await this.installLinuxPackages('python', 'python', log)) created = await createEnv()
       }
@@ -656,15 +745,16 @@ export class SetupService {
     return findOnPath('ollama') ? 'ollama' : null
   }
 
-  private async pullModel(model: string, log: Logger): Promise<boolean> {
+  private async pullModel(model: string, log: Logger, step: SetupStep = 'model'): Promise<boolean> {
     const cli = await this.ollamaCli()
     if (!cli) {
-      log('model', 'Ollama is not installed yet.')
+      log(step, 'Ollama is not installed yet.')
       return false
     }
     await ollamaService.ensureRunning()
-    log('model', `ollama pull ${model} (about 4.7 GB)`)
-    const code = await run(cli, ['pull', model], (l) => log('model', l))
+    const size: Record<string, string> = { 'qwen3:1.7b': 'about 1.4 GB', 'qwen3-vl:8b': 'about 6.1 GB', 'gemma3:4b': 'about 3.3 GB' }
+    log(step, `ollama pull ${model} (${size[model] || 'about 4.7 GB'})`)
+    const code = await run(cli, ['pull', model], (l) => log(step, l))
     return code === 0
   }
 
@@ -677,7 +767,8 @@ export class SetupService {
     }
     const template = fs.readFileSync(scriptPath('Modelfile.capri'), 'utf-8')
     const modelfile = path.join(os.tmpdir(), 'capri.Modelfile')
-    fs.writeFileSync(modelfile, template.replace(/\{name\}/g, getUserName()), 'utf-8')
+    const content = isMac ? template.replace(/^FROM\s+.+$/m, `FROM ${DEFAULT_MODEL}`) : template
+    fs.writeFileSync(modelfile, content.replace(/\{name\}/g, getUserName()), 'utf-8')
     log('persona', `ollama create capri (persona for ${getUserName()})`)
     const code = await run(cli, ['create', 'capri', '-f', modelfile], (l) => log('persona', l))
     return code === 0

@@ -3,9 +3,17 @@ import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
 import { IPC_CHANNELS, ScannerBounds } from '../ipc/channels'
-import { clampGamingOpacity, normalizeHotkeys, type Hotkeys } from '../../shared/hotkeys'
+import { clampCompanionScale, clampGamingOpacity, normalizeHotkeys, type Hotkeys } from '../../shared/hotkeys'
 
 export type MusicPlatform = 'youtube_music' | 'spotify'
+
+/** An app she knows: the name she is asked for it by, and the file it opens */
+export interface KnownApp {
+  id: string
+  name: string
+  path: string
+  addedAt: number
+}
 
 export interface ConsciousnessData {
   musicPlatform?: MusicPlatform
@@ -32,6 +40,13 @@ export interface ConsciousnessData {
   arrowKeysEnabled?: boolean
   /** "Quedate quieta": kept until she is told she can move, even across restarts */
   holdingStill?: boolean
+  /** Her size on the desktop and in Gaming Mode, 1 = normal */
+  companionScale?: number
+  /** Sent away with her key: she stays hidden, even after a restart, until it's pressed again */
+  away?: boolean
+  /** Start as administrator, for games that run as administrator */
+  runAsAdmin?: boolean
+  gamingScale?: number
   hotkeys?: Hotkeys
   gamingOpacity?: number
   /** Hash of the Modelfile the installed persona was built from */
@@ -40,6 +55,12 @@ export interface ConsciousnessData {
   lastRunVersion?: string
   /** Apps she couldn't find and the user showed her, by the name they were asked for */
   appPaths?: Record<string, string>
+  /** Apps she knows by name (Dev Deck > Apps). Undefined until appPaths is moved here the first time */
+  knownApps?: KnownApp[]
+  /** Folders the user marked for Cyberpunk 2077: the game's, a Mod Organizer instance's, or the mod's */
+  cyberpunkFolders?: string[]
+  /** The game's folder, learned while it was running */
+  cyberpunkSeenRoot?: string
   /** League champions the user asked Capri to pick, counted per role (top, jungle, middle, bottom, utility, any) */
   lolChampionRequests?: Record<string, Record<string, number>>
   /** UI language settings: 'auto' or an ISO code (es, en, pt, fr, de, it, ja, ko, zh, ru) */
@@ -82,9 +103,11 @@ export interface LanguageSettings {
   speechLang: string
   /** Language Whisper expects from the microphone. 'auto' = detect */
   micLang: string
+  /** What turns the microphone into text: local Whisper (precise or fast) or the cloud API of her brain */
+  sttEngine: 'whisper-small' | 'whisper-base' | 'cloud'
 }
 
-export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettings = { textLang: 'auto', speechLang: 'auto', micLang: 'auto' }
+export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettings = { textLang: 'auto', speechLang: 'auto', micLang: 'auto', sttEngine: 'whisper-small' }
 
 class ConsciousnessService {
   private filePath: string = ''
@@ -273,7 +296,7 @@ class ConsciousnessService {
   }
 
   public isBoredomEnabled(): boolean {
-    return this.data.boredomEnabled !== false
+    return this.data.boredomEnabled ?? (process.platform !== 'darwin')
   }
 
   public setBoredomEnabled(enabled: boolean): void {
@@ -305,6 +328,34 @@ class ConsciousnessService {
 
   public setGamingOpacity(value: number): void {
     this.data.gamingOpacity = clampGamingOpacity(value)
+    this.save()
+  }
+
+  public getCompanionScale(kind: 'desktop' | 'gaming'): number {
+    return clampCompanionScale(kind === 'gaming' ? this.data.gamingScale : this.data.companionScale)
+  }
+
+  public setCompanionScale(kind: 'desktop' | 'gaming', value: number): void {
+    if (kind === 'gaming') this.data.gamingScale = clampCompanionScale(value)
+    else this.data.companionScale = clampCompanionScale(value)
+    this.save()
+  }
+
+  public getRunAsAdmin(): boolean {
+    return !!this.data.runAsAdmin
+  }
+
+  public setRunAsAdmin(enabled: boolean): void {
+    this.data.runAsAdmin = enabled
+    this.save()
+  }
+
+  public isAway(): boolean {
+    return !!this.data.away
+  }
+
+  public setAway(away: boolean): void {
+    this.data.away = away
     this.save()
   }
 
@@ -370,6 +421,38 @@ class ConsciousnessService {
     return Object.entries(bucket)
       .map(([champion, count]) => ({ champion, count }))
       .sort((a, b) => b.count - a.count)
+  }
+
+  public getAppPaths(): Record<string, string> {
+    return { ...this.data.appPaths }
+  }
+
+  public getCyberpunkFolders(): string[] {
+    return [...(this.data.cyberpunkFolders ?? [])]
+  }
+
+  public setCyberpunkFolders(folders: string[]): void {
+    this.data.cyberpunkFolders = folders
+    this.save()
+  }
+
+  public getCyberpunkSeenRoot(): string | null {
+    return this.data.cyberpunkSeenRoot || null
+  }
+
+  public setCyberpunkSeenRoot(root: string): void {
+    if (this.data.cyberpunkSeenRoot === root) return
+    this.data.cyberpunkSeenRoot = root
+    this.save()
+  }
+
+  public getKnownApps(): KnownApp[] | null {
+    return this.data.knownApps ? this.data.knownApps.map((a) => ({ ...a })) : null
+  }
+
+  public setKnownApps(apps: KnownApp[]): void {
+    this.data.knownApps = apps
+    this.save()
   }
 
   public getAppPath(key: string): string | null {

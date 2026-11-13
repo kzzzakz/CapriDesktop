@@ -1,3 +1,4 @@
+import { isMac } from './platform'
 import { agentManager } from '../agents/agent-manager'
 import { musicPlatformName } from './music-platform'
 import { consciousnessService } from './consciousness-service'
@@ -101,6 +102,7 @@ export class ProactiveDialogueService {
   }
 
   public start(): void {
+    if (isMac) return // Keep the personal Mac companion quiet unless addressed.
     if (this.isRunning) return
     this.isRunning = true
     this.lastSpokenTime = Date.now()
@@ -175,6 +177,7 @@ export class ProactiveDialogueService {
     // In Gaming Mode (LoL / Cyberpunk / Valorant / WuWa), let in-game telemetry handle voice commentary
     // But if Gaming Mode is stuck on with no active game running, auto-heal and allow desktop conversation
     if (windowManager.isGamingModeActive()) {
+      if (isMac) return false // Manual Mac mode is never auto-healed off.
       const isCyberpunk = cyberpunkAdapter?.isCyberpunkActive?.() ?? false
       const isLol = lolLiveAdapter?.isRunning?.() ?? false
       const isNativeGame = valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning()

@@ -19,9 +19,16 @@ export const MemorySettings: React.FC<MemorySettingsProps> = ({ isCloud }) => {
   const [confirmClear, setConfirmClear] = useState(false)
 
   useEffect(() => {
-    window.api.agent.getMemory().then(setMemory).catch(() => {})
-    // She can learn something while the window is open
-    return window.api.agent.onMemoryChanged(setMemory)
+    const refresh = () => window.api.agent.getMemory().then(setMemory).catch(() => {})
+    void refresh()
+    // She can learn something while the window is open: she says so, and the list is also read
+    // again every few seconds, so nothing waits for a restart if a notice gets lost
+    const unsubscribe = window.api.agent.onMemoryChanged(setMemory)
+    const timer = setInterval(refresh, 4000)
+    return () => {
+      unsubscribe()
+      clearInterval(timer)
+    }
   }, [])
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 {
-  "provider": "edge-tts",
+  "provider": "fish-audio",
   "active_voice": "en-US-AriaNeural",
   "voice_es": "es-AR-ElenaNeural",
   "pitch": "+32Hz",

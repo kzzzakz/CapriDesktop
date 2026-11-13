@@ -1,3 +1,6 @@
+import { isMac } from './platform'
+import { macForegroundWindow, macDesktopPollingPaused } from './mac-desktop'
+import { macGameContext } from './mac-game-context'
 /**
  * Notices any game in the foreground, puts Capri in Gaming Mode and, every so often, has her
  * comment on that game. The foreground window comes from a PowerShell script on Windows and from
@@ -85,15 +88,25 @@ export class GamePresenceService {
     return this.watchedForeground
   }
 
+
   public start(): void {
-    if (this.timer || (!isWindows && !isLinux)) return
+    if (this.timer || (!isWindows && !isLinux && !isMac)) return
     this.gamingModeUnsub = windowManager.onGamingModeChanged((enabled) => {
       if (enabled) this.startForegroundWatcher()
       else this.stopForegroundWatcher()
     })
-    this.timer = setInterval(() => void this.tick(), POLL_MS)
     this.startForegroundWatcher()
-    void this.tick()
+    const poll = async () => {
+      if (this.polling || (isMac && macDesktopPollingPaused())) return
+      if (isMac) this.polling = true
+      try {
+        if (isMac) { const foreground = await macForegroundWindow().catch(() => null); if (!macDesktopPollingPaused()) macGameContext.update(foreground) }
+        else await this.tick()
+      } catch (error) { console.warn('[GamePresence] Foreground query failed:', error) }
+      finally { if (isMac) this.polling = false }
+    }
+    this.timer = setInterval(() => void poll(), isMac ? 5000 : POLL_MS)
+    void poll()
   }
 
   public stop(): void {
@@ -103,11 +116,12 @@ export class GamePresenceService {
     this.gamingModeUnsub = null
     this.stopForegroundWatcher()
     this.nextWatcherAttemptAt = 0
+    if (isMac) macGameContext.clear()
   }
 
   /** A game Capri has no in-match adapter for is open, even if it isn't the focused window */
   public isGameSessionActive(): boolean {
-    return !!this.game && isAlive(this.game.pid)
+    return isMac ? !!macGameContext.current()?.foreground : !!this.game && isAlive(this.game.pid)
   }
 
   private startForegroundWatcher(): void {

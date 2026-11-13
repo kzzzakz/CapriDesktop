@@ -80,9 +80,11 @@ const ELEVENLABS_POPULAR_VOICES = [
 interface VoiceSettingsModalProps {
   isOpen: boolean
   onClose: () => void
+  /** Inside the settings window, as one of its tabs: no overlay and no close button of its own */
+  embedded?: boolean
 }
 
-export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, onClose }) => {
+export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, onClose, embedded = false }) => {
   const t = useT()
   const [musicPlatform, setMusicPlatform] = useState<'youtube_music' | 'spotify'>('youtube_music')
   const [provider, setProvider] = useState<'edge-tts' | 'elevenlabs' | 'fish-audio'>('edge-tts')
@@ -271,30 +273,31 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   if (!isOpen) return null
 
   return (
-    <div data-capri-hit className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none text-[14px]">
+    <div data-capri-hit className={embedded ? 'contents' : 'cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none text-[14px]'}>
       {/* Outer Cyber Frame */}
-      <div className="cp-frame w-full max-w-2xl max-h-full flex flex-col overflow-hidden animate-fade-in" style={{ ['--c' as string]: '14px' }}>
+      <div className={embedded ? 'flex flex-col h-full min-h-0 text-[14px]' : 'cp-frame w-full max-w-2xl max-h-full flex flex-col overflow-hidden animate-fade-in'} style={{ ['--c' as string]: '14px' }}>
         {/* Header */}
         <div className="shrink-0 flex items-center justify-between px-5 py-3.5 bg-black/90 border-b border-[#ff5f57]/30">
           <div className="flex items-center gap-2.5 text-[#ff5f57] font-bold tracking-wider">
             <Volume2 size={18} className="text-[#ff5f57] animate-pulse" />
             <span className="cp-title text-[18px]">{t('vs_title')}</span>
           </div>
-          <button
+          {!embedded && <button
             onClick={onClose}
             className="p-1 text-stone-400 hover:text-white hover:bg-white/10 rounded-none transition-colors"
             title={t('close')}
           >
             <X size={18} />
-          </button>
+          </button>}
         </div>
 
         {/* Modal Content */}
-        <div className="min-h-0 p-5 space-y-5 overflow-y-auto">
+        <div className={`min-h-0 p-5 space-y-5 overflow-y-auto ${embedded ? 'cp-scroll flex-1 min-h-0' : 'max-h-[78vh]'}`}>
           <MicPicker />
           <SoundSettings />
           <HotkeySettings />
-          <BehaviorSettings />
+          {/* In the settings window these have a tab of their own (Capri) */}
+          {!embedded && <BehaviorSettings />}
           <label className="block space-y-2">
             <span className="text-stone-300 font-bold tracking-wide">{t('music_platformTitle')}</span>
             <select
@@ -791,13 +794,13 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
           </button>
 
           <div className="flex items-center gap-3">
-            <button
+            {!embedded && <button
               type="button"
               onClick={onClose}
               className="px-4 py-1.5 rounded-none border border-stone-700 hover:border-stone-500 text-stone-300 transition-colors"
             >
               {t('close')}
-            </button>
+            </button>}
 
             <button
               type="button"

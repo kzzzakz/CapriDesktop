@@ -74,10 +74,12 @@ export const agentManager = {
 `)
 const consciousnessStubUrl = dataModule(`
 export const consciousnessService = {
+  getSpokenLanguage: () => globalThis.__valorantTest.lang,
   getPreferredLanguage: () => globalThis.__valorantTest.lang
 }
 `)
 const serviceUrl = moduleUrl('services/valorant/agent-select-service.ts', {
+  '../../../shared/lines': dataModule('export const localizeLine = text => text;'),
   './riot-http': httpStubUrl,
   './riot-session': sessionStubUrl,
   '../../agents/agent-manager': agentManagerStubUrl,

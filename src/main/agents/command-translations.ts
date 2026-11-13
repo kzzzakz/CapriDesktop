@@ -13,6 +13,87 @@ type Forms = Record<CommandLang, string[]>
 
 /** Whole sentences, tried before the ones with a free part */
 export const FIXED_COMMANDS: Record<string, Forms> = {
+  // Watching YouTube together (watch-party-service)
+  "let's watch youtube together": {
+    fr: ['regardons youtube ensemble', 'on regarde youtube ensemble', 'on regarde youtube', 'regardons youtube'],
+    de: ['lass uns zusammen youtube schauen', 'lass uns youtube schauen', 'wir schauen youtube'],
+    it: ['guardiamo youtube insieme', 'guardiamo youtube', 'vediamo youtube insieme'],
+    pt: ['vamos assistir youtube juntos', 'vamos ver youtube juntos', 'bora ver youtube'],
+    ru: ['давай посмотрим ютуб вместе', 'давай посмотрим youtube', 'посмотрим ютуб'],
+    ja: ['一緒にyoutubeを見よう', 'youtube見よう', '一緒にユーチューブを見よう'],
+    ko: ['같이 유튜브 보자', '유튜브 같이 보자', '유튜브 보자'],
+    zh: ['一起看youtube', '我们一起看youtube', '一起看油管']
+  },
+  "let's watch tiktok together": {
+    fr: ['regardons tiktok ensemble', 'on regarde tiktok ensemble', 'on regarde tiktok', 'regardons tiktok'],
+    de: ['lass uns zusammen tiktok schauen', 'lass uns tiktok schauen', 'wir schauen tiktok'],
+    it: ['guardiamo tiktok insieme', 'guardiamo tiktok', 'vediamo tiktok insieme'],
+    pt: ['vamos assistir tiktok juntos', 'vamos ver tiktok juntos', 'bora ver tiktok'],
+    ru: ['давай посмотрим тикток вместе', 'давай посмотрим tiktok', 'посмотрим тикток'],
+    ja: ['一緒にtiktokを見よう', 'tiktok見よう', '一緒にティックトックを見よう'],
+    ko: ['같이 틱톡 보자', '틱톡 같이 보자', '틱톡 보자'],
+    zh: ['一起看tiktok', '我们一起看tiktok', '一起刷抖音']
+  },
+  'pick a video from youtube and lets watch it': {
+    fr: ['choisis une vidéo sur youtube', 'choisis une vidéo', 'trouve une vidéo à regarder'],
+    de: ['such ein video auf youtube aus', 'such ein video aus', 'wähl ein video aus'],
+    it: ['scegli un video su youtube', 'scegli un video', 'trova un video da guardare'],
+    pt: ['escolhe um vídeo no youtube', 'escolha um vídeo', 'escolhe um vídeo pra gente'],
+    ru: ['выбери видео на ютубе', 'выбери видео', 'найди видео посмотреть'],
+    ja: ['youtubeで動画を選んで', '動画を選んで', '見る動画を選んで'],
+    ko: ['유튜브에서 영상 골라줘', '영상 골라줘', '볼 영상 골라줘'],
+    zh: ['在youtube上选个视频', '选个视频', '挑个视频看']
+  },
+  'scroll down': {
+    fr: ['descends', 'défile vers le bas', 'scrolle vers le bas', 'montre m en plus', 'plus bas'],
+    de: ['scroll runter', 'scrolle nach unten', 'runterscrollen', 'zeig mir mehr', 'weiter unten'],
+    it: ['scorri in basso', 'scorri giù', 'scendi', 'fammi vedere altro', 'più in basso'],
+    pt: ['rola pra baixo', 'desce a página', 'desce', 'mostra mais', 'mais pra baixo'],
+    ru: ['прокрути вниз', 'листай вниз', 'покажи ещё', 'ниже'],
+    ja: ['下にスクロールして', 'スクロールして', 'もっと見せて', '下に行って'],
+    ko: ['아래로 스크롤해줘', '스크롤 내려줘', '더 보여줘', '내려줘'],
+    zh: ['往下滚动', '向下滚动', '往下翻', '再看看更多']
+  },
+  'another video': {
+    fr: ['une autre vidéo', 'une autre', 'pas celle là', 'suivante'],
+    de: ['ein anderes video', 'ein anderes', 'nicht das', 'nächstes'],
+    it: ['un altro video', 'un altro', 'non questo', 'il prossimo'],
+    pt: ['outro vídeo', 'outro', 'esse não', 'quero outro'],
+    ru: ['другое видео', 'другое', 'не это', 'следующее'],
+    ja: ['別の動画', '他の動画', 'それじゃない', '次の'],
+    ko: ['다른 영상', '다른 거', '그거 말고', '다음 거'],
+    zh: ['换一个视频', '换一个', '不要这个', '下一个']
+  },
+  'play that one': {
+    fr: ['mets celle là', 'celle là', 'lance la', 'oui mets la'],
+    de: ['spiel das ab', 'das da', 'nimm das', 'ja spiel das'],
+    it: ['metti questo', 'questo qui', 'fallo partire', 'sì mettilo'],
+    pt: ['coloca esse', 'esse aí', 'põe esse', 'pode colocar'],
+    ru: ['включи это', 'вот это', 'давай это', 'да включай'],
+    ja: ['それにしよう', 'それ再生して', 'それがいい'],
+    ko: ['그거 틀어줘', '그걸로 하자', '그거 좋아'],
+    zh: ['就这个', '播放这个', '放这个吧']
+  },
+  'you choose': {
+    fr: ['choisis toi', 'c est toi qui choisis', 'à toi de choisir'],
+    de: ['du entscheidest', 'such du aus', 'wähl du'],
+    it: ['scegli tu', 'decidi tu'],
+    pt: ['escolhe você', 'você escolhe', 'decide você'],
+    ru: ['выбери сама', 'выбирай ты', 'реши сама'],
+    ja: ['あなたが選んで', '選んで', 'お任せ'],
+    ko: ['네가 골라', '네가 골라줘', '알아서 골라줘'],
+    zh: ['你来选', '你选吧', '你决定']
+  },
+  'stop watching': {
+    fr: ['arrête de regarder', 'arrête la vidéo', 'on arrête'],
+    de: ['hör auf zu schauen', 'schluss mit youtube', 'beende das'],
+    it: ['smetti di guardare', 'basta così', 'chiudi tutto'],
+    pt: ['para de assistir', 'chega de youtube', 'fecha isso'],
+    ru: ['хватит смотреть', 'закрой это', 'хватит ютуба'],
+    ja: ['見るのやめて', 'もうやめよう', '終わりにしよう'],
+    ko: ['그만 보자', '유튜브 그만', '이제 끄자'],
+    zh: ['别看了', '不看了', '关掉吧']
+  },
   'clip that': {
     fr: ['clippe ça', 'clip ça', 'enregistre ce clip', 'sauvegarde ce clip', 'fais un clip'],
     de: ['clip das', 'clippe das', 'speichere den clip', 'speicher den clip', 'mach einen clip'],
@@ -22,6 +103,36 @@ export const FIXED_COMMANDS: Record<string, Forms> = {
     ja: ['クリップして', 'クリップ保存して', '今のをクリップして'],
     ko: ['클립 따줘', '클립 저장해줘', '방금 거 클립해줘'],
     zh: ['剪辑一下', '保存片段', '录个片段', '把这段存下来']
+  },
+  'find a valorant match': {
+    fr: ['cherche une partie de valorant', 'cherche une partie sur valorant', 'lance une partie de valorant'],
+    de: ['suche ein valorant spiel', 'such ein match in valorant', 'starte die suche in valorant'],
+    it: ['cerca una partita di valorant', 'cerca una partita su valorant', 'avvia una partita di valorant'],
+    pt: ['procura uma partida de valorant', 'procure uma partida no valorant', 'busca uma partida no valorant'],
+    ru: ['найди игру в валоранте', 'найди матч в валоранте', 'начни поиск в валоранте'],
+    ja: ['ヴァロでマッチを探して', 'valorantでマッチを探して', 'ヴァロラントで試合を探して'],
+    ko: ['발로란트 매치 찾아줘', '발로 게임 찾아줘', '발로란트 큐 돌려줘'],
+    zh: ['瓦罗兰特找一局', '无畏契约开始匹配', 'valorant开始匹配']
+  },
+  'cancel the valorant queue': {
+    fr: ['annule la recherche valorant', 'arrête la recherche de partie valorant', 'quitte la file valorant'],
+    de: ['brich die suche in valorant ab', 'valorant suche abbrechen', 'verlasse die warteschlange in valorant'],
+    it: ['annulla la ricerca su valorant', 'esci dalla coda di valorant', 'ferma la ricerca di valorant'],
+    pt: ['cancela a busca do valorant', 'sai da fila do valorant', 'para a busca no valorant'],
+    ru: ['отмени поиск в валоранте', 'выйди из очереди в валоранте'],
+    ja: ['ヴァロのマッチングをキャンセルして', 'valorantのキューをやめて'],
+    ko: ['발로란트 매칭 취소해줘', '발로 큐 취소해줘'],
+    zh: ['取消瓦罗兰特匹配', '取消无畏契约匹配', '退出valorant排队']
+  },
+  'cancel the valorant agent pick': {
+    fr: ['annule le pick valorant', 'annule l agent valorant', 'annule le choix d agent valorant'],
+    de: ['brich den valorant pick ab', 'valorant pick abbrechen', 'agentenwahl in valorant abbrechen'],
+    it: ['annulla il pick di valorant', 'annulla l agente di valorant', 'annulla la scelta dell agente valorant'],
+    pt: ['cancela o pick do valorant', 'cancela o agente do valorant', 'cancele o pick do valorant'],
+    ru: ['отмени пик в валоранте', 'отмени выбор агента в валоранте', 'отмени пик в valorant'],
+    ja: ['ヴァロのピックをキャンセルして', 'valorantのエージェント選択をキャンセルして', 'ヴァロラントのピックをやめて'],
+    ko: ['발로란트 픽 취소해줘', '발로 요원 선택 취소해줘', 'valorant 픽 취소해줘'],
+    zh: ['取消瓦罗兰特选人', '取消valorant选英雄', '取消无畏契约选人']
   },
   'are you bored?': {
     fr: ['tu t ennuies', 'est ce que tu t ennuies'],
@@ -333,6 +444,19 @@ export const TEMPLATE_COMMANDS: { en: string; forms: Forms }[] = [
       ja: ['{w}をバンして'],
       ko: ['{w} 밴해줘', '{w} 밴'],
       zh: ['ban掉{w}', '禁掉{w}', '禁用{w}']
+    }
+  },
+  {
+    en: 'lock {w} in valorant',
+    forms: {
+      fr: ['lock {w} dans valorant', 'choisis {w} dans valorant', 'prends {w} dans valorant', 'verrouille {w} dans valorant'],
+      de: ['wähle {w} in valorant', 'nimm {w} in valorant'],
+      it: ['scegli {w} in valorant', 'prendi {w} in valorant', 'blocca {w} in valorant'],
+      pt: ['lock {w} no valorant', 'escolhe {w} no valorant', 'escolha {w} no valorant', 'pega {w} no valorant', 'trava {w} no valorant'],
+      ru: ['залочь {w} в валоранте', 'выбери {w} в валоранте', 'залочь {w} в valorant', 'выбери {w} в valorant'],
+      ja: ['ヴァロで{w}をロックして', 'valorantで{w}をロックして', 'ヴァロラントで{w}を選んで', 'valorantで{w}を選んで'],
+      ko: ['발로란트에서 {w} 락해줘', '발로에서 {w} 픽해줘', '발로란트에서 {w} 골라줘', 'valorant에서 {w} 픽해줘'],
+      zh: ['在瓦罗兰特里选{w}', '瓦罗兰特锁{w}', '无畏契约选{w}', '在valorant里选{w}', 'valorant锁定{w}']
     }
   },
   {

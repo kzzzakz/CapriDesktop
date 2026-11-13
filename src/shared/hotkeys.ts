@@ -3,15 +3,24 @@
  * text the global shortcuts take, so the main process and the windows compare the same thing.
  */
 
-export type HotkeyAction = 'talk' | 'listen' | 'chat'
+export type HotkeyAction = 'talk' | 'listen' | 'chat' | 'gaming' | 'away'
 export type Hotkeys = Record<HotkeyAction, string>
 export type HotkeyProblem = 'needsModifier' | 'reserved' | 'inUse' | 'taken'
 
-export const DEFAULT_HOTKEYS: Hotkeys = { talk: 'Down', listen: 'Right', chat: 'Left' }
-export const HOTKEY_ACTIONS: HotkeyAction[] = ['talk', 'listen', 'chat']
+/** Gaming Mode has a modifier: it works inside games, so it can't take a key games use */
+export function defaultHotkeys(platform: string): Hotkeys {
+  return platform === 'darwin'
+    ? { talk: 'Alt+Super+V', listen: 'Alt+Super+L', chat: 'Alt+Super+C', gaming: 'Alt+Super+M', away: 'Alt+Super+A' }
+    : { talk: 'Down', listen: 'Right', chat: 'Left', gaming: 'Control+Alt+M', away: 'Control+Alt+H' }
+}
+const macPlatform = (typeof process !== 'undefined' && process.platform === 'darwin') || (typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform))
+export const DEFAULT_HOTKEYS: Hotkeys = defaultHotkeys(macPlatform ? 'darwin' : 'other')
+export const HOTKEY_ACTIONS: HotkeyAction[] = ['talk', 'listen', 'chat', 'gaming', 'away']
+/** Keys that work all the time, also inside games: they need a modifier or an F key */
+export const ALWAYS_ON_ACTIONS: HotkeyAction[] = ['gaming', 'away']
 
 /** Her fixed shortcuts, and Escape, which cancels a recording and a key being chosen */
-const RESERVED = new Set(['Control+Alt+V', 'Control+Alt+S', 'Control+Alt+G', 'Escape'])
+const RESERVED = new Set(['Control+Alt+V', 'Control+Alt+S', 'Control+Alt+G', 'Alt+Super+V', 'Alt+Super+S', 'Alt+Super+G', 'Escape'])
 
 const NAMED_KEYS: Record<string, string> = {
   ArrowUp: 'Up',
@@ -66,6 +75,8 @@ export function acceleratorFromEvent(e: KeyPress): string | null {
 /** Why a key can't be used for an action, or null if it can */
 export function hotkeyProblem(accelerator: string, action: HotkeyAction, current: Hotkeys): HotkeyProblem | null {
   if (RESERVED.has(accelerator)) return 'reserved'
+  // Inside a game every plain key is taken: Gaming Mode needs Ctrl, Alt, Shift or Win, or an F key
+  if (ALWAYS_ON_ACTIONS.includes(action) && !accelerator.includes('+') && !/^F\d+$/.test(accelerator)) return 'needsModifier'
   // Global shortcuts swallow the key in every app: a plain letter would stop you typing it anywhere
   if (/^(?:[A-Z0-9]|Space|Return|Tab|Backspace|Delete)$/.test(accelerator)) return 'needsModifier'
   if (HOTKEY_ACTIONS.some((other) => other !== action && current[other] === accelerator)) return 'inUse'
@@ -79,20 +90,31 @@ export function normalizeHotkeys(saved: unknown): Hotkeys {
     const value = source[action]
     return typeof value === 'string' && value ? value : DEFAULT_HOTKEYS[action]
   }
-  return { talk: pick('talk'), listen: pick('listen'), chat: pick('chat') }
+  return { talk: pick('talk'), listen: pick('listen'), chat: pick('chat'), gaming: pick('gaming'), away: pick('away') }
 }
 
 const SYMBOLS: Record<string, string> = { Up: '↑', Down: '↓', Left: '←', Right: '→', Control: 'Ctrl', Super: 'Win', Return: 'Enter' }
+/** On a Mac the modifiers are shown the way macOS shows them, together: ⌘⌥L */
+const MAC_SYMBOLS: Record<string, string> = { ...SYMBOLS, Control: '⌃', Alt: '⌥', Shift: '⇧', Super: '⌘', Return: '↩' }
 
 /** How a key is shown to the user */
 export function formatHotkey(accelerator: string): string {
-  return accelerator
+  const symbols = macPlatform ? MAC_SYMBOLS : SYMBOLS
+  const parts = accelerator
     .split('+')
-    .map((part) => SYMBOLS[part] ?? part.replace(/^num(\d)$/, 'Num $1'))
-    .join(' + ')
+    .map((part) => symbols[part] ?? part.replace(/^num(\d)$/, 'Num $1'))
+  return macPlatform ? parts.join('') : parts.join(' + ')
 }
 
 export const GAMING_OPACITY_MIN = 0.2
+
+/** How big she is, normal and in Gaming Mode: 60% to 160% */
+export const COMPANION_SCALE_MIN = 0.6
+export const COMPANION_SCALE_MAX = 1.6
+export function clampCompanionScale(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : 1
+  return Math.round(Math.min(COMPANION_SCALE_MAX, Math.max(COMPANION_SCALE_MIN, n)) * 100) / 100
+}
 
 export function clampGamingOpacity(value: unknown): number {
   const n = typeof value === 'number' && Number.isFinite(value) ? value : 1
@@ -120,5 +142,10 @@ const SPOKEN_ARROWS: Record<string, Record<'Up' | 'Down' | 'Left' | 'Right', str
 export function spokenHotkey(accelerator: string, lang: string | null | undefined): string {
   const arrows = SPOKEN_ARROWS[String(lang || '').toLowerCase().slice(0, 2)] ?? SPOKEN_ARROWS.en
   if (accelerator in arrows) return arrows[accelerator as keyof typeof arrows]
+  // The voice can't read ⌘⌥: on a Mac the modifiers are said by name
+  if (macPlatform) {
+    const names: Record<string, string> = { Super: 'Command', Alt: 'Option', Control: 'Control', Shift: 'Shift' }
+    return accelerator.split('+').map((part) => names[part] ?? part).join(' ')
+  }
   return formatHotkey(accelerator)
 }

@@ -5,6 +5,7 @@
 
 import { agentManager } from '../../agents/agent-manager'
 import { consciousnessService } from '../consciousness-service'
+import { localizeLine } from '../../../shared/lines'
 import { RIOT_CLIENT_PLATFORM, isRiotNotFound, riotGet, riotPost } from './riot-http'
 import { loadRiotSession, type RiotSession } from './riot-session'
 
@@ -58,42 +59,22 @@ function isFinalOutcome(outcome: AttemptOutcome): outcome is FinalOutcome {
 const REQUEST_TTL_MS = 60 * 60 * 1000
 const WATCH_INTERVAL_MS = 1000
 
-/** What Capri says to the user, in chat or out loud, for every outcome of an agent pick */
-export function valorantPickMessage(status: ValorantSpokenPickStatus, agentName: string, es: boolean): string {
-  const messages: Record<ValorantSpokenPickStatus, [string, string]> = {
-    locked: [
-      `¡Listo, choomba! Te bloqueé a ${agentName} en Valorant. A romperla.`,
-      `Locked in ${agentName} for you, {name}! Time to make them regret it.`
-    ],
-    armed: [
-      `Anotado, choomba: apenas arranque la selección de agentes te bloqueo a ${agentName}.`,
-      `Noted, {name}: I'll lock in ${agentName} the moment agent select starts.`
-    ],
-    armed_waiting_game: [
-      `Anotado, choomba: todavía no veo Valorant abierto, pero apenas entres a la selección te bloqueo a ${agentName}.`,
-      `Noted, {name}: VALORANT isn't open yet, but I'll lock in ${agentName} as soon as you hit agent select.`
-    ],
-    already_locked: [
-      'Ya tenés otro agente bloqueado, choomba: no te toqué nada.',
-      'You already locked another agent, so I left it alone.'
-    ],
-    agent_taken: [
-      `${agentName} ya se lo llevó un compañero, choomba. Elegí otro.`,
-      `A teammate already grabbed ${agentName}. Pick another one!`
-    ],
-    pick_failed: [
-      `No pude bloquearte a ${agentName}, choomba. Fijate si lo tenés desbloqueado o si se lo llevó otro.`,
-      `I couldn't lock ${agentName} for you. Check that it's unlocked and still free.`
-    ],
-    client_not_running: [
-      'El cliente de Riot no está abierto o no me pude conectar, choomba. Abrilo y volvé a probar.',
-      "Riot client isn't running or I couldn't connect, {name}. Launch it and try again."
-    ]
+/** What Capri says to the user, in chat or out loud, for every outcome of an agent pick. In English:
+ * the line catalog says it in the user's language */
+export function valorantPickMessage(status: ValorantSpokenPickStatus, agentName: string): string {
+  const messages: Record<ValorantSpokenPickStatus, string> = {
+    locked: `Locked in ${agentName} for you, {name}! Time to make them regret it.`,
+    armed: `Noted, {name}: I'll lock in ${agentName} the moment agent select starts.`,
+    armed_waiting_game: `Noted, {name}: VALORANT isn't open yet, but I'll lock in ${agentName} as soon as you hit agent select.`,
+    already_locked: `You already locked another agent, so I left it alone.`,
+    agent_taken: `A teammate already grabbed ${agentName}. Pick another one!`,
+    pick_failed: `I couldn't lock ${agentName} for you. Check that it's unlocked and still free.`,
+    client_not_running: `Riot client isn't running or I couldn't connect, {name}. Launch it and try again.`
   }
-  return messages[status][es ? 0 : 1]
+  return messages[status]
 }
 
-function glzHeaders(session: RiotSession): Record<string, string> {
+export function glzHeaders(session: RiotSession): Record<string, string> {
   return {
     Authorization: `Bearer ${session.accessToken}`,
     'X-Riot-Entitlements-JWT': session.entitlements,
@@ -294,9 +275,9 @@ export class ValorantAgentSelectService {
   }
 
   private announce(outcome: FinalOutcome, agentName: string): void {
-    const isEs = consciousnessService.getPreferredLanguage() === 'es'
+    const lang = consciousnessService.getSpokenLanguage() || consciousnessService.getPreferredLanguage()
     agentManager.setCompanionState(outcome === 'locked' ? 'happy' : 'talking')
-    agentManager.setCompanionSpeech(valorantPickMessage(outcome, agentName, isEs), 6000, true)
+    agentManager.setCompanionSpeech(localizeLine(valorantPickMessage(outcome, agentName), lang), 6000, true)
   }
 }
 

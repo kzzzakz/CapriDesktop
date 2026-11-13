@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { scriptPlayer } from '../services/script/script-player'
-import { getLlmSettings, getLocalModel, isRemoteMode, setLocalModel } from '../services/llm-gateway'
+import { getLlmSettings, getLocalModel, isCloudMode, setLocalModel } from '../services/llm-gateway'
 import { personalize } from '../services/user-profile'
 import { consciousnessService } from '../services/consciousness-service'
 import { localizeLine } from '../../shared/lines'
@@ -90,6 +90,7 @@ export class AgentManager extends EventEmitter {
     switch (event.type) {
       case 'session.started':
         this.isRunning = true
+        if (process.platform === 'darwin') this.setCompanionState('thinking')
         break
 
       case 'tool.started':
@@ -167,7 +168,7 @@ export class AgentManager extends EventEmitter {
 
       // Make Capri appear right in front of everything on screen
       const companionWin = windowManager.getCompanionWindow()
-      if (companionWin && !companionWin.isDestroyed()) {
+      if (companionWin && !companionWin.isDestroyed() && !windowManager.isAway()) {
         companionWin.show()
         companionWin.setAlwaysOnTop(true, 'screen-saver')
         companionWin.moveTop()
@@ -208,11 +209,23 @@ export class AgentManager extends EventEmitter {
   }
 
   /** `why` is what led her to say it, so she can answer if she's asked about it later */
-  public setCompanionSpeech(text: string, durationMs = 4000, speakVoice = false, why?: string): void {
-    if (scriptPlayer.isPlaying()) return
+  /** `live`: a reaction to what's on screen right now. Said only if she's free, never queued (it would be stale) */
+  /** `cameo`: said even with the Dev Deck open, with her showing up above it to say it. 'hold': she stays up after it, a follow-up is coming */
+  public setCompanionSpeech(text: string, durationMs = 4000, speakVoice = false, why?: string, live = false, cameo: boolean | 'hold' = false): void {
+    if (scriptPlayer.isPlaying() || windowManager.isAway()) {
+      if (cameo) console.warn('[AgentManager] Cameo line dropped: a script is playing or she is away')
+      return
+    }
     const line = personalize(localizeLine(text, consciousnessService.getPreferredLanguage()))
+    if (cameo) console.log(`[AgentManager] Cameo line${cameo === 'hold' ? ' (more coming)' : ''}: "${line}"`)
     this.capriLocal.noteOwnLine(line, why)
-    windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: line, durationMs, speakVoice })
+    if (cameo) windowManager.showCompanionCameo()
+    windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: line, durationMs, speakVoice, live, ...(cameo ? { cameo: true } : {}), ...(cameo === 'hold' ? { hold: true } : {}) })
+  }
+
+  /** The follow-up a 'hold' cameo waited for isn't coming: she can go back */
+  public releaseCameoHold(): void {
+    windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: '', cameo: true, release: true })
   }
 
   public getConfig(): AgentConfigPayload {
@@ -227,10 +240,7 @@ export class AgentManager extends EventEmitter {
   }
 
   public async detectOllama(): Promise<{ running: boolean; models: string[] }> {
-    if (isRemoteMode()) {
-      const settings = getLlmSettings()
-      return { running: true, models: [settings.provider === 'claude-code' ? settings.claudeModel : settings.provider === 'codex' ? settings.codexModel || 'Codex' : settings.model] }
-    }
+    if (isCloudMode()) return { running: true, models: [getLlmSettings().model || getLlmSettings().preset] }
     return await ollamaService.ensureRunning()
   }
 
@@ -264,6 +274,8 @@ export class AgentManager extends EventEmitter {
         apiKey: this.config.apiKey
       })
     } finally {
+      // A completed prompt must release the activity latch even if its path emitted no finish event.
+      if (isDevTask || !this.devTaskRunning) this.isRunning = false
       // Desktop prompts never wake the user up: only the end of a prompt sent from Dev Mode,
       // decided here when that very prompt returns (some agent paths emit no session.finished)
       if (isDevTask) {

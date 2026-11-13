@@ -4,20 +4,28 @@ import { LlmProviderForm, LlmProviderFormHandle } from '../components/LlmProvide
 import { useAgentStore } from '../stores/useAgentStore'
 import { useT } from '../utils/useUiLang'
 import { MemorySettings } from './MemorySettings'
+import { ModelDownload } from './ModelDownload'
+import { LocalModelsPanel } from './LocalModelsPanel'
 import type { SystemPromptPayload } from '../../../main/ipc/channels'
 
 interface AgentSettingsModalProps {
   isOpen: boolean
   onClose: () => void
+  embedded?: boolean
+  onSaved?: () => void
 }
 
 /** Who does Capri's thinking: the local Ollama or a cloud API */
-export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, onClose }) => {
+export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, onClose, embedded = false, onSaved }) => {
   const t = useT()
   const { llmModel, ollamaRunning, ollamaModels, setLlmConfig, setOllamaStatus } = useAgentStore()
-  const [provider, setProvider] = useState<'local' | 'cloud' | 'claude-code' | 'codex'>('local')
+  const [provider, setProvider] = useState<'local' | 'cloud' | 'app'>('local')
+  // On this PC: Ollama, or LM Studio for .gguf models
+  const [engine, setEngine] = useState<'ollama' | 'lmstudio'>('ollama')
   const [modelInput, setModelInput] = useState(llmModel)
   const [isScanning, setIsScanning] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState('')
   const formRef = useRef<LlmProviderFormHandle>(null)
   // System prompt editor states, `savedPrompt` is what is stored now, `promptText` is what is being edited.
   const [promptText, setPromptText] = useState('')
@@ -27,6 +35,10 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
   // Simple presets for who doesn't want to write a prompt, saved as soon as they change
   const [tone, setTone] = useState<SystemPromptPayload['tone']>('default')
   const [teasing, setTeasing] = useState<SystemPromptPayload['teasing']>('default')
+  // How she calls the user, saved on its own button
+  const [userName, setUserName] = useState('')
+  const [nameDraft, setNameDraft] = useState('')
+  const [nameSaved, setNameSaved] = useState(false)
   const [saveError, setSaveError] = useState(false)
   // Regenerating asks for a second click, since it throws away a prompt of her own
   const [confirmReset, setConfirmReset] = useState(false)
@@ -49,6 +61,15 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
   // Load the current system prompt every time the window opens
   useEffect(() => {
     if (!isOpen) return
+    setNameSaved(false)
+    window.api.companion
+      .getUserProfile()
+      .then((profile) => {
+        const current = profile.hasName ? profile.name : ''
+        setUserName(current)
+        setNameDraft(current)
+      })
+      .catch(() => {})
     setPromptLoaded(false)
     setSaveError(false)
     setConfirmReset(false)
@@ -67,20 +88,26 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
   }, [isOpen])
 
   const handleSave = async () => {
-    if (!(await formRef.current?.save())) return
+    setSaving(true)
+    setFeedback('')
     setSaveError(false)
     try {
+      if (!(await formRef.current?.save())) return
       // The system prompt is saved only if it was loaded and changed (applies from the next message)
       if (promptLoaded && promptText !== savedPrompt) await window.api.agent.setSystemPrompt(promptText)
-      if (provider === 'local' && modelInput) {
+      if (provider === 'local' && engine === 'ollama' && modelInput) {
         setLlmConfig({ model: modelInput })
         await window.api.agent.setConfig({ model: modelInput })
       }
-      onClose()
+      onSaved?.()
+      if (embedded) setFeedback('AI settings saved.')
+      else onClose()
     } catch (error) {
       // The window stays open so nothing written is lost
       console.error('[AgentSettings] Could not save:', error)
       setSaveError(true)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -113,6 +140,15 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
     }
   }
 
+  const saveName = async () => {
+    const clean = nameDraft.trim()
+    if (!clean || clean === userName) return
+    const saved = await window.api.companion.setUserName(clean)
+    setUserName(saved)
+    setNameDraft(saved)
+    setNameSaved(true)
+  }
+
   if (!isOpen) return null
 
   // True when the text in the box is not the built-in prompt
@@ -120,20 +156,27 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
 
   const localModels = (ollamaModels || []).filter((m) => !/llava|vision|-vl\b/i.test(m))
 
-  return (
-    <div className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none">
-      <div className="cp-frame w-full max-w-xl flex flex-col max-h-[90vh] animate-fade-in" style={{ ['--c' as string]: '14px' }}>
+  const content = (
+    <>
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--cp-red-line)] shrink-0">
-          <span className="cp-title text-[18px] text-[var(--cp-red)]">{t('llm_title')}</span>
-          <button onClick={onClose} className="text-[var(--cp-muted)] hover:text-[var(--cp-red-hi)] cursor-pointer" title={t('close')}>
+          <h2 className="cp-title text-[18px] text-[var(--cp-red)]">{t('llm_title')}</h2>
+          {!embedded && <button onClick={onClose} className="text-[var(--cp-muted)] hover:text-[var(--cp-red-hi)] cursor-pointer" title={t('close')}>
             <X size={16} />
-          </button>
+          </button>}
         </div>
 
-        <div className="cp-scroll p-5 space-y-4 overflow-y-auto">
-          <LlmProviderForm ref={formRef} onProviderChange={setProvider} />
+        <div className={`cp-scroll p-5 space-y-4 overflow-y-auto ${embedded ? 'flex-1 min-h-0' : ''}`}>
+          {embedded && /Mac/i.test(navigator.platform) && <p className="text-sm text-[var(--cp-muted)]">Choose who handles chat and vision. Use Save below to apply AI changes; Mac options have their own tab.</p>}
+          <LlmProviderForm
+            ref={formRef}
+            onProviderChange={(next, nextEngine) => {
+              setProvider(next)
+              setEngine(nextEngine ?? 'ollama')
+              setFeedback('')
+            }}
+          />
 
-          {provider === 'local' && (
+          {provider === 'local' && engine === 'ollama' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-[14px]">
                 <span className={`flex items-center gap-2 ${ollamaRunning ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}`}>
@@ -163,8 +206,47 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
                   </div>
                 </label>
               )}
+              {/* Gemma, Llama, Qwen, Mistral... from the Ollama library: picked as soon as it arrives */}
+              <ModelDownload
+                onDownloaded={(model) => {
+                  void scan()
+                  setModelInput(model)
+                }}
+              />
             </div>
           )}
+
+          {/* Below the thinking models: the ones that see, and what the setup installed */}
+          <LocalModelsPanel ollamaRunning={ollamaRunning} onModelsChanged={() => void scan()} />
+
+          {/* How she calls the user */}
+          <div className="space-y-1">
+            <span className="cp-label">{t('you_title')}</span>
+            <div className="flex gap-2">
+              <div className="cp-frame flex-1">
+                <input
+                  value={nameDraft}
+                  maxLength={40}
+                  onChange={(e) => {
+                    setNameDraft(e.target.value)
+                    setNameSaved(false)
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && void saveName()}
+                  placeholder={t('you_placeholder')}
+                  className="cp-input w-full px-3 py-1.5 text-[14px]"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void saveName()}
+                disabled={!nameDraft.trim() || nameDraft.trim() === userName}
+                className="cp-frame cp-btn-ghost px-4 py-1.5 text-[13px] disabled:opacity-40"
+              >
+                {nameSaved ? t('you_saved') : t('you_save')}
+              </button>
+            </div>
+            <p className="text-[12px] text-[var(--cp-muted)]">{t('you_hint')}</p>
+          </div>
 
           {/* System prompt editor */}
           <div className="space-y-2">
@@ -247,9 +329,10 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
           </div>
 
           {/* What she remembers about the user */}
-          <MemorySettings isCloud={provider === 'cloud'} />
+          <MemorySettings isCloud={provider !== 'local'} />
         </div>
 
+        {feedback && <p role="status" className="px-5 pb-3 text-sm text-[var(--cp-cyan)]">{feedback}</p>}
         <div className="px-5 py-3.5 border-t border-[var(--cp-red-line)] flex justify-end gap-2 shrink-0">
           <button
             onClick={() => {
@@ -261,13 +344,21 @@ export const AgentSettingsModal: React.FC<AgentSettingsModalProps> = ({ isOpen, 
             {t('llm_setupAgain')}
           </button>
           {saveError && <span className="self-center text-[13px] text-[var(--cp-red-hi)]">{t('sp_saveError')}</span>}
-          <button onClick={onClose} className="cp-frame cp-btn-ghost px-4 py-2 text-[14px]">
+          {!embedded && <button onClick={onClose} className="cp-frame cp-btn-ghost px-4 py-2 text-[14px]">
             {t('cancel')}
-          </button>
-          <button onClick={handleSave} className="cp-btn px-6 py-2 text-[14px]">
+          </button>}
+          <button onClick={handleSave} disabled={saving} className="cp-btn px-6 py-2 text-[14px]">
             {t('llm_save')}
           </button>
         </div>
+    </>
+  )
+
+  if (embedded) return <section aria-label="AI and model settings" className="flex flex-col h-full min-h-0">{content}</section>
+  return (
+    <div className="cp-vars fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 select-none">
+      <div className="cp-frame w-full max-w-xl flex flex-col max-h-[90vh] animate-fade-in" style={{ ['--c' as string]: '14px' }}>
+        {content}
       </div>
     </div>
   )

@@ -1,4 +1,7 @@
+import { runMacSystemCommand } from '../../services/mac-system-service'
+import type { MacSystemAction } from '../../../shared/mac-system-commands'
 import {
+  isMac,
   isLinux,
   isWindows,
   killProcesses,
@@ -26,9 +29,13 @@ import { exec } from '../../services/hidden-process'
 import { app, shell } from 'electron'
 import { consciousnessService } from '../../services/consciousness-service'
 import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '../../services/music-platform'
+import { launchMacApp, quitMacApp } from '../../services/mac-desktop'
+import { spotifyService } from '../../services/spotify-service'
 import { clipService } from '../../services/clip-service'
 import { askWhereAppIs, openInstalledApp, protocolIsRegistered } from '../../services/app-launcher'
+import { launchRiotProduct, riotProductFor, RIOT_PRODUCT_NAMES } from '../../services/riot-games'
 import { cleanAppRequest } from '../../services/app-finder'
+import { desktopController } from '../../services/desktop-controller-service'
 
 /** Containers and binary formats: handling them as text destroys them for good */
 const NON_TEXT_EXTENSIONS = /\.(?:docx?|docm|dotx|xlsx?|xlsm|pptx?|pptm|odt|ods|odp|pdf|epub|zip|rar|7z|png|jpe?g|gif|webp|bmp|ico|mp3|wav|ogg|mp4|mkv|avi|exe|dll)$/i
@@ -55,7 +62,17 @@ export interface ToolDefinition {
   }
 }
 
+export const MAC_SYSTEM_TOOL:ToolDefinition={
+  name:'mac_system',
+  description:'macOS only. Read battery/disk/OS info or system output volume; set/adjust output volume or mute/unmute; open a standard Finder folder or System Settings page. Execute requested sound changes with this tool instead of claiming read-only access. Does not alter Wi-Fi, Bluetooth, privacy grants, files or power state. Never use for Capri voice settings or coding examples.',
+  parameters:{type:'object',properties:{
+    action:{type:'string',description:'Native action to perform.',enum:['battery','storage','system-info','get-volume','set-volume','change-volume','mute','unmute','folder','settings']},
+    value:{type:'number',description:'For set-volume: 0–100 percent. For change-volume: signed adjustment, normally +/-10. Required for those two actions.'},
+    name:{type:'string',description:'For folder: downloads/documents/desktop/home. For settings: sound/display/displays/wifi/wi-fi/bluetooth/battery/keyboard/mouse/trackpad/accessibility/privacy/general.'}
+  },required:['action']}
+}
 export const CAPRI_TOOLS: ToolDefinition[] = [
+  ...(isMac ? [MAC_SYSTEM_TOOL] : []),
   {
     name: 'run_command',
     description: 'Execute a command in PowerShell / bash shell. Use for builds, tests, git, npm, or system inspection.',
@@ -367,6 +384,9 @@ export class ToolExecutor {
           return { success: true, output: lines.join('\n') || '(empty directory)' }
         }
 
+        case 'mac_system': {
+          return runMacSystemCommand(args as unknown as MacSystemAction)
+        }
         case 'open_application': {
           return await ToolExecutor.openApplication(args)
         }
@@ -645,6 +665,19 @@ export class ToolExecutor {
     }
 
     try {
+      // A request to open a list of apps must not resume music or launch a website fallback.
+      if (isMac && args.launchOnly === true && !rawUrl && !rawQuery) {
+        const name = cleanAppRequest(rawTarget)
+        const installed = await openInstalledApp(name)
+        const ok = Boolean(installed) || await launchMacApp(name)
+        return { success: ok, output: ok ? `Opened ${installed || name}.` : `Could not find or open ${name} on this Mac.` }
+      }
+      // Named browsers must open that Mac app, not silently open the default browser.
+      if(isMac && /^(?:google chrome|chrome|firefox|safari|microsoft edge|edge|msedge|brave|brave browser|opera|opera gx|apple music)$/.test(target.replace(/\.exe$/i,''))) {
+        const url=rawUrl || (rawQuery ? `https://www.google.com/search?q=${encodeURIComponent(rawQuery)}` : undefined)
+        const ok=await launchMacApp(rawTarget,url)
+        return {success:ok,output:ok ? `Opened ${rawTarget}${rawQuery ? ` with search: ${rawQuery}` : ''}.` : `Could not find or open ${rawTarget} on this Mac.`}
+      }
       // Direct Web URLs
       if (/^https?:\/\//i.test(rawTarget)) {
         await shell.openExternal(rawTarget)
@@ -660,7 +693,7 @@ export class ToolExecutor {
       const handledBelow = /^(?:youtube|youtube[ _]music|spotify|musica|música|music|cancion|canción|navegador|browser|browser_search|internet|google|notas|bloc de notas)$/i
       if (!rawUrl && !rawQuery && !handledBelow.test(cleanAppRequest(target))) {
         const opened = await openInstalledApp(rawTarget)
-        if (opened) return { success: true, output: `Launched ${opened} successfully!` }
+        if (opened) return { success: true, output: isMac ? `Opened ${opened}.` : `Launched ${opened} successfully!` }
       }
 
       // YouTube and YouTube Music (with direct song / video search)
@@ -694,9 +727,17 @@ export class ToolExecutor {
             }
           } catch {}
         }
-        await shell.openExternal(finalUrl).catch(() => { exec(startCommand(finalUrl)) })
+        // In the YouTube tab already open, if there is one, instead of a new tab every time
+        const reused = !isMac && !isMusic && (await desktopController.openInSiteTab('YouTube', finalUrl).catch(() => false))
+        if (!reused) await shell.openExternal(finalUrl).catch(() => { exec(startCommand(finalUrl)) })
         if (songTitle) await startYoutubeMusic(songTitle)
         return { success: true, output: query ? `Playing "${query}" on ${name}: ${finalUrl}` : `Launched ${name} in your browser.` }
+      }
+
+      if (isMac && !/spotify|musica|music|cancion|browser|chrome|opera|google|navegador/.test(target)) {
+        if (/league|cyberpunk|valorant|\blol\b/.test(target)) return {success: false, output: 'Game integrations are not supported in this Mac release.'}
+        const ok = await launchMacApp(rawTarget)
+        return ok ? {success:true,output:`Opened ${rawTarget}.`} : ToolExecutor.appNotFound(rawTarget,args)
       }
 
       // OBS Studio
@@ -785,6 +826,7 @@ export class ToolExecutor {
           return await ToolExecutor.mediaControl('next', 'spotify')
         }
 
+        if (isMac) return spotifyService.play(query)
         if (isLinux) return await ToolExecutor.linuxSpotify(query)
 
         const isChangeRequested =
@@ -898,6 +940,19 @@ export class ToolExecutor {
         return { success: true, output: 'Opened Notepad.' }
       }
 
+      // Riot games open through the Riot Client, from wherever Riot installed it. When that doesn't
+      // work: the Start menu's own shortcut, then her list of apps, then she asks where it is
+      const riotProduct = isWindows ? riotProductFor(rawTarget) : null
+      if (riotProduct) {
+        const gameName = RIOT_PRODUCT_NAMES[riotProduct]
+        const launched = await launchRiotProduct(riotProduct)
+        if (launched.ok) return { success: true, output: `Started ${gameName} through the Riot Client.` }
+        console.warn(`[ToolExecutor] ${gameName} through the Riot Client: ${launched.reason}`)
+        const opened = await openInstalledApp(gameName)
+        if (opened) return { success: true, output: `Launched ${opened} successfully!` }
+        return await ToolExecutor.appNotFound(gameName, args)
+      }
+
       // Games & Universal App Discovery (LoL, Cyberpunk, Palworld, Steam, Riot, Shortcuts)
       const gameLaunch = this.resolveGameLaunch(rawTarget)
       if (gameLaunch && (!gameLaunch.protocol || (await protocolIsRegistered(gameLaunch.protocol)))) {
@@ -962,6 +1017,10 @@ export class ToolExecutor {
 
     const target = rawTarget.toLowerCase()
 
+    if (isMac) {
+      try { const ok = await quitMacApp(rawTarget); return {success: ok, output: ok ? `Asked ${rawTarget} to quit. It may ask you to save your work.` : `${rawTarget} is not running or could not be asked to quit.`} }
+      catch (error) { return {success: false, output: String(error)} }
+    }
     try {
       // Check known game process list first (e.g. LoL, Cyberpunk, Palworld, Roblox, Valorant)
       const gameProcesses = this.resolveGameProcesses(target)
@@ -1099,6 +1158,7 @@ export class ToolExecutor {
 
   /** Title of Spotify's main window ('' while it's still loading or closed) */
   private static spotifyWindowTitle(): Promise<string> {
+    if (isMac) return spotifyService.status().then(s => s.title)
     if (isLinux) return linuxSpotifyTitle()
     return new Promise((resolve) => {
       exec(
@@ -1129,6 +1189,7 @@ export class ToolExecutor {
     action: 'next' | 'prev' | 'play' | 'pause' | 'play_pause' = 'next',
     platform: PlaybackPlatform = consciousnessService.getMusicPlatform()
   ): Promise<{ success: boolean; output: string }> {
+    if (isMac) return spotifyService.control(action)
     const name = musicPlatformName(platform)
     if (isLinux) {
       return (await linuxMediaControl(action, platform !== 'spotify'))
@@ -1166,6 +1227,7 @@ export class ToolExecutor {
   }
 
   public static async getMediaStatus(): Promise<{ isPlaying: boolean; title: string }> {
+    if (isMac) return spotifyService.status()
     if (isLinux) return linuxMediaStatus()
     const mediaScript = scriptPath('media_controller.ps1')
 
@@ -1223,53 +1285,6 @@ export class ToolExecutor {
       // Only as a word of its own at the start: "epic games store" keeps its name
       .replace(/^(?:juego|game|app|aplicacion|programa)\s+/i, '')
       .trim()
-
-    // League of Legends / LoL
-    if (q === 'lol' || q.includes('league of legends') || q.includes('league') || q.includes('legends')) {
-      const leagueClient = 'C:\\Riot Games\\League of Legends\\LeagueClient.exe'
-      const riotClient = 'C:\\Riot Games\\Riot Client\\RiotClientServices.exe'
-      if (fs.existsSync(leagueClient)) {
-        return {
-          name: 'League of Legends',
-          command: `powershell -Command "Start-Process -FilePath '${leagueClient}'"`
-        }
-      }
-      if (fs.existsSync(riotClient)) {
-        return {
-          name: 'League of Legends',
-          command: `powershell -Command "Start-Process -FilePath '${riotClient}' -ArgumentList '--launch-product=league_of_legends --launch-patchline=live'"`
-        }
-      }
-    }
-
-    // Teamfight Tactics / TFT
-    if (q === 'tft' || q.includes('teamfight tactics')) {
-      const tftClient = 'C:\\Riot Games\\Teamfight Tactics\\Live\\TFTClient.exe'
-      if (fs.existsSync(tftClient)) {
-        return {
-          name: 'Teamfight Tactics',
-          command: `powershell -Command "Start-Process -FilePath '${tftClient}'"`
-        }
-      }
-    }
-
-    // Valorant
-    if (q === 'valorant' || q === 'val') {
-      const valClient = 'C:\\Riot Games\\VALORANT\\live\\VALORANT.exe'
-      const riotClient = 'C:\\Riot Games\\Riot Client\\RiotClientServices.exe'
-      if (fs.existsSync(valClient)) {
-        return {
-          name: 'VALORANT',
-          command: `powershell -Command "Start-Process -FilePath '${valClient}'"`
-        }
-      }
-      if (fs.existsSync(riotClient)) {
-        return {
-          name: 'VALORANT',
-          command: `powershell -Command "Start-Process -FilePath '${riotClient}' -ArgumentList '--launch-product=valorant --launch-patchline=live'"`
-        }
-      }
-    }
 
     // Steam Installed Games Discovery (reads all appmanifest_*.acf in real-time)
     const steamGames = this.getSteamGames()

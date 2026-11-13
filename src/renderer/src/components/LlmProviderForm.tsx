@@ -1,7 +1,11 @@
+import type { CloudRequestStatus } from '../../../main/services/cloud-request-status'
 import React, { forwardRef, useEffect, useImperativeHandle, useState } from 'react'
-import { Check, Cloud, Cpu, Key, List, Loader2, Server, ShieldAlert, Terminal, X } from 'lucide-react'
+import { AppWindow, Check, Cloud, Cpu, Key, List, Loader2, Server, ShieldAlert, X } from 'lucide-react'
+import type { AiAppInfo } from '../../../main/services/ai-apps'
 import { MessageKey } from '../i18n'
 import { useT } from '../utils/useUiLang'
+
+const MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
 
 /** Any OpenAI-compatible server works: these only save the user from looking up the address */
 const PRESETS: { id: string; label: string; baseUrl: string }[] = [
@@ -9,6 +13,7 @@ const PRESETS: { id: string; label: string; baseUrl: string }[] = [
   { id: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1' },
   { id: 'google', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
   { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
+  { id: 'nvidia', label: 'NVIDIA', baseUrl: 'https://integrate.api.nvidia.com/v1' },
   { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
   { id: 'mistral', label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1' },
   { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },
@@ -16,6 +21,17 @@ const PRESETS: { id: string; label: string; baseUrl: string }[] = [
   { id: 'together', label: 'Together AI', baseUrl: 'https://api.together.xyz/v1' },
   { id: 'custom', label: '', baseUrl: '' }
 ]
+
+/**
+ * LM Studio runs .gguf models on this PC behind an OpenAI-compatible server. It is saved like any
+ * OpenAI-compatible provider, but shown as a local engine: nothing leaves the machine and it costs nothing.
+ */
+export const LM_STUDIO_URL = 'http://localhost:1234/v1'
+
+type LocalEngine = 'ollama' | 'lmstudio'
+export type ProviderChoice = 'local' | 'cloud' | 'app'
+
+const APP_NAMES: Record<string, string> = { antigravity: 'Antigravity', 'claude-code': 'Claude Code', codex: 'Codex' }
 
 const ERROR_KEYS: Record<string, MessageKey> = {
   auth: 'llm_errAuth',
@@ -34,46 +50,95 @@ export interface LlmProviderFormHandle {
   save: () => Promise<boolean>
 }
 
-export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderChange?: (provider: 'local' | 'cloud' | 'claude-code' | 'codex') => void }>(
+export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderChange?: (provider: ProviderChoice, engine?: LocalEngine) => void }>(
   ({ onProviderChange }, ref) => {
     const t = useT()
-    const [provider, setProvider] = useState<'local' | 'cloud' | 'claude-code' | 'codex'>('local')
-    const [claudeInstalled, setClaudeInstalled] = useState(false)
-    const [savedClaudeProvider, setSavedClaudeProvider] = useState(false)
+    const [provider, setProvider] = useState<ProviderChoice>('local')
+    // The user's AI apps: which ones are installed, which one she uses and with what model
+    const [apps, setApps] = useState<AiAppInfo[] | null>(null)
+    const [appId, setAppId] = useState('antigravity')
+    const [appModel, setAppModel] = useState('')
+    const [claudeNativeTools, setClaudeNativeTools] = useState(false)
+    const [claudeBypassPermissions, setClaudeBypassPermissions] = useState(false)
+    const [confirmingBypass, setConfirmingBypass] = useState(false)
+    const [engine, setEngine] = useState<LocalEngine>('ollama')
     const [preset, setPreset] = useState('openai')
     const [baseUrl, setBaseUrl] = useState(PRESETS[0].baseUrl)
     const [model, setModel] = useState('')
-    const [codexModel, setCodexModel] = useState('')
-    const [claudeModel, setClaudeModel] = useState<'haiku' | 'sonnet' | 'opus'>('haiku')
-    const [claudeBypassPermissions, setClaudeBypassPermissions] = useState(false)
-    const [confirmingBypass, setConfirmingBypass] = useState(false)
+    const [visionModel,setVisionModel]=useState('')
     const [apiKey, setApiKey] = useState('')
     const [hasKey, setHasKey] = useState(false)
+    const [lastRequest,setLastRequest]=useState<CloudRequestStatus|null>(null)
     const [models, setModels] = useState<string[]>([])
     const [busy, setBusy] = useState<'models' | 'test' | null>(null)
     const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
     useEffect(() => {
-      window.api?.agent?.isClaudeInstalled?.().then(setClaudeInstalled).catch(() => setClaudeInstalled(false))
       window.api?.agent?.getLlmSettings?.().then((s) => {
         if (!s) return
-        setProvider(s.provider)
-        setSavedClaudeProvider(s.provider === 'claude-code')
+        setClaudeNativeTools(s.claudeNativeTools)
+        setClaudeBypassPermissions(s.claudeBypassPermissions)
+        const lmStudio = s.provider === 'cloud' && s.preset === 'lmstudio'
+        if (s.provider === 'app') {
+          setProvider('app')
+          setAppId(s.preset)
+          setAppModel(s.model)
+          onProviderChange?.('app')
+          return
+        }
+        setProvider(lmStudio ? 'local' : s.provider)
+        setEngine(lmStudio ? 'lmstudio' : 'ollama')
         if (s.preset) setPreset(s.preset)
         if (s.baseUrl) setBaseUrl(s.baseUrl)
         setModel(s.model)
-        setCodexModel(s.codexModel)
-        setClaudeModel(s.claudeModel)
-        setClaudeBypassPermissions(s.claudeBypassPermissions)
+        setVisionModel(s.visionModel || '')
         setHasKey(s.hasKey)
-        onProviderChange?.(s.provider)
+        setLastRequest(s.lastRequest || null)
+        onProviderChange?.(lmStudio ? 'local' : s.provider, lmStudio ? 'lmstudio' : 'ollama')
       })
     }, [])
 
-    const choose = (next: 'local' | 'cloud' | 'claude-code' | 'codex') => {
+    useEffect(() => {
+      if (provider !== 'app' || apps) return
+      window.api.agent
+        .listAiApps()
+        .then((list) => {
+          setApps(list)
+          // The first installed one, unless one was already chosen and is still there
+          setAppId((current) => (list.some((a) => a.id === current && a.installed) ? current : list.find((a) => a.installed)?.id ?? current))
+        })
+        .catch(() => setApps([]))
+    }, [provider, apps])
+
+    const testApp = async () => {
+      setBusy('test')
+      setNotice(null)
+      const res = appId === 'claude-code' && claudeNativeTools
+        ? await window.api.agent.testClaude(appModel === 'sonnet' || appModel === 'opus' ? appModel : 'haiku')
+        : await window.api.agent.testAiApp(appId, appModel)
+      setBusy(null)
+      if (res.ok) setNotice({ ok: true, text: t('llm_testOk') })
+      else setNotice({ ok: false, text: `${t(ERROR_KEYS[res.error || 'other'] || 'llm_errOther')}${'detail' in res && typeof res.detail === 'string' ? ` (${res.detail.slice(0, 140)})` : ''}` })
+    }
+
+    const choose = (next: ProviderChoice) => {
       setProvider(next)
       setNotice(null)
-      onProviderChange?.(next)
+      // Coming from LM Studio, the cloud fields start from a cloud provider again
+      if (next === 'cloud' && preset === 'lmstudio') choosePreset('openai')
+      onProviderChange?.(next, next === 'local' ? engine : undefined)
+    }
+
+    const chooseEngine = (next: LocalEngine) => {
+      setEngine(next)
+      setNotice(null)
+      setModels([])
+      if (next === 'lmstudio') {
+        setPreset('lmstudio')
+        setBaseUrl(LM_STUDIO_URL)
+        setModel('')
+      }
+      onProviderChange?.('local', next)
     }
 
     const choosePreset = (id: string) => {
@@ -97,13 +162,10 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
     }
 
     const test = async () => {
-      if (provider === 'cloud' && !model.trim()) return fail('missing-model')
+      if (!model.trim()) return fail('missing-model')
       setBusy('test')
       setNotice(null)
-      const res = provider === 'claude-code'
-        ? await window.api.agent.testClaude(claudeModel)
-        : provider === 'codex' ? await window.api.agent.testCodex(codexModel.trim())
-        : await window.api.agent.testLlm(baseUrl, model.trim(), apiKey || undefined)
+      const res = await window.api.agent.testLlm(baseUrl, model.trim(), apiKey || undefined)
       setBusy(null)
       if (res.ok) setNotice({ ok: true, text: t('llm_testOk') })
       else fail(res.error)
@@ -134,11 +196,13 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
     useImperativeHandle(ref, () => ({
       save: async () => {
         const res = await window.api.agent.setLlmSettings(
-          provider === 'local'
-            ? { provider: 'local' }
-            : provider === 'claude-code' ? { provider, claudeModel }
-            : provider === 'codex' ? { provider, codexModel: codexModel.trim() }
-            : { provider: 'cloud', preset, baseUrl, model: model.trim(), apiKey: apiKey || undefined }
+          provider === 'app'
+            ? { provider: 'app', preset: appId, model: appModel.trim(), claudeNativeTools }
+            : provider === 'local'
+            ? engine === 'lmstudio'
+              ? { provider: 'cloud', preset: 'lmstudio', baseUrl, model: model.trim() }
+              : { provider: 'local' }
+            : { provider: 'cloud', preset, baseUrl, model: model.trim(), visionModel: visionModel.trim(), apiKey: apiKey || undefined }
         )
         if (!res.success) {
           fail(res.error)
@@ -151,19 +215,17 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
     }))
 
     const field = 'cp-input w-full px-3 py-2 text-[15px] select-text'
-    const showClaude = claudeInstalled || savedClaudeProvider
 
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           {(
             [
               ['local', 'llm_local', 'llm_localDesc', <Cpu size={16} key="i" />],
               ['cloud', 'llm_cloud', 'llm_cloudDesc', <Cloud size={16} key="i" />],
-              ['claude-code', 'llm_claudeCode', 'llm_claudeCodeDesc', <Terminal size={16} key="i" />],
-              ['codex', 'llm_codex', 'llm_codexDesc', <Terminal size={16} key="i" />]
+              ['app', 'llm_apps', 'llm_appsDesc', <AppWindow size={16} key="i" />]
             ] as const
-          ).filter(([id]) => id !== 'claude-code' || showClaude).map(([id, title, desc, icon]) => {
+          ).map(([id, title, desc, icon]) => {
             const active = provider === id
             return (
               <button
@@ -182,46 +244,144 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
           })}
         </div>
 
-        {provider === 'codex' && (
+        {provider === 'local' && (
           <div className="space-y-3">
             <label className="block">
-              <span className="cp-label block mb-1.5">{t('llm_model')}</span>
+              <span className="cp-label block mb-1.5">{t('llm_engine')}</span>
               <div className="cp-frame">
-                <input value={codexModel} onChange={(e) => { setCodexModel(e.target.value); setNotice(null) }} placeholder={t('llm_codexDefault')} spellCheck={false} className={field} />
-              </div>
-            </label>
-            <p className="text-[13px] text-[var(--cp-muted)]">{t('llm_codexHelp')}</p>
-            <button type="button" onClick={test} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px]">
-              {busy === 'test' && <Loader2 size={13} className="animate-spin" />} {busy === 'test' ? t('llm_testing') : t('llm_test')}
-            </button>
-            {notice && <p role="status" className={notice.ok ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}>{notice.text}</p>}
-          </div>
-        )}
-        {provider === 'claude-code' && (
-          <div className="space-y-3">
-            <label className="block">
-              <span className="cp-label block mb-1.5">{t('llm_model')}</span>
-              <div className="cp-frame">
-                <select value={claudeModel} onChange={(e) => { setClaudeModel(e.target.value as typeof claudeModel); setNotice(null) }} className={field} style={{ colorScheme: 'dark' }}>
-                  <option value="haiku">Haiku</option>
-                  <option value="sonnet">Sonnet</option>
-                  <option value="opus">Opus</option>
+                <select value={engine} onChange={(e) => chooseEngine(e.target.value as LocalEngine)} className={`${field} cursor-pointer`} style={{ colorScheme: 'dark' }}>
+                  <option value="ollama">Ollama</option>
+                  <option value="lmstudio">{t('llm_lmStudio')}</option>
                 </select>
               </div>
             </label>
-            <label className="block cp-frame px-3 py-2.5 space-y-1.5">
-              <span className="flex items-center gap-2 text-[14px]">
-                <input type="checkbox" checked={claudeBypassPermissions} disabled={confirmingBypass} onChange={() => void toggleClaudeBypass()} />
-                {t('llm_bypassLabel')}
-              </span>
-              <span className="block text-[13px] text-[var(--cp-muted)]">{t('llm_bypassHelp')}</span>
-            </label>
-            <button type="button" onClick={test} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px]">
-              {busy === 'test' && <Loader2 size={13} className="animate-spin" />} {busy === 'test' ? t('llm_testing') : t('llm_test')}
-            </button>
-            {notice && <p role="status" className={notice.ok ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}>{notice.text}</p>}
+            {engine === 'lmstudio' && (
+              <>
+                <p className="text-[13px] leading-snug text-[var(--cp-muted)]">{t('llm_lmStudioHint')}</p>
+                <label className="block">
+                  <span className="cp-label flex items-center gap-1.5 mb-1.5">
+                    <Server size={12} /> {t('llm_baseUrl')}
+                  </span>
+                  <div className="cp-frame">
+                    <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} spellCheck={false} placeholder={LM_STUDIO_URL} className={`${field} cp-mono`} />
+                  </div>
+                </label>
+                <div className="block">
+                  <span className="cp-label block mb-1.5">{t('llm_model')}</span>
+                  <div className="flex gap-2">
+                    <div className="cp-frame flex-1 min-w-0">
+                      <input list="capri-lmstudio-models" value={model} onChange={(e) => setModel(e.target.value)} spellCheck={false} placeholder="llama-3.2-3b-instruct" className={`${field} cp-mono`} />
+                      <datalist id="capri-lmstudio-models">
+                        {models.map((m) => (
+                          <option key={m} value={m} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <button type="button" onClick={loadModels} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 text-[13px] shrink-0">
+                      {busy === 'models' ? <Loader2 size={13} className="animate-spin" /> : <List size={13} />} {t('llm_loadModels')}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={test} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px] shrink-0">
+                    {busy === 'test' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} {busy === 'test' ? t('llm_testing') : t('llm_test')}
+                  </button>
+                  {notice && (
+                    <span className={`flex items-start gap-1.5 text-[14px] leading-snug ${notice.ok ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}`}>
+                      {notice.ok ? <Check size={14} className="mt-0.5 shrink-0" /> : <X size={14} className="mt-0.5 shrink-0" />} {notice.text}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
+
+        {provider === 'app' && (
+          <div className="space-y-3">
+            {!apps && <Loader2 size={14} className="animate-spin text-[var(--cp-muted)]" />}
+            {apps && !apps.some((a) => a.installed) && <p className="text-[13px] leading-snug text-[var(--cp-yellow)]">{t('llm_appNone')}</p>}
+            {apps && (
+              <>
+                <label className="block">
+                  <span className="cp-label block mb-1.5">{t('llm_app')}</span>
+                  <div className="cp-frame">
+                    <select
+                      value={appId}
+                      onChange={(e) => {
+                        setAppId(e.target.value)
+                        setAppModel('')
+                        setNotice(null)
+                      }}
+                      className={`${field} cursor-pointer`}
+                      style={{ colorScheme: 'dark' }}
+                    >
+                      {apps.map((a) => (
+                        <option key={a.id} value={a.id} disabled={!a.installed}>
+                          {APP_NAMES[a.id]}{a.installed ? '' : ` (${t('llm_appNotInstalled')})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="cp-label block mb-1.5">{t('llm_model')}</span>
+                  <div className="cp-frame">
+                    {(apps.find((a) => a.id === appId)?.models.length ?? 0) > 0 ? (
+                      <select value={appModel} onChange={(e) => setAppModel(e.target.value)} className={`${field} cursor-pointer`} style={{ colorScheme: 'dark' }}>
+                        <option value="">{t('llm_appDefault')}</option>
+                        {Array.from(new Set([...(appModel ? [appModel] : []), ...(apps.find((a) => a.id === appId)?.models ?? [])])).map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input value={appModel} onChange={(e) => setAppModel(e.target.value)} spellCheck={false} placeholder={t('llm_appDefault')} className={`${field} cp-mono`} />
+                    )}
+                  </div>
+                </label>
+                {appId === 'claude-code' && (
+                  <>
+                    <label className="block text-[13px] text-[var(--cp-muted)]">
+                      <input type="checkbox" checked={claudeNativeTools} onChange={async (e) => {
+                        const next = e.target.checked
+                        const res = await window.api.agent.setLlmSettings({ claudeNativeTools: next })
+                        if (res.success) setClaudeNativeTools(next)
+                        else fail(res.error)
+                      }} /> {t('llm_nativeTools')}
+                    </label>
+                    {claudeNativeTools && <label className="block cp-frame px-3 py-2.5 space-y-1.5">
+                      <span className="flex items-center gap-2 text-[14px]">
+                        <input type="checkbox" checked={claudeBypassPermissions} disabled={confirmingBypass} onChange={() => void toggleClaudeBypass()} />
+                        {t('llm_bypassLabel')}
+                      </span>
+                      <span className="block text-[13px] text-[var(--cp-muted)]">{t('llm_bypassHelp')}</span>
+                    </label>}
+                  </>
+                )}
+                <p className="text-[13px] leading-snug text-[var(--cp-muted)]">{t(appId === 'claude-code' && claudeNativeTools ? 'llm_claudeCodeDesc' : 'llm_appHint')}</p>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={testApp} disabled={!!busy || !apps.find((a) => a.id === appId)?.installed} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px] shrink-0">
+                    {busy === 'test' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} {busy === 'test' ? t('llm_testing') : t('llm_test')}
+                  </button>
+                  {notice && (
+                    <span className={`flex items-start gap-1.5 text-[14px] leading-snug ${notice.ok ? 'text-[var(--cp-cyan)]' : 'text-[var(--cp-yellow)]'}`}>
+                      {notice.ok ? <Check size={14} className="mt-0.5 shrink-0" /> : <X size={14} className="mt-0.5 shrink-0" />} {notice.text}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+            <div className="cp-frame is-warn flex gap-2 px-3 py-2.5 text-[13px] leading-snug text-[var(--cp-text)]">
+              <ShieldAlert size={15} className="shrink-0 mt-0.5 text-[var(--cp-yellow)]" />
+              <span>
+                {t(appId === 'claude-code' && claudeNativeTools ? 'llm_claudeCodeDesc' : 'llm_appPrivacy')} {t('llm_voiceLocal')}
+              </span>
+            </div>
+          </div>
+        )}
+
         {provider === 'cloud' && (
           <div className="space-y-3">
             <label className="block">
@@ -303,6 +463,12 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
               </div>
             </div>
 
+            {/* Cloud vision is only used by the Mac scanner */}
+            {MAC && <label className="block text-sm">Vision model
+              <input aria-label="Cloud vision model" className={`${field} cp-mono mt-1`} value={visionModel} onChange={e=>setVisionModel(e.target.value)} placeholder="Image-capable model ID" />
+              <span className="block text-xs mt-1">Uses this cloud server and API key. Manual scans send the selected screen image. Live Scan and automatic screen comments send images only after you enable them. Chat keeps its own model.</span>
+            </label>}
+
             <div className="flex items-center gap-3">
               <button type="button" onClick={test} disabled={!!busy} className="cp-frame cp-btn-ghost flex items-center gap-1.5 px-3 py-2 text-[13px] shrink-0">
                 {busy === 'test' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} {busy === 'test' ? t('llm_testing') : t('llm_test')}
@@ -313,6 +479,11 @@ export const LlmProviderForm = forwardRef<LlmProviderFormHandle, { onProviderCha
                 </span>
               )}
             </div>
+
+            {MAC && <div className="text-xs space-y-1 select-text" role="status">
+              <p>{lastRequest ? `Last cloud request: ${lastRequest.host} · ${lastRequest.model} · ${lastRequest.state}${lastRequest.httpStatus ? ` · HTTP ${lastRequest.httpStatus}` : ''}${lastRequest.elapsedMs !== undefined ? ` · ${lastRequest.elapsedMs} ms` : ''} · ${new Date(lastRequest.startedAt).toLocaleTimeString()}` : 'No cloud request recorded yet.'}</p>
+              <button type="button" className="cp-btn-ghost px-2 py-1" onClick={async()=>setLastRequest((await window.api.agent.getLlmSettings()).lastRequest || null)}>Refresh request status</button>
+            </div>}
 
             <div className="cp-frame is-warn flex gap-2 px-3 py-2.5 text-[13px] leading-snug text-[var(--cp-text)]">
               <ShieldAlert size={15} className="shrink-0 mt-0.5 text-[var(--cp-yellow)]" />

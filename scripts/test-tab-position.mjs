@@ -22,6 +22,7 @@ function createManager(workArea) {
     webContents: { send: (...args) => events.push(args) }
   }
   const dependencies = {
+    '../services/consciousness-service': { consciousnessService: { getCompanionScale: () => 1, isAway: () => false } },
     electron: {
       screen: { getDisplayMatching: () => ({ workArea }) },
       BrowserWindow: { getAllWindows: () => [win] }
@@ -33,6 +34,7 @@ function createManager(workArea) {
   runInNewContext(outputText, { exports, require: (name) => dependencies[name] || {} })
   const manager = new exports.WindowManager()
   manager.companionWin = win
+  manager.glideCompanionTo = value => win.setBounds(value)
   return { manager, events, getBounds: () => bounds }
 }
 

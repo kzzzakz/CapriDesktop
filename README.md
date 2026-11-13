@@ -1,4 +1,12 @@
+<p align="center">
+  <a href="https://ko-fi.com/capridesktop" target="_blank">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" />
+  </a>
+</p>
+
 # Capri Desktop
+
+**Apple Silicon macOS port (upstream 1.0.4 / Mac revision 13):** see [MACOS.md](MACOS.md) for installation, voice setup, all Mac shortcuts and limitations. Open settings with **⌘,**. If an update breaks Screen Recording or Accessibility (called **Device Control and Data Access** on some macOS versions), remove the old Capri entry in System Settings → Privacy & Security, fully quit Capri, re-add and enable the installed app, then restart Capri. See the detailed permission-repair steps in MACOS.md. The upstream documentation below describes the original Windows/Linux release.
 
 <p align="center">
   <img src="src/renderer/src/assets/capri/walking/walking.gif" alt="Capri walking" width="260">
@@ -180,7 +188,7 @@ Adapter contributors can follow the [short guide](docs/game-adapters.md).
 
 Everything lives on your PC, in `%APPDATA%\Capri Desktop` (or `%APPDATA%\Cyber Companion`, if you installed her before the rename):
 
-- **`capri_consciousness.json`**: boot/shutdown counters (she comments on them), your name, language settings and onboarding state.
+- **`capri_consciousness.json`**: boot/shutdown counters (she comments on them), your name (change it in Dev Deck → **Capri // Brain**), the apps she knows by name, language settings and onboarding state.
 - **`capri_macros.json`**: your voice macros.
 - **`capri_memory.json`**: what she remembers about you and the latest conversation, so she can pick it up after a restart. You can see, delete or turn off her memory in Dev Deck → **Capri // Brain**.
 - **`capri_voice/`**: voice configuration, API keys (`voice_config.local.json`) and the audio cache.
@@ -224,10 +232,11 @@ Capri understands commands in both English and Spanish.
 | `→` (Right arrow) | Toggle always-listening mode. |
 | `←` (Left arrow) | Open / close Capri's chat (same as `Ctrl + Click` on her). |
 | `Ctrl+Alt+S` | Open the optical scanner / scan. |
+| `Ctrl+Alt+M` | Gaming Mode on / off. Works inside games too. |
 | Hold `Ctrl` in Game Mode | In Game Mode Capri lets clicks pass through to the game; hold `Ctrl` over her to move or touch her. |
 | `Ctrl+Alt+G` in Game Mode (Linux) | Same as holding `Ctrl`, which Linux can't detect in that mode. |
 
-> **Note:** while another app has the focus, those arrows are reserved for her. You can change those keys or turn them off in the voice settings; `Ctrl+Alt+V` always works. In her own windows the arrows work normally in text fields.
+> **Note:** while another app has the focus, those arrows are reserved for her. You can change those keys, and the Gaming Mode one, or turn the arrows off in the voice settings; `Ctrl+Alt+V` and the Gaming Mode key always work. In her own windows the arrows work normally in text fields.
 
 ### Mouse
 | Action | What it does |
@@ -300,6 +309,9 @@ The drawing, League of Legends and Cyberpunk 2077 commands are in [section 8](#8
 | `open cyberpunk` | Launches Cyberpunk 2077 through Steam or GOG. |
 | `open steam` / `open discord` / `open obs` | Launches Steam, Discord or OBS Studio. |
 | `open blender` / `abrí la epic games store` | Opens any installed app. If she can't find it, she asks you where it is and remembers it. |
+| `what apps do you know?` / `¿qué apps conocés?` | She lists the apps she knows by name. |
+
+Dev Deck → **Apps** lists the apps she knows by name: add any program, rename it to whatever you call it, open or remove it. Ask her to open one by that name, even said a little differently ("abrí el editor de Valen").
 | `close league` / `close chrome` / `cerrá discord` | Closes the process. |
 
 ### Desktop interaction
@@ -491,11 +503,20 @@ Two pieces are needed: **Cyber Engine Tweaks (CET)**, which loads mods, and **Ca
 1. Close the game.
 2. Install CET from [GitHub](https://github.com/maximegmd/CyberEngineTweaks/releases) or [Nexus Mods](https://www.nexusmods.com/cyberpunk2077/mods/107), in the version that matches your copy of the game, and extract it into the game folder. You should end up with `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks`. If CET doesn't start, install the [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 3. Open the game once. CET asks you to choose a key for its overlay. Close the game.
-4. Open Capri. When she finds CET in your Steam libraries or in the default GOG and Epic folders, she installs her mod and keeps it up to date.
+4. Open Capri. When she finds CET in your Steam libraries (wherever Steam is installed) or in the default GOG and Epic folders, she installs her mod and keeps it up to date. She also learns the game's folder while it's running.
 5. Check that this file exists: `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\capri\init.lua`.
 6. Open Capri first, then the game, and load a save. She reacts when you get into a fight.
 
-**Manual install**, if the file from step 5 isn't there (the game is in another folder, or Windows didn't let her write there): download `CapriCyberpunkMod-1.0.0.zip` from [Releases](https://github.com/nunezValen/CapriDesktop/releases/latest) and extract it into the `Cyberpunk 2077` folder, so `bin` merges with the one already there. CET is still needed.
+**If the game is in another folder**, open Dev Deck → **Apps** and, under **Cyberpunk 2077**, choose the game's folder (the one with `bin`). It shows whether CET and her mod are there and whether events are arriving.
+
+**With Mod Organizer 2**, the game sees a virtual folder, so Capri can't put her mod in the real one:
+
+1. Install CET as a mod in Mod Organizer, as usual.
+2. Add `CapriCyberpunkMod-1.0.0.zip` from [Releases](https://github.com/nunezValen/CapriDesktop/releases/latest) as another mod (**Install a new mod from an archive**) and enable it.
+3. Launch the game from Mod Organizer.
+4. If your instance isn't in the default place (`%LOCALAPPDATA%\ModOrganizer`), choose its folder in Dev Deck → **Apps** → **Cyberpunk 2077**. What the mod writes lands in the instance's `overwrite` folder, and that's where she reads it.
+
+**Manual install**, if the file from step 5 isn't there (Windows didn't let her write there): download `CapriCyberpunkMod-1.0.0.zip` from [Releases](https://github.com/nunezValen/CapriDesktop/releases/latest) and extract it into the `Cyberpunk 2077` folder, so `bin` merges with the one already there. CET is still needed.
 
 **On Linux**, the game runs through Proton and CET needs this in the game's Steam launch options:
 

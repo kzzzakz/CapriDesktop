@@ -1,6 +1,7 @@
+import { featureSettings, saveFeatures } from '../services/mac-feature-settings'
 import { createOnboardingWindow } from './onboarding-window'
 import { BrowserWindow, app, screen, globalShortcut } from 'electron'
-import { DEFAULT_HOTKEYS, hotkeyProblem, type HotkeyAction, type HotkeyProblem, type Hotkeys } from '../../shared/hotkeys'
+import { ALWAYS_ON_ACTIONS, DEFAULT_HOTKEYS, hotkeyProblem, type HotkeyAction, type HotkeyProblem, type Hotkeys } from '../../shared/hotkeys'
 import { createCompanionWindow } from './companion-window'
 import { createDeckWindow } from './deck-window'
 import { createScannerWindow } from './scanner-window'
@@ -11,21 +12,25 @@ import { ollamaService } from '../services/ollama-service'
 import { voiceService } from '../services/voice-service'
 import { consciousnessService } from '../services/consciousness-service'
 import { scannerService } from '../services/scanner-service'
-import { isLinux, linuxCursorPosition } from '../services/platform'
+import { isMac, isLinux, linuxCursorPosition } from '../services/platform'
 
 export class WindowManager {
   private companionWin: BrowserWindow | null = null
   private onboardingWin: BrowserWindow | null = null
   private deckWin: BrowserWindow | null = null
+  private inCameo = false
   private scannerWin: BrowserWindow | null = null
   private isGamingMode = false
   private gameForeground = true
+  private companionIgnoresMouse = false
   private savedGamingPosition: { x: number; y: number } | null = null
   private gamingKeepAliveInterval: NodeJS.Timeout | null = null
   private gamingModeListeners: Array<(enabled: boolean) => void> = []
   /** 'game' when a running game turned it on: only then does it end by itself when the game is gone */
   private gamingModeSource: 'game' | 'user' = 'user'
   private mouseForwardTimers = new Map<BrowserWindow, NodeJS.Timeout>()
+  private isScannerFullscreen = false
+  private savedScannerBoundsBeforeFullscreen: ScannerBounds | null = null
 
   /**
    * Electron only honors { forward: true } on Windows and macOS. Without it, a click-through window
@@ -88,7 +93,9 @@ export class WindowManager {
   }
 
   public init(): void {
-    this.companionWin = createCompanionWindow()
+    this.companionWin = createCompanionWindow(this.companionSize('desktop'))
+    // The zoom goes back to 100% each time the page loads
+    this.companionWin.webContents.on('did-finish-load', () => this.applyCompanionZoom())
     this.setCompanionClickThrough(true)
     this.deckWin = createDeckWindow()
     createTray(this)
@@ -155,16 +162,18 @@ export class WindowManager {
     // (see setVoiceRecordingActive) so Esc keeps working normally in every other app.
 
     // Linux can't report Ctrl while Capri is click-through, so this replaces Ctrl + hover in Gaming Mode
-    if (isLinux) {
+    if (isLinux || isMac) {
       try {
         globalShortcut.register('CommandOrControl+Alt+G', () => {
           if (!this.isGamingMode || !this.companionWin || this.companionWin.isDestroyed()) return
-          this.setCompanionClickThrough(!this.mouseForwardTimers.has(this.companionWin))
+          this.setCompanionClickThrough(isMac ? !this.companionIgnoresMouse : !this.mouseForwardTimers.has(this.companionWin))
         })
       } catch (err) {
         console.warn('[WindowManager] Failed to register global shortcut Ctrl+Alt+G:', err)
       }
     }
+
+    this.registerGamingHotkey()
 
     // The arrows are global only while another app has the focus: in her own windows they belong to
     // the text fields, and those windows handle them on their own
@@ -180,6 +189,13 @@ export class WindowManager {
     // Initialize desktop roaming listener and start autonomous behavior cycle
     roamingManager.init()
     roamingManager.startAutonomousCycle()
+    if (isMac && featureSettings().gamingMode) this.setGamingMode(true)
+    // Sent away last time and never called back: she stays hidden
+    if (this.isAway()) {
+      this.companionWin.once('show', this.keepHiddenAtStart)
+      this.companionWin.hide()
+      roamingManager.pause()
+    }
   }
 
   /** The setup again, for whoever skipped a step or had one fail */
@@ -195,6 +211,75 @@ export class WindowManager {
   }
 
   private registeredHotkeys: string[] = []
+  /** The Gaming Mode and away keys: registered all the time, the arrows only while another app has the focus */
+  private alwaysHotkeys: string[] = []
+
+  private registerGamingHotkey(): void {
+    this.releaseGamingHotkey()
+    const keys = consciousnessService.getHotkeys()
+    const actions: [string, () => void][] = [
+      [keys.gaming, () => this.setGamingMode(!this.isGamingMode)],
+      [keys.away, () => this.toggleAway()]
+    ]
+    for (const [key, run] of actions) {
+      try {
+        if (globalShortcut.register(key, run)) this.alwaysHotkeys.push(key)
+        else console.warn(`[WindowManager] The shortcut ${key} belongs to another app`)
+      } catch (err) {
+        console.warn(`[WindowManager] Could not register the shortcut ${key}:`, err)
+      }
+    }
+  }
+
+  private releaseGamingHotkey(): void {
+    for (const key of this.alwaysHotkeys) {
+      try {
+        globalShortcut.unregister(key)
+      } catch {}
+    }
+    this.alwaysHotkeys = []
+  }
+
+  /** Sent away with her key: hidden and quiet until it is pressed again (or Show Capri in the tray) */
+  public isAway(): boolean {
+    return consciousnessService.isAway()
+  }
+
+  public toggleAway(): boolean {
+    this.setAway(!this.isAway())
+    return this.isAway()
+  }
+
+  /** Started while away: the first time something shows her window it goes back to hidden */
+  private keepHiddenAtStart = (): void => {
+    if (this.isAway()) this.companionWin?.hide()
+  }
+
+  public setAway(away: boolean): void {
+    consciousnessService.setAway(away)
+    const win = this.companionWin
+    if (win && !win.isDestroyed()) {
+      win.removeListener('show', this.keepHiddenAtStart)
+      if (away) {
+        win.hide()
+        roamingManager.pause()
+      } else {
+        win.showInactive()
+        win.setAlwaysOnTop(true, 'screen-saver', 1)
+        roamingManager.resume()
+      }
+    }
+    this.awayListeners.forEach((fn) => fn(away))
+    console.log(`[WindowManager] Capri ${away ? 'sent away' : 'is back'}`)
+  }
+
+  private awayListeners: Array<(away: boolean) => void> = []
+  public onAwayChanged(cb: (away: boolean) => void): () => void {
+    this.awayListeners.push(cb)
+    return () => {
+      this.awayListeners = this.awayListeners.filter((fn) => fn !== cb)
+    }
+  }
 
   private releaseHotkeys(): void {
     for (const key of this.registeredHotkeys) {
@@ -219,6 +304,7 @@ export class WindowManager {
     ]
     for (const [key, channel] of keys) {
       try {
+        if(isMac && key==='Alt+Super+V' && globalShortcut.isRegistered('CommandOrControl+Alt+V')) continue
         if (globalShortcut.register(key, () => this.broadcast(channel))) this.registeredHotkeys.push(key)
         else console.warn(`[WindowManager] The shortcut ${key} belongs to another app`)
       } catch (err) {
@@ -239,6 +325,7 @@ export class WindowManager {
     let problem = hotkeyProblem(accelerator, action, current)
     if (!problem) {
       this.releaseHotkeys()
+      if (ALWAYS_ON_ACTIONS.includes(action)) this.releaseGamingHotkey()
       problem = this.canRegister(accelerator) ? null : 'taken'
     }
     if (!problem) {
@@ -246,6 +333,7 @@ export class WindowManager {
       this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, consciousnessService.getHotkeys())
     }
     this.syncArrowKeys()
+    if (ALWAYS_ON_ACTIONS.includes(action)) this.registerGamingHotkey()
     return { hotkeys: consciousnessService.getHotkeys(), problem }
   }
 
@@ -254,6 +342,7 @@ export class WindowManager {
     consciousnessService.setHotkeys(DEFAULT_HOTKEYS)
     this.broadcast(IPC_CHANNELS.HOTKEYS_CHANGED, DEFAULT_HOTKEYS)
     this.syncArrowKeys()
+    this.registerGamingHotkey()
     return DEFAULT_HOTKEYS
   }
 
@@ -329,25 +418,133 @@ export class WindowManager {
     this.broadcast(IPC_CHANNELS.DECK_STATUS, true)
   }
 
+  /**
+   * With the Dev Deck open she's hidden: for a line said on purpose (a supporter's message) she shows
+   * up above it to say it, and goes back once she's done (endCompanionCameo)
+   */
+  public showCompanionCameo(): void {
+    if (!this.companionWin || this.companionWin.isDestroyed() || this.isAway()) return
+    if (!this.deckWin || this.deckWin.isDestroyed() || !this.deckWin.isVisible()) return
+    this.inCameo = true
+    this.companionWin.showInactive()
+    this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
+    this.companionWin.moveTop()
+  }
+
+  public endCompanionCameo(): void {
+    if (!this.inCameo) return
+    this.inCameo = false
+    // Still in the Deck: hidden again, as she was
+    if (this.deckWin && !this.deckWin.isDestroyed() && this.deckWin.isVisible() && this.companionWin && !this.companionWin.isDestroyed()) {
+      this.companionWin.setAlwaysOnTop(false)
+      this.companionWin.hide()
+    }
+  }
+
   public hideDeck(): void {
+    this.inCameo = false
     if (this.deckWin && !this.deckWin.isDestroyed() && this.deckWin.isVisible()) {
       this.deckWin.hide()
     }
 
-    // Restore companion floating/walking on desktop
-    if (this.companionWin && !this.companionWin.isDestroyed()) {
-      this.companionWin.showInactive()
+    // Restore companion floating/walking on desktop (not while she was sent away)
+    if (this.companionWin && !this.companionWin.isDestroyed() && !this.isAway()) {
+      if (isMac && this.isGamingMode) this.companionWin.showInactive()
+      else this.companionWin.showInactive()
       this.companionWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.companionWin.moveTop()
     }
 
+    // Returning from settings must preserve the game overlay, position and frozen roaming.
+    if (isMac && this.isGamingMode) {
+      this.setCompanionClickThrough(true)
+      this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, 'ojos')
+      this.broadcast(IPC_CHANNELS.DECK_STATUS, false)
+      return
+    }
     // Resume roaming if it was active
     roamingManager.resume()
 
     // always ensure capri IS full body (standing, walking, or sitting), never eyes
-    const fallbackState = roamingManager.getStatus().isRoaming ? 'walking' : 'standing'
+    const fallbackState = roamingManager.isPositionPinned() ? 'idle_front' : roamingManager.getStatus().isRoaming ? 'walking' : 'standing'
     this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, fallbackState)
     this.broadcast(IPC_CHANNELS.DECK_STATUS, false)
+    roamingManager.restorePinnedPlacement()
+  }
+
+  /** Her window at normal size: on the desktop, sitting on a tab, and docked in Gaming Mode */
+  private static readonly BASE_SIZES = { desktop: { width: 420, height: 520 }, tab: { width: 360, height: 360 }, gaming: { width: 360, height: 540 } }
+
+  /** Her window's size now, with the size chosen in the settings (Gaming Mode has its own) */
+  public companionSize(kind: 'desktop' | 'tab' | 'gaming'): { width: number; height: number } {
+    const scale = consciousnessService.getCompanionScale(kind === 'gaming' ? 'gaming' : 'desktop')
+    const base = WindowManager.BASE_SIZES[kind]
+    return { width: Math.round(base.width * scale), height: Math.round(base.height * scale) }
+  }
+
+  /** Everything inside her window grows or shrinks with it, so nothing gets cut or rearranged */
+  public applyCompanionZoom(): void {
+    if (!this.companionWin || this.companionWin.isDestroyed()) return
+    this.companionWin.webContents.setZoomFactor(consciousnessService.getCompanionScale(this.isGamingMode ? 'gaming' : 'desktop'))
+  }
+
+  /** A new size from the settings: applied right away when it is the mode she is in, keeping her feet in place */
+  public setCompanionScale(kind: 'desktop' | 'gaming', value: number): number {
+    consciousnessService.setCompanionScale(kind, value)
+    const win = this.companionWin
+    const current = this.isGamingMode ? 'gaming' : 'desktop'
+    if (win && !win.isDestroyed() && kind === current) {
+      const cur = win.getBounds()
+      const size = this.companionSize(this.isGamingMode ? 'gaming' : this.isTabModeActive() ? 'tab' : 'desktop')
+      const { workArea } = screen.getDisplayMatching(cur)
+      const x = Math.max(workArea.x, Math.min(workArea.x + workArea.width - size.width, cur.x + Math.round((cur.width - size.width) / 2)))
+      const y = Math.max(workArea.y, Math.min(workArea.y + workArea.height - size.height, cur.y + cur.height - size.height))
+      win.setBounds({ x, y, ...size }, false)
+      this.applyCompanionZoom()
+    }
+    return consciousnessService.getCompanionScale(kind)
+  }
+
+  /** Whether she is in the smaller sitting window */
+  private isTabModeActive(): boolean {
+    const b = this.companionWin?.getBounds()
+    const tab = this.companionSize('tab')
+    return !!b && b.width === tab.width && b.height === tab.height
+  }
+
+  private glideTimer: NodeJS.Timeout | null = null
+  private glideTarget: Electron.Rectangle | null = null
+
+  /**
+   * Moves her window to a new place over half a second instead of at once. The size changes right
+   * away; the position eases in. If the target moves meanwhile (the window she sits on is dragged),
+   * she heads to the new place.
+   */
+  private glideCompanionTo(target: Electron.Rectangle, ms = 500): void {
+    const win = this.companionWin
+    if (!win || win.isDestroyed()) return
+    if (this.glideTimer) clearInterval(this.glideTimer)
+    const from = win.getBounds()
+    const start = Date.now()
+    this.glideTarget = target
+    roamingManager.setSelfMoving(true)
+    this.glideTimer = setInterval(() => {
+      const to = this.glideTarget
+      if (!to || win.isDestroyed()) {
+        if (this.glideTimer) clearInterval(this.glideTimer)
+        this.glideTimer = null
+        return
+      }
+      const p = Math.min(1, (Date.now() - start) / ms)
+      const eased = 1 - Math.pow(1 - p, 3)
+      win.setBounds({ x: Math.round(from.x + (to.x - from.x) * eased), y: Math.round(from.y + (to.y - from.y) * eased), width: to.width, height: to.height }, false)
+      if (p >= 1) {
+        if (this.glideTimer) clearInterval(this.glideTimer)
+        this.glideTimer = null
+        this.glideTarget = null
+        setImmediate(() => roamingManager.setSelfMoving(false))
+      }
+    }, 16)
   }
 
   public setTabMode(
@@ -358,13 +555,12 @@ export class WindowManager {
   ): boolean {
     if (!this.companionWin || this.companionWin.isDestroyed()) return false
 
-    const primaryDisplay = this.currentDisplay()
+    const primaryDisplay = isMac && windowRect ? screen.getDisplayMatching({x:windowRect.left,y:windowRect.top,width:windowRect.width,height:windowRect.height}) : this.currentDisplay()
     const { workArea } = primaryDisplay
 
     if (enabled) {
-      // In tab mode: comfortable window (360x360) so UI never squashes or clips
-      const width = 360
-      const height = 360
+      // In tab mode: comfortable window so UI never squashes or clips
+      const { width, height } = this.companionSize('tab')
       let x = workArea.x + workArea.width - width - 25
       let y = workArea.y + 40
 
@@ -381,9 +577,11 @@ export class WindowManager {
         y = Math.max(workArea.y, Math.min(workArea.y + workArea.height - height - 10, idealY))
       }
 
-      this.companionWin.setBounds({ x, y, width, height }, false)
+      // To a window's tab she glides there instead of appearing on it
+      if (sittingPose === 'perch' && windowRect) this.glideCompanionTo({ x, y, width, height })
+      else this.companionWin.setBounds({ x, y, width, height }, false)
       this.companionWin.setAlwaysOnTop(true, 'screen-saver')
-      this.companionWin.showInactive()
+      if (!this.isAway()) this.companionWin.showInactive()
 
       this.broadcast(IPC_CHANNELS.COMPANION_SET_TAB_MODE, true)
       // Broadcast appropriate sitting state: 'idle_front' for front pose, 'idle' for tab perch
@@ -391,8 +589,7 @@ export class WindowManager {
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, targetState)
       return true
     } else {
-      const width = 420
-      const height = 520
+      const { width, height } = this.companionSize('desktop')
       let x = workArea.x + workArea.width - width - 20
       let y = workArea.y + workArea.height - height - 20
 
@@ -419,10 +616,9 @@ export class WindowManager {
     sittingPose: 'perch' | 'front' = 'perch'
   ): void {
     if (!this.companionWin || this.companionWin.isDestroyed()) return
-    const primaryDisplay = this.currentDisplay()
+    const primaryDisplay = isMac && windowRect ? screen.getDisplayMatching({x:windowRect.left,y:windowRect.top,width:windowRect.width,height:windowRect.height}) : this.currentDisplay()
     const { workArea } = primaryDisplay
-    const width = 360
-    const height = 360
+    const { width, height } = this.companionSize('tab')
 
     let x = workArea.x + workArea.width - width - 25
     let y = workArea.y + 40
@@ -438,7 +634,9 @@ export class WindowManager {
       y = Math.max(workArea.y, Math.min(workArea.y + workArea.height - height - 10, idealY))
     }
 
-    this.companionWin.setBounds({ x, y, width, height }, false)
+    // Still gliding there: the glide heads to the new place
+    if (this.glideTimer) this.glideTarget = { x, y, width, height }
+    else this.companionWin.setBounds({ x, y, width, height }, false)
   }
 
   public isGamingModeActive(): boolean {
@@ -467,6 +665,7 @@ export class WindowManager {
     const effective = ignore || blocked
     this.companionWin.setFocusable(!blocked)
     this.companionWin.setSkipTaskbar(true)
+    this.companionIgnoresMouse = effective
     if (effective) {
       this.companionWin.setIgnoreMouseEvents(true, { forward: !blocked })
     } else {
@@ -521,6 +720,10 @@ export class WindowManager {
     if (enabled && !this.isGamingMode) this.gameForeground = true
     // Turned on by hand and then a game starts: it's still the user's, so it doesn't end with the game
     if (enabled) this.gamingModeSource = this.isGamingMode && this.gamingModeSource === 'user' ? 'user' : source
+    if (isMac) {
+      try { saveFeatures({gamingMode:enabled}) }
+      catch (error) { console.warn('[WindowManager] Could not save game mode:', error) }
+    }
     this.isGamingMode = enabled
 
     if (!this.companionWin || this.companionWin.isDestroyed()) return
@@ -544,8 +747,7 @@ export class WindowManager {
       // If the user already moved Capri in Gaming Mode, prioritize her saved position
       const primaryDisplay = this.currentDisplay()
       const workArea = primaryDisplay.workArea
-      const width = 360
-      const height = 540
+      const { width, height } = this.companionSize('gaming')
 
       let x = workArea.x + 8
       let y = workArea.y + 8
@@ -573,7 +775,7 @@ export class WindowManager {
       this.companionWin.moveTop()
 
       // Periodic top-most keepalive so DirectX full-screen games cannot cover Capri
-      this.gamingKeepAliveInterval = setInterval(() => {
+      if (!isMac) this.gamingKeepAliveInterval = setInterval(() => {
         if (
           this.companionWin &&
           !this.companionWin.isDestroyed() &&
@@ -589,6 +791,7 @@ export class WindowManager {
       this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, true, this.gameForeground)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, true)
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, 'ojos')
+      this.applyCompanionZoom()
       console.log(`[WindowManager] Gaming Mode ACTIVATED (corner: ${corner}, screen-saver priority)`)
     } else {
       roamingManager.setEyeMode(false)
@@ -600,8 +803,7 @@ export class WindowManager {
 
       const primaryDisplay = this.currentDisplay()
       const workArea = primaryDisplay.workArea
-      const width = 420
-      const height = 520
+      const { width, height } = this.companionSize('desktop')
       const x = workArea.x + workArea.width - width - 20
       const y = workArea.y + workArea.height - height - 20
 
@@ -613,7 +815,9 @@ export class WindowManager {
       this.broadcast(IPC_CHANNELS.COMPANION_GAMING_MODE_CHANGED, false, false)
       this.broadcast(IPC_CHANNELS.COMPANION_SET_GAMING_MODE, false)
       this.broadcast(IPC_CHANNELS.COMPANION_STATE_CHANGED, 'standing')
+      this.applyCompanionZoom()
       console.log('[WindowManager] Gaming Mode DEACTIVATED')
+      roamingManager.restorePinnedPlacement()
     }
   }
 
@@ -713,6 +917,58 @@ export class WindowManager {
       // Crucial on Windows: toggling ignoreMouseEvents can alter DWM z-order flags; reassert topmost level
       this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
       this.scannerWin.moveTop()
+    }
+  }
+
+  public isScannerFullscreenActive(): boolean {
+    return this.isScannerFullscreen
+  }
+
+  public ensureScannerTop(): void {
+    if (this.scannerWin && !this.scannerWin.isDestroyed() && this.scannerWin.isVisible()) {
+      this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
+      this.scannerWin.moveTop()
+    }
+    if (this.companionWin && !this.companionWin.isDestroyed() && this.companionWin.isVisible()) {
+      this.companionWin.setAlwaysOnTop(true, 'screen-saver', 2)
+      this.companionWin.moveTop()
+    }
+  }
+
+  public setScannerFullscreenWatch(active: boolean): void {
+    this.isScannerFullscreen = active
+    if (!this.scannerWin || this.scannerWin.isDestroyed()) {
+      this.scannerWin = createScannerWindow()
+      this.scannerWin.on('closed', () => {
+        this.scannerWin = null
+      })
+    }
+
+    if (active) {
+      const primaryDisplay = screen.getPrimaryDisplay()
+      this.savedScannerBoundsBeforeFullscreen = this.scannerWin.getBounds()
+      this.scannerWin.setBounds(primaryDisplay.bounds)
+      this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
+      this.scannerWin.moveTop()
+      this.scannerWin.setIgnoreMouseEvents(true, { forward: true })
+      this.forwardMouse(this.scannerWin, true)
+      this.scannerWin.showInactive()
+      this.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'status',
+        isFullscreenWatch: true,
+        isWatchingScreen: true
+      })
+    } else {
+      const restoreBounds = this.savedScannerBoundsBeforeFullscreen || consciousnessService.getScannerBounds()
+      this.scannerWin.setBounds(restoreBounds)
+      this.scannerWin.setAlwaysOnTop(true, 'screen-saver', 1)
+      this.scannerWin.setIgnoreMouseEvents(false)
+      this.forwardMouse(this.scannerWin, false)
+      this.broadcast(IPC_CHANNELS.SCANNER_EVENT, {
+        type: 'status',
+        isFullscreenWatch: false,
+        isWatchingScreen: false
+      })
     }
   }
 

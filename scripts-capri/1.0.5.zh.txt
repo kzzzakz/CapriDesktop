@@ -1,0 +1,2 @@
+[excited] 大更新啦，{name}！
+[happy] 现在我可以看你的屏幕，对你正在做的事做出反应，我们还能一起看YouTube或TikTok：我甚至会从你的推荐里挑视频。[giggles] 换了一次又一次，我都记得你，你也可以用Ctrl加鼠标滚轮来调整我的大小。我的大脑可以是Antigravity、Claude Code、Codex、NVIDIA或.gguf模型，安装时还会帮你下载一个能看图的模型。[playful] 设置里有一个支持者标签页，我会读每个人写的话，用我自己的话回答，我还能锁定你的VALORANT特工并帮你找对局。

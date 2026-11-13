@@ -75,7 +75,7 @@ try {
     entryPoints: ['src/main/services/llm-gateway.ts'], bundle: true, platform: 'node', format: 'esm', outfile: bundle,
     plugins: [{ name: 'standalone', setup(b) {
       b.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron', namespace: 'stub' }))
-      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: `export const app = { getPath: () => ${JSON.stringify(dir)}, getAppPath: () => ${JSON.stringify(resolve('.'))}, isPackaged: false }; export const safeStorage = {}; export const dialog = globalThis.capriClaudeTest.dialog;` }))
+      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: `export const app = { getPath: () => ${JSON.stringify(dir)}, getAppPath: () => ${JSON.stringify(resolve('.'))}, isPackaged: false }; export const powerMonitor = {on(){}}; export const safeStorage = {}; export const dialog = globalThis.capriClaudeTest.dialog;` }))
       b.onResolve({ filter: /user-profile$/ }, () => ({ path: 'profile', namespace: 'profile' }))
       b.onLoad({ filter: /.*/, namespace: 'profile' }, () => ({ contents: 'export const personalize = text => text;' }))
     } }]
@@ -135,13 +135,14 @@ try {
   const homeworkBody = method('handleHomeworkIntent').body.getText(agentSource)
   const homework = homeworkBody.slice(homeworkBody.indexOf('    if (turnAbort.signal.aborted) {'), -1)
   const harness = { exports: {}, AbortController, AbortSignal, systemPrompt: 'Solve', fileNameOnly: 'task.txt', solutionLang: 'English', console: { log() {}, warn() {} },
+    process, offerDesktopTools: () => true, isMac: false, cloudErrorCode: () => 'other', cloudErrorDetail: error => String(error),
     endpoint: 'http://localhost/v1', config: {}, model: 'haiku', toolsUnsupported: false,
     withLanguageNote: x => x, langDirective: '', llmBody: JSON.stringify,
     windowManager: { isGamingModeActive: () => false }, wantsLongAnswer: () => false,
     spokenText: '', prompt: 'hello', projectPath: dir, SHORT_MAX_TOKENS: 50, toolsSpec: [],
     isRemoteMode: () => true, setTimeout, clearTimeout,
     LOCAL_REPLY_TIMEOUT_MS: 300000, CLOUD_REPLY_TIMEOUT_MS: 120000, CLI_REPLY_TIMEOUT_MS: 600000,
-    getLlmSettings: () => ({ provider: 'claude-code' }),
+    getLlmSettings: () => ({ provider: 'app', preset: 'claude-code', claudeNativeTools: true }),
     ReplyTimeoutError: class ReplyTimeoutError extends Error {}
   }
   runInNewContext(compile(`exports.Agent = class {

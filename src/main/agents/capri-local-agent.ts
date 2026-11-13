@@ -1,8 +1,24 @@
+import { parseDesktopCommand } from '../../shared/mac-desktop-command'
+import { runDesktopCommand } from '../services/mac-desktop-command'
+import { macInstalledApps } from '../services/app-launcher'
+import { normalizeCommandRequest } from '../../shared/request-language'
+import { parseAppActionRequest, executeAppLaunches, appActionReply, resolveAppSpelling, type AppActionOutcome } from '../../shared/app-requests'
+import { parseGameModeCommand } from '../../shared/mac-feature-policy'
+import { parseMacSystemCommand, isMacSystemRequest } from '../../shared/mac-system-commands'
+import { runMacSystemCommand } from '../services/mac-system-service'
+import { deviceClockAnswer, deviceClockContext } from '../../shared/device-clock'
+import { macGameContext } from '../services/mac-game-context'
+import { CAPRI_CHAT_STYLE } from '../../shared/capri-style'
+import { isScreenQuestion } from '../services/local-vision'
+import { isUsageQuestion, macUsageSummary } from '../services/mac-usage'
+import { parsePlacementCommand } from '../../shared/placement'
+import { offerDesktopTools } from '../../shared/platform-policy'
+import { platformStatus } from '../services/mac-permissions'
 import { scriptPlayer } from '../services/script/script-player'
 import { ensureRequestedLook, requestedLook, splitByLooks, stripLookTags } from '../services/script/look-tags'
-import { isWindows } from '../services/platform'
-import { clearLanguageOf, detectLanguage, type DetectedLang } from '../services/language-detect'
-import { cloudErrorCode, cloudErrorDetail, getLlmSettings, isRemoteMode, llmFetch, type LlmErrorCode } from '../services/llm-gateway'
+import { listProcessNames, isMac, isWindows } from '../services/platform'
+import { clearLanguageOf, detectLanguage, strayLanguageOf, type DetectedLang } from '../services/language-detect'
+import { cloudErrorCode, cloudErrorDetail, getLlmSettings, isRemoteMode, isCloudMode, llmFetch, type LlmErrorCode } from '../services/llm-gateway'
 import * as os from 'os'
 import { getUserName, personalize, llmBody } from '../services/user-profile'
 import { EventEmitter } from 'events'
@@ -21,6 +37,7 @@ import { resolveMusicPlatform, musicPlatformName, type PlaybackPlatform } from '
 import { consciousnessService } from '../services/consciousness-service'
 import { getSystemPromptPersona, personaIntro } from '../services/system-prompt-store'
 import { scannerService } from '../services/scanner-service'
+import { watchPartyService } from '../services/watch-party-service'
 import { boredomService } from '../services/boredom-service'
 import { proactiveDialogueService } from '../services/proactive-dialogue-service'
 import { paintDrawerService } from '../services/paint-drawer-service'
@@ -35,9 +52,11 @@ import { CodingAgent, isCodingRequest } from './coding-agent'
 import { updateService } from '../services/update-service'
 import { cleanAppRequest } from '../services/app-finder'
 import { commandInEnglish } from './command-translations'
+import { leaveValorantQueue, startValorantQueue, valorantIsTheOpenGame, valorantQueueMessage } from '../services/valorant/matchmaking-service'
 import { originalWords, parseMemoryCommand, type MemoryCommand } from './memory-commands'
 import { memoryService } from '../services/memory-service'
-import { appRequestInEnglish, isHoldStillRequest, isMoveAgainRequest, isUpdateInOtherLanguage, isVersionRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
+import { listKnownApps } from '../services/known-apps'
+import { appRequestInEnglish, fixedCommandLanguage, isHoldStillRequest, isKnownAppsRequest, isMoveAgainRequest, isStopWatchScreenRequest, isUpdateInOtherLanguage, isVersionRequest, isWatchScreenRequest, isWhatsNewInOtherLanguage } from './spoken-commands'
 
 /**
  * Deleting is only allowed when the user asked to delete and named that file or folder
@@ -167,7 +186,6 @@ const RECOMMENDATION_REPEAT_MS = 15000
 // "Abrí", "abrime" and the other languages' verbs too. Not "ejecutá" or "run": those also mean commands
 const APP_LAUNCH_VERBS = 'abre|abrir|abr[ií]|abr[ií]me|abra|open|launch|inicia|inici[aá]|iniciar|lanz[aá]|arranc[aá]|entra\\s+a|jugar|juega|jug[aá]|play|ouvre|lance|öffne|starte|apri|avvia|открой|запусти'
 const APP_LAUNCH_VERB_START = new RegExp(`^(?:${APP_LAUNCH_VERBS})\\s+`, 'i')
-const APP_LAUNCH_VERB_ANYWHERE = new RegExp(`(?:^|[\\s,])(?:${APP_LAUNCH_VERBS})\\s+(?:a\\s+|al\\s+|el\\s+|la\\s+|the\\s+)?(.+)`, 'i')
 
 const GAMING_MAX_TOKENS = 120
 
@@ -189,6 +207,9 @@ const MAX_CONTINUATIONS = 2
  * Ollama drops never answers, and she used to wait for it forever.
  */
 const LOCAL_REPLY_TIMEOUT_MS = 5 * 60_000
+
+/** Models that turned tools down once (Gemma, many small ones): asked without them from then on */
+const MODELS_WITHOUT_TOOLS = new Set<string>()
 
 class ReplyTimeoutError extends Error {
   constructor() {
@@ -344,7 +365,9 @@ export class CapriLocalAgent extends EventEmitter {
     const heardLang = voiceService.languageOfTranscript(prompt.trim())
     // A fixed command needs no model and no guessing: the phrase itself says which language it's in
     const fixedCommand = commandInEnglish(prompt)
-    const detectedLang = heardLang || fixedCommand?.lang || CapriLocalAgent.detectLanguage(prompt.trim())
+    // Her own short commands in any language ("quedate quieta") say which language they are in
+    const spokenCommandLang = fixedCommandLanguage(prompt)
+    const detectedLang = heardLang || fixedCommand?.lang || spokenCommandLang || CapriLocalAgent.detectLanguage(prompt.trim())
     if (detectedLang !== 'unknown') consciousnessService.setSpokenLanguage(detectedLang)
     const conversationLang = consciousnessService.getSpokenLanguage()
 
@@ -353,7 +376,7 @@ export class CapriLocalAgent extends EventEmitter {
     if (fixedCommand) {
       console.log(`[Capri Agent] Command in ${fixedCommand.lang}, read as: "${fixedCommand.text}"`)
       prompt = fixedCommand.text
-    } else if (conversationLang && !['en', 'es'].includes(conversationLang) && prompt.length < 300) {
+    } else if (!spokenCommandLang && conversationLang && !['en', 'es'].includes(conversationLang) && prompt.length < 300) {
       const english = await voiceService.translateCommand(prompt.trim())
       // Sometimes the model answers instead of translating: an answer is not the command
       if (english && !/[\r\n]/.test(english) && english.length <= prompt.length * 2 + 20) {
@@ -362,6 +385,7 @@ export class CapriLocalAgent extends EventEmitter {
       }
     }
 
+    if (isMac) prompt = normalizeCommandRequest(prompt)
     const trimmed = prompt.trim()
     const originalLower = trimmed.toLowerCase()
 
@@ -371,6 +395,22 @@ export class CapriLocalAgent extends EventEmitter {
 
     this.replyLang = activeLang
     const isSpanish = activeLang === 'es'
+
+    const desktopCommand = isMac ? parseDesktopCommand(trimmed) : null
+    if (desktopCommand) {
+      if (desktopCommand.kind === 'app') {
+        const match = resolveAppSpelling(desktopCommand.target, macInstalledApps().map(app => app.name))
+        if (match.choices) { this.emitAssistant(`Which app did you mean, choom: ${match.choices.join(' or ')}?`); this.finishSession(); return }
+        desktopCommand.target = match.name || desktopCommand.target
+        const result = await this.runSingleTool('open_application', { appOrUrl: desktopCommand.target, launchOnly: true, askIfMissing: false }, projectPath)
+        if (!this.isCancelled) this.emitAssistant(appActionReply('open', [{ name: desktopCommand.target, ...result }], activeLang))
+      } else {
+        const result = await runDesktopCommand(desktopCommand, projectPath)
+        if (!this.isCancelled) this.emitAssistant(result.output)
+      }
+      this.finishSession()
+      return
+    }
 
     const norm = originalLower
       .replace(/^(?:hey\s+|hola\s+)?(?:capri|companion)[,:\s]*/i, '')
@@ -383,6 +423,26 @@ export class CapriLocalAgent extends EventEmitter {
       .replace(/\b(?:cleap|clic|clipp?)\s+(?:that|dat|dis|this)\b/gi, 'clip that')
       .replace(/\b(?:clipe[aá]|clipeate)\s+(?:eso|esto)\b/gi, 'clipea eso')
       .trim()
+
+    if (isMac) {
+      const systemCommand=parseMacSystemCommand(trimmed)
+      if(systemCommand) {const result=await runMacSystemCommand(systemCommand);this.emitAssistant(result.output);this.finishSession();return}
+      const clock=deviceClockAnswer(trimmed)
+      if(clock) {this.emitAssistant(clock);this.finishSession();return}
+      const placement=parsePlacementCommand(trimmed)
+      if (placement) {
+        if (placement==='roam') roamingManager.start(true)
+        else roamingManager.pinPosition(placement)
+        this.emitAssistant(placement==='roam' ? "I'll roam again." : placement==='here' ? "I'll stay right here until you tell me to move." : `I'll sit at the ${placement.replace('-', ' ')} of this screen and stay there.`)
+        this.finishSession(); return
+      }
+    }
+
+    if (isMac && isUsageQuestion(trimmed)) {
+      try { this.emitAssistant(await macUsageSummary()) }
+      catch { this.emitAssistant("I couldn't read the Mac's process usage. Try Activity Monitor → Memory.") }
+      this.finishSession(); return
+    }
 
     // Voice macros ("cuando yo diga its game time, abrí el lol y poné mi playlist")
     {
@@ -447,7 +507,9 @@ export class CapriLocalAgent extends EventEmitter {
 
       // d) Create a macro
       if (macroService.isCreationRequest(norm)) {
-        const macro = await macroService.createFromSentence(trimmed, config.endpoint || 'http://localhost:11434/v1')
+        let macro
+        try { macro = await macroService.createFromSentence(trimmed, config.endpoint || 'http://localhost:11434/v1') }
+        catch (error) { this.emitAssistant(error instanceof Error ? error.message : String(error)); this.finishSession(); return }
         this.emitAssistant(
           macro
             ? (isSpanish
@@ -471,6 +533,23 @@ export class CapriLocalAgent extends EventEmitter {
       return
     }
 
+    // "¿Qué apps conocés?": the ones in Dev Deck > Apps, by the names she is asked for them
+    if (isKnownAppsRequest(spokenPrompt) || isKnownAppsRequest(trimmed)) {
+      const names = listKnownApps().map((a) => a.name)
+      const list = names.join(', ')
+      this.emitAssistant(
+        names.length
+          ? isSpanish
+            ? `[cheerful] Estas son las apps que conozco: ${list}. Pedime que abra cualquiera.`
+            : `[cheerful] These are the apps I know: ${list}. Ask me to open any of them.`
+          : isSpanish
+          ? '[curious] Todavía no conozco ninguna app por nombre. Agregalas en el Dev Deck, en Apps, o pedime que abra una y mostrame dónde está.'
+          : "[curious] I don't know any apps by name yet. Add them in the Dev Deck under Apps, or ask me to open one and show me where it is."
+      )
+      this.finishSession()
+      return
+    }
+
     // "Quedate quieta": she stays where she is until the user moves her
     if (isHoldStillRequest(trimmed)) {
       roamingManager.holdStill()
@@ -486,6 +565,38 @@ export class CapriLocalAgent extends EventEmitter {
     if (isMoveAgainRequest(trimmed)) {
       roamingManager.releaseHold()
       this.emitAssistant(isSpanish ? '[excited] ¡Libre otra vez! Vuelvo a dar vueltas, choomba.' : '[excited] Free again! Back to wandering around, choomba.')
+      this.finishSession()
+      return
+    }
+
+    // Interactive Watch Party & PC Co-Browsing (TikTok scroll/likes, YouTube feed navigation, generic gaming)
+    const partyResult = await watchPartyService.handleVoiceCommand(trimmed, (msg) => this.emitAssistant(msg))
+    if (partyResult.handled) {
+      if (partyResult.reply) {
+        this.emitAssistant(partyResult.reply)
+      }
+      this.finishSession()
+      return
+    }
+
+    if (isWatchScreenRequest(trimmed) || isWatchScreenRequest(norm)) {
+      void scannerService.startFullscreenWatch()
+      this.emitAssistant(
+        isSpanish
+          ? '[happy] ¡Activando escaneo de pantalla completa, choomba! Voy a estar atenta a lo que estés jugando o mirando.'
+          : "[happy] Activating full-screen live watch, choomba! I'll be watching whatever you're playing or viewing."
+      )
+      this.finishSession()
+      return
+    }
+
+    if (isStopWatchScreenRequest(trimmed) || isStopWatchScreenRequest(norm)) {
+      void scannerService.stopFullscreenWatch()
+      this.emitAssistant(
+        isSpanish
+          ? '[happy] ¡Listo, desactivo el escaneo de pantalla, choomba!'
+          : '[happy] Stopped screen watch, choomba!'
+      )
       this.finishSession()
       return
     }
@@ -603,6 +714,7 @@ export class CapriLocalAgent extends EventEmitter {
       /^(?:clip|clipealo|clipeá|clipea|clipeate|save\s*clip)$/i.test(norm)
 
     if (isClipIntent) {
+      if (isMac) { this.emitAssistant('ShadowPlay clipping is not supported on macOS.'); this.finishSession(); return }
       await clipService.triggerClip()
 
       const esResponses = [
@@ -709,6 +821,12 @@ export class CapriLocalAgent extends EventEmitter {
       return
     }
 
+    if (isMac && isScreenQuestion(trimmed)) {
+      const result = await scannerService.scan(trimmed, true)
+      this.emitAssistant(result.response || result.error || "I couldn't capture the screen.")
+      this.finishSession(); return
+    }
+
     // Optical Scan on demand (If scanner is open OR if prompt explicitly requests a scan)
     const isScannerActive = scannerService.getStatus().isOpen
     const isExplicitScanPrompt =
@@ -786,8 +904,8 @@ export class CapriLocalAgent extends EventEmitter {
       // Drawing moves the mouse over MS Paint: there's no Linux version of that script yet
       this.emitAssistant(
         isSpanish
-          ? '[sad] Todavía no sé dibujar en Linux, choomba: lo mío es Paint, y acá no está.'
-          : "[sad] I can't draw on Linux yet, choom: my thing is Paint, and it isn't here."
+          ? `[sad] Todavía no sé dibujar en ${isMac ? 'macOS' : 'Linux'}, choomba: lo mío es Paint, y acá no está.`
+          : `[sad] I can't draw on ${isMac ? 'macOS' : 'Linux'} yet, choom: my thing is Paint, and it isn't here.`
       )
       this.finishSession()
       return
@@ -910,47 +1028,51 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // Valorant agent select interceptor: select and lock in the agent the user asked for
-    const valorantCmd = parseValorantCommand(norm)
+    // League of Legends (LCU) Client Interceptor: Multi-Intent & Compound Plans, Accept, Auto-Accept, Pick, Ban
+    // VALORANT agent select: selects and locks the agent the user asked for, now or when it starts
+    let valorantCmd = parseValorantCommand(norm)
+    // "busca partida" with no game named: VALORANT when it is the game that is open
+    if (valorantCmd.searchWithoutGame && valorantIsTheOpenGame(await listProcessNames().catch(() => null))) {
+      valorantCmd = parseValorantCommand(`${norm} valorant`)
+    }
     if (valorantCmd.isValorant) {
+      if (valorantCmd.wantsLeaveQueue) {
+        this.emitAssistant(valorantQueueMessage(await leaveValorantQueue()))
+        this.finishSession()
+        return
+      }
       if (valorantCmd.wantsCancel) {
-        const hadRequest = valorantAgentSelect.cancelAgentRequest()
         this.emitAssistant(
-          isSpanish
-            ? (hadRequest
-                ? "Listo, choomba: cancelé el pedido de agente en Valorant."
-                : "No tenía ningún pedido de agente en Valorant, choomba.")
-            : (hadRequest
-                ? "Valorant agent pick cancelled, {name}."
-                : "There was no Valorant agent pick waiting, {name}.")
+          valorantAgentSelect.cancelAgentRequest() ? "Valorant agent pick cancelled, {name}." : "There was no Valorant agent pick waiting, {name}."
         )
         this.finishSession()
         return
       }
-
-      const agent = valorantCmd.agent
-      if (!agent) {
-        const query = valorantCmd.agentQuery
-        this.emitAssistant(
-          isSpanish
-            ? `No encontré al agente "${query}" en Valorant, choomba. Revisá si me dijiste bien el nombre.`
-            : `Couldn't find an agent named "${query}" in Valorant, {name}. Double check the name!`
-        )
-        this.finishSession()
-        return
+      const said: string[] = []
+      if (valorantCmd.wantsSearch) {
+        const queued = await startValorantQueue(valorantCmd.queue)
+        console.log(`[Capri Agent] Valorant search: ${queued.status}`)
+        said.push(valorantQueueMessage(queued))
       }
-
-      const result = await valorantAgentSelect.requestAgent(agent.uuid, agent.name)
-      console.log(`[Capri Agent] Valorant agent ${agent.name}: ${result.status}`)
-      if (result.status !== 'cancelled') {
-        this.emitAssistant(valorantPickMessage(result.status, agent.name, isSpanish))
+      if (valorantCmd.agentQuery) {
+        const agent = valorantCmd.agent
+        if (!agent) {
+          said.push(`Couldn't find an agent named "${valorantCmd.agentQuery}" in Valorant, {name}. Double check the name!`)
+        } else {
+          const result = await valorantAgentSelect.requestAgent(agent.uuid, agent.name)
+          console.log(`[Capri Agent] Valorant agent ${agent.name}: ${result.status}`)
+          // After starting the search the client message would only repeat itself
+          if (result.status !== 'cancelled' && !(said.length && result.status === 'client_not_running')) said.push(valorantPickMessage(result.status, agent.name))
+        }
       }
+      if (said.length) this.emitAssistant(said.join(' '))
       this.finishSession()
       return
     }
 
-    // League of Legends (LCU) Client Interceptor: Multi-Intent & Compound Plans, Accept, Auto-Accept, Pick, Ban
     const lolCmd = parseLolCommand(norm)
     if (lolCmd.isLolCommand) {
+      if (isMac) { this.emitAssistant('League of Legends integration is not supported in this Mac release.'); this.finishSession(); return }
       // Auto-Accept Toggle
       if (lolCmd.isAutoAcceptToggle) {
         lcuService.setAutoAccept(!!lolCmd.autoAcceptEnabled)
@@ -1213,11 +1335,32 @@ export class CapriLocalAgent extends EventEmitter {
       }
     }
 
+// Resolve casual app lists before music/browser heuristics can consume the whole sentence.
+    const directAppRequest = isMac ? parseAppActionRequest(trimmed, [], false) || (/^(?:open|launch|start|bring|pull|close|quit|exit)\b/i.test(trimmed)
+      ? parseAppActionRequest(trimmed, macInstalledApps().map(app => app.name)) : null) : null
+    if (directAppRequest) {
+      if (directAppRequest.clarification) { this.emitAssistant(directAppRequest.clarification); this.finishSession(); return }
+      const outcomes: AppActionOutcome[] = []
+      await executeAppLaunches(directAppRequest.apps, async name => {
+        const result = await this.runSingleTool(directAppRequest.action === 'open' ? 'open_application' : 'close_application',
+          directAppRequest.action === 'open' ? { appOrUrl: name, launchOnly: true, askIfMissing: false } : { appName: name }, projectPath)
+        outcomes.push({ name, ...result })
+        return result
+      }, () => this.isCancelled)
+      if (!this.isCancelled && outcomes.length) this.emitAssistant(appActionReply(directAppRequest.action, outcomes, activeLang))
+      this.finishSession()
+      return
+    }
+
 // Direct Song & Video Queue Interceptor (YouTube & Spotify)
     const playbackPlatform = resolveMusicPlatform(trimmed)
     const playbackName = musicPlatformName(playbackPlatform)
     const directMusic = this.parseMusicRequest(trimmed)
     if (directMusic && directMusic.songQuery) {
+      if (isMac) {
+        const result = directMusic.songQuery === '__NEXT_TRACK__' ? await ToolExecutor.mediaControl('next') : await ToolExecutor.execute('open_application', {appOrUrl: directMusic.platform, query: directMusic.songQuery}, projectPath)
+        this.emitAssistant(result.output); this.finishSession(); return
+      }
       if (directMusic.songQuery === '__NEXT_TRACK__' || /^(?:cambia|skip|next|otra|siguiente)/i.test(directMusic.songQuery)) {
         await this.runSingleTool('media_control', { action: 'next', appOrUrl: playbackPlatform }, projectPath, `Skipping track on ${playbackName} audio net...`)
         this.emitAssistant(
@@ -1252,30 +1395,45 @@ export class CapriLocalAgent extends EventEmitter {
     }
 
     // Direct Media Control Interceptor (Change Song / Next / Prev / Play / Pause)
+    // Only when the message IS the command ("pasá el tema", "next song", "pausa la música"). These words
+    // also show up in questions ("what's next in AI", "qué pasa con este error", "pasa el código a TS",
+    // "un script para spotify"), and matching them anywhere skipped the user's song mid-conversation
+    const mediaCommand = trimmed
+      .replace(/^(?:(?:hey|oye|che|ok|okay|ahora|now|bueno)[,\s]+)*(?:capri[,:\s]+)?(?:(?:please|por\s+favor|porfa|dale)[,\s]+)?/i, '')
+      .replace(/[,\s]+(?:please|pls|por\s+favor|porfa|capri|choomba|dale)$/i, '')
+      .replace(/[\s.!¡?¿]+$/u, '')
+      .trim()
+    const isShortCommand = mediaCommand.split(/\s+/).length <= 6
+    const SONG = String.raw`(?:cancion|canción|tema|musica|música|pista|track|song|music)`
+    const PLATFORM = String.raw`(?:spotify|youtube(?:[ _]+music)?)`
+    const isMedia = (pattern: string) => isShortCommand && new RegExp(pattern, 'iu').test(mediaCommand)
+
     const isChangeSongIntent =
-      /(?:cambia|cambiar|cambie|cambiate|pasa|pasar|salta|saltar|skip|next)\s+(?:de\s+|la\s+|el\s+)?(?:cancion|canción|tema|musica|música|pista|track|song)?/i.test(trimmed) ||
-      /(?:siguiente|otra|next)\s+(?:cancion|canción|tema|musica|música|pista|track|song)/i.test(trimmed) ||
-      /(?:pon|pone|play)\s+(?:otra|siguiente)\s+(?:cancion|canción|tema|musica|música|track|song)/i.test(trimmed) ||
-      /^(?:skip|next)\s*(?:song|track)?$/i.test(trimmed) ||
-      /^(?:cambia\s+de\s+cancion|cambia\s+la\s+cancion|pasa\s+de\s+cancion|pasa\s+la\s+cancion|salta\s+la\s+cancion)$/i.test(trimmed) ||
-      /(?:spotify|youtube(?:[ _]+music)?).*(?:cambia|pasa|salta|skip|next|otra|siguiente)/i.test(trimmed) ||
-      /(?:cambia|pasa|salta|skip|next).*(?:spotify|youtube(?:[ _]+music)?)/i.test(trimmed)
+      /^(?:skip|next|siguiente|otra|pasala|pasá(?:la)?|saltala|saltá(?:la)?)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:cambi[aá]|cambiar|cambie|cambiate|pas[aá]|pasar|pasame|salt[aá]|saltar|skip|next)\s+(?:(?:de|la|el|esta|este|the|this)\s+)?${SONG}(?:\s+(?:en|on|de)\s+${PLATFORM})?$`) ||
+      isMedia(String.raw`^(?:(?:pon[eé]?|play|pasame|dame)\s+)?(?:la\s+|el\s+|the\s+)?(?:siguiente|otra|next|another)\s+${SONG}(?:\s+(?:en|on|de)\s+${PLATFORM})?$`) ||
+      isMedia(String.raw`^${PLATFORM}\s+(?:skip|next|siguiente|otra)$`) ||
+      isMedia(String.raw`^(?:skip|next|siguiente|cambi[aá]|pas[aá]|salt[aá])\s+(?:en|on|de|in)\s+${PLATFORM}$`)
 
     const isPrevSongIntent =
-      /(?:anterior|previa|prev)\s+(?:cancion|canción|tema|track|song)/i.test(trimmed) ||
-      /(?:vuelve|volver|retrocede)\s+(?:a\s+la\s+)?(?:cancion|canción|tema|track|song)/i.test(trimmed) ||
-      /^(?:prev|previous)\s*(?:song|track)?$/i.test(trimmed)
+      /^(?:prev|previous|anterior)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:(?:pon[eé]?|play|volv[eé]\s+a)\s+)?(?:la\s+|el\s+|the\s+)?(?:anterior|previa|previous|prev|last)\s+${SONG}$`) ||
+      isMedia(String.raw`^(?:vuelve|volv[eé]|volver|retrocede|retroced[eé])\s+(?:a\s+)?(?:la\s+|el\s+)?${SONG}(?:\s+anterior)?$`)
 
     const isPauseIntent =
-      /^(?:pausa|pausar|pause|mute|deten|detener|para|parar|frena|frenar|stop)(?:\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|track))?$/i.test(trimmed) ||
-      /(?:pausa|pausar|pause|mute|deten|detener|para|parar|frena|frenar|stop)\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|track)/i.test(trimmed)
+      /^(?:pausa|pausar|pausá|pause|mute|stop|frena|frená)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:pausa|pausar|pausá|pause|mute|deten[eé]?|detener|para|par[aá]|parar|frena|frená|frenar|stop)\s+(?:la\s+|el\s+|the\s+)?(?:${SONG}|${PLATFORM})$`)
 
     const isPlayMusicOnlyIntent =
-      /^(?:pon|pone|reproduce|reproducir|play|reanuda|reanudar|despausa|despausar|continua|continuar|sigue|seguir|resume)(?:\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|playback))?$/i.test(trimmed) ||
-      /(?:reanuda|reanudar|despausa|despausar|continua|continuar|resume)\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|spotify|youtube(?:[ _]+music)?|cancion|canción|music|song|playback)/i.test(trimmed) ||
-      /^(?:play|resume|pon\s+musica|pone\s+musica|reproduce\s+musica|play\s+music|reanuda\s+musica|reanudar\s+musica|despausa\s+musica|despausar\s+musica)$/i.test(trimmed)
+      /^(?:play|resume|reanuda|reanudá|despausa|despausá)$/i.test(mediaCommand) ||
+      isMedia(String.raw`^(?:pon[eé]?|reproduc[ei]|reproducir|play|reanud[aá]|reanudar|despaus[aá]|despausar|continu[aá]|continuar|segu[ií]|seguir|resume)\s+(?:la\s+|el\s+|the\s+)?(?:musica|música|music|${PLATFORM}|playback)$`)
 
     if (isChangeSongIntent || isPrevSongIntent || isPauseIntent || isPlayMusicOnlyIntent) {
+      if (isMac) {
+        const song = trimmed.match(/^(?:now\s+)?(?:change|switch|cambia|cambiar|pasa)\s+(?:the\s+|la\s+)?(?:song|track|cancion|canción|tema)\s+(?:to|a|por)\s+(.+)/i)?.[1]?.replace(/\s+(?:on|en)\s+spotify$/i, '')
+        const result = song ? await ToolExecutor.execute('open_application', {appOrUrl: 'spotify', query: song}, projectPath) : await ToolExecutor.mediaControl(isPrevSongIntent ? 'prev' : isPauseIntent ? 'pause' : isPlayMusicOnlyIntent ? 'play' : 'next')
+        this.emitAssistant(result.output); this.finishSession(); return
+      }
       // If user specified an explicit target song, e.g. "now change the song to Bohemian Rhapsody", route directly to the requested platform
       const specificChange = trimmed
         .replace(/^(?:now|hey|capri|por\s+favor|please|ok|oye|bueno|ahora)\s*,?\s*/i, '')
@@ -1333,12 +1491,13 @@ export class CapriLocalAgent extends EventEmitter {
     // Direct Browser / Web Search Interceptor (Google & Default Browser)
     const browserSearchQuery = this.parseBrowserSearchRequest(trimmed)
     if (browserSearchQuery) {
-      await this.runSingleTool(
+      const browserResult = await this.runSingleTool(
         'open_application',
         { appOrUrl: 'browser_search', query: browserSearchQuery },
         projectPath,
         `Searching the Net for "${browserSearchQuery}" in your browser...`
       )
+      if (isMac) { this.emitAssistant(browserResult.output); this.finishSession(); return }
       const searchLines = isSpanish
         ? [
             `¡Me conecté a la red y busqué "${browserSearchQuery}" en tu navegador! Mirá los resultados en pantalla, choomba.`,
@@ -1416,6 +1575,7 @@ export class CapriLocalAgent extends EventEmitter {
       /(?:sientate|siéntate|sentate).*(?:arriba|izquierda|left|top)/i.test(trimmed)
 
     if (isSitOnTabIntent) {
+      if (isMac && !(await platformStatus()).capabilities.desktopAwareness) { this.emitAssistant('Enable Accessibility in Mac & Spotify before asking me to perch on another window.'); this.finishSession(); return }
       const app = await roamingManager.sitOnWindowedTab()
       const isFront = roamingManager.getCurrentSittingPose() === 'front'
       if (isFront) {
@@ -1493,7 +1653,7 @@ export class CapriLocalAgent extends EventEmitter {
     const effectiveLang = fixedTextLang ? textLang : consciousnessService.getSpokenLanguage() || 'unknown'
     const detectedLang = effectiveLang
     let retriedLanguage = false
-    let toolsUnsupported = false
+    let toolsUnsupported = MODELS_WITHOUT_TOOLS.has(String(config.model || ''))
     let continuations = 0
     let partialReply = ''
     const spokenText = prompt
@@ -1502,11 +1662,11 @@ export class CapriLocalAgent extends EventEmitter {
     const desktopPath = path.join(process.env.USERPROFILE || os.homedir(), 'Desktop')
     const activeMedia = systemObserver.getActiveMedia()
     const activeMediaContext = activeMedia
-      ? `\nACTIVE SCREEN CONTEXT: The user currently has open ${activeMedia.type.toUpperCase()}: "${activeMedia.title}"${activeMedia.creator ? ` (Creator/Youtuber: ${activeMedia.creator})` : ''} on ${activeMedia.appName}. When asked about what they are watching, listening to, browsing, or looking at, comment on this exact content enthusiastically in-character!`
+      ? `\nACTIVE SCREEN CONTEXT: The user currently has open ${activeMedia.type.toUpperCase()}: "${activeMedia.title}"${activeMedia.creator ? ` (Creator/Youtuber: ${activeMedia.creator})` : ''} on ${activeMedia.appName}. Only bring this up when {name} asks what they're watching, listening to or looking at; for anything else (code, bugs, questions, chat) ignore it completely, and never touch their music unless they ask you to.`
       : `\nACTIVE SCREEN CONTEXT: No active video, music, or browser page detected on screen.`
 
     const lastScan = consciousnessService.getLastScannedContext()
-    const lastScanContext = lastScan
+    const lastScanContext = lastScan && (!isMac || Date.now()-lastScan.timestamp < 5*60*1000)
       ? `\nRECENT OPTICAL SCANNER OBSERVATION: A moment ago, {name} showed you through your Optical Scanner frame:
 - What was visible: "${lastScan.summary}"
 - Features: ${lastScan.tags.join(', ')}
@@ -1550,12 +1710,13 @@ CRITICAL: If {name} asks about what you saw, how she/it looked, what you thought
     // The personality block isn't hardcoded here anymore, it comes from the new editable store
     // (Capri // Brain settings), which falls back to the original text. The rules below stay fixed.
     const systemPrompt = `${getSystemPromptPersona()}
+${isMac ? macGameContext.prompt() + deviceClockContext() + ' For routine actions, give one brief factual result; a natural choom or nova is welcome. Avoid repeated breaching/launch slogans and unsupported claims. Do not announce an action before it finishes. PLATFORM: macOS on Apple Silicon. Use macOS paths and commands. When asked to set or change system sound, execute mac_system and report its verified result; you are not limited to reading volume. Built-in Mac commands support system volume/mute, battery, disk space, OS info, common folders and settings pages. Do not claim to change Wi-Fi, Bluetooth, permissions or execute arbitrary system shell commands from chat; open the relevant settings page instead. Paint drawing, ShadowPlay, League/Cyberpunk integration and shell-command voice macros are unavailable; say so clearly when requested. Spotify uses the selected Mac provider; trust its error messages and never claim playback succeeded when a tool failed.' : ''}
 ${voiceActingRules}
 ${lookRules}
 
 TOOL EXECUTION (CRITICAL):
 - When the user asks you to create a file, write text, run commands, solve homework, or browse the web: YOU MUST CALL THE CORRESPONDING TOOL DIRECTLY! NEVER tell the user to run a PowerShell or shell command themselves!
-- When you need to research information, answer factual questions, or look up homework answers: invoke 'web_search' with { query: "<search_terms>" } or 'fetch_web_page' with { url: "<page_url>" }!
+${isMac ? '- Answer ordinary questions directly from your knowledge. Never open the browser, search the web, or offer a search just because a question asks when, what, who, why or how. Use search tools only if the user explicitly requests a search or lookup. If unsure, say so briefly instead of inventing facts.' : `- When you need to research information, answer factual questions, or look up homework answers: invoke web_search or fetch_web_page.`}
 - When you need to find a file in the workspace, desktop, or project: invoke 'find_files' with { query: "<file_name>" }!
 - When creating or writing files, invoke 'write_file' or 'edit_file'!
 - You can only read and edit plain-text files. NEVER call read_file, edit_file or write_file on Word, Excel, PowerPoint, PDF, image or other binary files: tell the user you cannot edit that format. Never claim you edited something you did not, and never call edit_file with an empty target.
@@ -1575,7 +1736,7 @@ ${windowManager.isGamingModeActive() ? '- The user is playing a game right now: 
 ${lastScanContext}${memoryContext}
 `
 
-    const toolsSpec = CAPRI_TOOLS.map((t) => ({
+    const toolsSpec = CAPRI_TOOLS.filter(t=>t.name!=='mac_system' || (isMac && isMacSystemRequest(prompt))).map((t) => ({
       type: 'function',
       function: {
         name: t.name,
@@ -1685,10 +1846,14 @@ LANGUAGE RULE: ${langDirective}`
           headers['Authorization'] = `Bearer ${config.apiKey}`
         }
 
+        const allowTools = offerDesktopTools(process.platform, model, prompt)
+        const messages = isMac && !allowTools
+          ? [{role:'system',content:`${CAPRI_CHAT_STYLE} ${macGameContext.prompt()} ${lastScanContext} ${voiceActingRules} ${lookRules} ${deviceClockContext()} Platform: macOS on Apple Silicon. You have native commands for system volume/mute, battery, disk, OS info, folders/settings, app launching/quitting and Spotify. You are not limited to reporting volume. You can perform supported actions when explicitly requested, but never claim success without an actual tool result. Your onscreen avatar can be dragged and deliberately shaken for a glitch reaction. These capabilities do not mean unrestricted control of every app or permission. The user's name is ${getUserName()}. Answer their question directly, clearly and briefly using your general knowledge. Correct obvious spelling mistakes when interpreting the question. Historical facts do not require live browser access. If you genuinely do not know, say so plainly. Do not claim to have searched or verified anything. Do not open apps, use tools, suggest a web search, or ask whether to open a browser unless the user explicitly asks for that action. Keep your Cyberpunk personality, but avoid repeating the same catchphrase or mentioning your knowledge base. ${langDirective}`}, ...this.conversationHistory.slice(1)]
+          : this.conversationHistory
+
         const requestPayload: Record<string, unknown> = {
           model,
-          // Right before the message too: small models forget a rule that's far back
-          messages: withLanguageNote(this.conversationHistory, langDirective),
+          messages: withLanguageNote(messages, langDirective),
           temperature: 0.7,
           // A running game leaves the model less than half its speed: keep spoken replies short
           max_tokens: windowManager.isGamingModeActive() ? GAMING_MAX_TOKENS : wantsLongAnswer(spokenText) ? LONG_MAX_TOKENS : SHORT_MAX_TOKENS,
@@ -1696,6 +1861,9 @@ LANGUAGE RULE: ${langDirective}`
           frequency_penalty: 0.4,
           ...(toolsUnsupported ? {} : { tools: toolsSpec, tool_choice: 'auto' })
         }
+
+        if (!allowTools) { delete requestPayload.tools; delete requestPayload.tool_choice }
+        if (isMac && !isCloudMode() && /qwen3|^capri$/i.test(model)) requestPayload.reasoning_effort = 'none'
 
         const body = llmBody(requestPayload)
 
@@ -1707,7 +1875,7 @@ LANGUAGE RULE: ${langDirective}`
         console.log(`==================================================`)
 
         const provider = getLlmSettings().provider
-        const replyTimeout = provider === 'claude-code' || provider === 'codex'
+        const replyTimeout = provider === 'app'
           ? CLI_REPLY_TIMEOUT_MS
           : isRemoteMode() ? CLOUD_REPLY_TIMEOUT_MS : LOCAL_REPLY_TIMEOUT_MS
         const request = new AbortController()
@@ -1742,6 +1910,7 @@ LANGUAGE RULE: ${langDirective}`
           if (!toolsUnsupported && /does not support tools|tools? (?:is|are) not supported/i.test(errText)) {
             console.warn(`[Capri Agent] ${model} has no tool support, going on without tools`)
             toolsUnsupported = true
+            MODELS_WITHOUT_TOOLS.add(model)
             continue
           }
           throw new Error(`HTTP ${response.status}: ${errText}`)
@@ -1783,7 +1952,7 @@ LANGUAGE RULE: ${langDirective}`
         }
 
         // Automatic PowerShell / Shell command detection and execution if LLM generated a code block instead of invoking tools
-        if (activeToolCalls.length === 0 && message.content) {
+        if (allowTools && activeToolCalls.length === 0 && message.content) {
           const codeBlock = message.content.match(/```(?:powershell|cmd|bash|sh|ps1)?\s*([\s\S]*?)```/i)
           if (codeBlock) {
             const rawCmd = codeBlock[1].trim()
@@ -1797,6 +1966,15 @@ LANGUAGE RULE: ${langDirective}`
               })
             }
           }
+        }
+
+        if (!allowTools && activeToolCalls.length) {
+          if (iterations === 1) {
+            this.conversationHistory.push({role:'user',content:'Answer my original question directly from your knowledge, without tools or suggesting a browser search. If you do not know, say so.'})
+            continue
+          }
+          this.emitAssistant("I don't have a reliable answer to that.")
+          this.finishSession(); return
         }
 
         // Clean content: strip raw commands and tool blocks so the user never sees PowerShell code blocks
@@ -1830,7 +2008,10 @@ LANGUAGE RULE: ${langDirective}`
             !/(?:code|código|homework|tarea|file|archivo|script|create|crea|solve|resuelve|escribe|write|programa|busca|search)/i.test(prompt)
           const sanitized = ensureRequestedLook(this.sanitizeContent(cleanedContent, isShortPrompt), requestedLook(prompt))
           // Models slip into another language, Spanish above all: she gets one chance to answer again
-          const replyLang = targetLangName ? clearLanguageOf(stripLookTags(sanitized)) : null
+          // A single sentence in another language counts too (a Portuguese line inside an English reply)
+          const replyText = stripLookTags(sanitized)
+          const wholeLang = targetLangName ? clearLanguageOf(replyText) : null
+          const replyLang = wholeLang && wholeLang !== effectiveLang ? wholeLang : targetLangName ? strayLanguageOf(replyText, effectiveLang) : null
           const wrongLanguage = !!replyLang && replyLang !== effectiveLang
           if (wrongLanguage && !retriedLanguage) {
             retriedLanguage = true
@@ -1894,7 +2075,9 @@ LANGUAGE RULE: ${langDirective}`
 
             const resultPlatform = resolveMusicPlatform(String(fnArgs.appOrUrl || ''))
             const resultPlatformName = musicPlatformName(resultPlatform)
-            if (result.success && fnName === 'media_control') {
+            if (isMac && ['open_application','close_application','media_control'].includes(fnName)) {
+              this.emitAssistant(result.output)
+            } else if (result.success && fnName === 'media_control') {
               this.emit('event', {
                 type: 'assistant.delta',
                 text: isPt
@@ -2011,7 +2194,7 @@ LANGUAGE RULE: ${langDirective}`
         // Finished with no more tools
         // Auto-open any YouTube, Spotify, or web links generated in response text so Capri never leaves links stranded
         const urlMatch = (cleanedContent || message.content)?.match(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|open\.spotify\.com)[^\s)\]]+/i)
-        if (urlMatch) {
+        if (urlMatch && (!isMac || allowTools)) {
           try {
             ToolExecutor.execute('open_application', { url: urlMatch[0] }, projectPath)
           } catch {}
@@ -2251,6 +2434,11 @@ LANGUAGE RULE: ${langDirective}`
     // Music and Video Playback (Spotify / YouTube) or Media Skip/Change
     const musicInfo = this.parseMusicRequest(p)
     if (musicInfo && musicInfo.songQuery) {
+      if (isMac) {
+        const result = musicInfo.songQuery === '__NEXT_TRACK__' ? await ToolExecutor.mediaControl('next') : await ToolExecutor.execute('open_application',{appOrUrl:musicInfo.platform,query:musicInfo.songQuery},projectPath)
+        this.emitAssistant(result.output);this.finishSession();return
+      }
+
       if (musicInfo.songQuery === '__NEXT_TRACK__' || /^(?:cambia|skip|next|otra|siguiente)/i.test(musicInfo.songQuery)) {
         await this.runSingleTool(
           'media_control',
@@ -2283,7 +2471,9 @@ LANGUAGE RULE: ${langDirective}`
     }
 
     // Launch Application, Game, or Website (e.g. "abre el lol", "abre cyberpunk", "abre chrome y entra a youtube", "abre steam", "abre obs", "abre calc")
-    const launchMatch = p.match(APP_LAUNCH_VERB_ANYWHERE)
+    const launchMatch = isMac
+      ? (/\b(?:and|then|plus)\b|[,&]/i.test(p) ? null : normalizeCommandRequest(p).match(new RegExp(`^(?:${APP_LAUNCH_VERBS})\\s+(?:a\\s+|al\\s+|el\\s+|la\\s+|the\\s+)?(.+)`, 'i')))
+      : p.match(new RegExp(`(?:^|[\\s,])(?:${APP_LAUNCH_VERBS})\\s+(?:a\\s+|al\\s+|el\\s+|la\\s+|the\\s+)?(.+)`, 'i'))
     const isDirectKeyword = /^(?:youtube|steam|spotify|discord|chrome|calc|calculadora|notepad|obs|lol|valorant|cyberpunk|palworld|roblox|minecraft|fortnite)$/i.test(p)
 
     if (launchMatch || isDirectKeyword) {
@@ -2371,10 +2561,11 @@ LANGUAGE RULE: ${langDirective}`
 
       const launched = await this.runSingleTool(
         'open_application',
-        { appOrUrl, url },
+        { appOrUrl, url, ...(isMac && !url ? { launchOnly: true, askIfMissing: false } : {}) },
         projectPath,
         `Breaching target: Launching "${appOrUrl}"... Don't make me wait!`
       )
+      if (isMac) { this.emitAssistant(appActionReply('open', [{ name: appOrUrl, ...launched }], this.replyLang || 'en')); this.finishSession(); return }
       if (launched.success) {
         this.emitAssistant(
           isSpanish
@@ -2399,9 +2590,11 @@ LANGUAGE RULE: ${langDirective}`
         ''
       )
       .trim()
-    const closeMatch = closeNorm.match(
+    const closePattern =
       /(?:cierra|cerrar|close|kill|termina|terminar|apaga|apagar|quit|exit|shut\s*down|turn\s*off)\s+(?:la\s+app\s+|la\s+aplicacion\s+|el\s+programa\s+|el\s+juego\s+|the\s+game\s+|el\s+|la\s+|the\s+|mi\s+|my\s+)?(.+)/i
-    )
+    const closeMatch = isMac
+      ? (/\b(?:and|then|plus)\b|[,&]/i.test(closeNorm) ? null : closeNorm.match(new RegExp(`^${closePattern.source}`, 'i')))
+      : closeNorm.match(closePattern)
     if (closeMatch) {
       const targetStr = closeMatch[1].replace(/[?.!¡¿]+$/g, '').trim()
       let appName = targetStr
@@ -2466,12 +2659,13 @@ LANGUAGE RULE: ${langDirective}`
         } catch {}
       }
 
-      await this.runSingleTool(
+      const closeResult = await this.runSingleTool(
         'close_application',
         { appName },
         projectPath,
         `Yanking the plug on "${appName}"... Time to wrap this up!`
       )
+      if (isMac) { this.emitAssistant(closeResult.output); this.finishSession(); return }
       const closeAnnouncement = isSpanish
         ? (appName === 'browser'
             ? '¡Navegador cerrado, choomba! Ciberespacio despejado.'
@@ -2574,7 +2768,7 @@ LANGUAGE RULE: ${langDirective}`
     cwd: string,
     introMessage?: string
   ): Promise<{ success: boolean; output: string }> {
-    if (introMessage) {
+    if (introMessage && !isMac) {
       this.emitAssistant(introMessage + '\n')
     }
 
@@ -3200,10 +3394,11 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     const isEs = CapriLocalAgent.detectLanguage(norm) === 'es'
 
     // Gaming Mode Toggle Command (Voice/Chat)
-    const isGamingModeOff =
+    const macModeCommand=isMac ? parseGameModeCommand(norm) : null
+    const isGamingModeOff = isMac ? macModeCommand===false :
       /(?:deactivat[ea]|desactiv[aá]|desactivar|sac(?:ar|a)?|sal(?:ir)?|quit(?:ar|a)?|apag(?:ar|a)?|cerr(?:ar|á|a)|termin(?:ar|á|a)|disable|stop|turn\s*off|exit|leave|get\s+out\s+of|end).*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)|(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)\s+(?:off|desactivar|desactivado|0|salir|disable|deactivate)|(?:game\s*mode\s*deactivate|deactivate\s*gamemode|gamemode\s*deactivate|deactivate\s*game\s*mode|game\s*mode\s*off|gamemode\s*off)/i.test(norm)
 
-    const isGamingModeOn =
+    const isGamingModeOn = isMac ? macModeCommand===true :
       /(?:activat[ea]|activ[aá]|activar|pon(?:er|te|ete)?|inici(?:ar|a)|entr(?:ar|a)|enable|start|turn\s*on|switch\s*to)?.*?(?:modo\s+gaming|modo\s+juego|modo\s+game|gaming\s*mode|game\s*mode|gamemode)/i.test(norm)
 
     if (isGamingModeOff) {
@@ -3216,8 +3411,8 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     if (isGamingModeOn) {
       windowManager.setGamingMode(true, 'top-left')
       return isEs
-        ? '¡Modo Gaming activado, choomba! Me quedo fija arriba a la izquierda en modo ojos hasta que cierres el juego.'
-        : 'Gaming Mode activated, {name}! Docking top-left in eye mode until you close the game.'
+        ? (isMac ? '¡Modo Gaming activado, choomba! Me quedo así hasta que vos lo desactives, incluso fuera del juego.' : '¡Modo Gaming activado, choomba! Me quedo fija arriba a la izquierda en modo ojos hasta que cierres el juego.')
+        : (isMac ? 'Gaming Mode on, {name}! Staying in this form until you turn it off, even outside a game.' : 'Gaming Mode activated, {name}! Docking top-left in eye mode until you close the game.')
     }
 
     // Silence of games (on/off)
@@ -3705,7 +3900,7 @@ DIRECTIVES FOR FORMATTING AND REASONING:
   }
 
   private parseMusicRequest(input: string): { platform: PlaybackPlatform; songQuery: string | null; isChange?: boolean } | null {
-    const text = input.trim()
+    const text = input.trim().replace(/\bspot(?:fiy|fy|ifiy)\b/gi, 'spotify')
     const isSpotify = /spotify/i.test(text)
     const isYouTube = /youtube/i.test(text)
     if (/^(?:(?:abre|abrir|open|launch)\s+)?(?:spotify|youtube(?:[ _]+music)?)$/i.test(text)) {
@@ -3721,7 +3916,10 @@ DIRECTIVES FOR FORMATTING AND REASONING:
     const changeSongMatch = cleanText.match(
       /^(?:change|switch|cambia|cambiar|cambie|pasa|pasar)\s+(?:the\s+|la\s+|el\s+|de\s+)?(?:cancion|canción|tema|musica|música|pista|track|song)?\s*(?:to|a|por)\s+(.+)/i
     )
-    if (changeSongMatch && changeSongMatch[1].trim()) {
+    // Without "song"/"canción" it's only music when a platform is named: "switch to typescript strict
+    // mode" or "cambiá a modo oscuro" aren't songs
+    const namesSong = /(?<!\p{L})(?:cancion|canción|tema|musica|música|pista|track|song)(?!\p{L})/iu.test(cleanText)
+    if (changeSongMatch && changeSongMatch[1].trim() && (namesSong || isSpotify || isYouTube)) {
       let target = changeSongMatch[1].trim()
       const plat = resolveMusicPlatform(text)
       if (/(?:on|en|in)\s+youtube/i.test(target)) {
@@ -4709,6 +4907,8 @@ DIRECTIVES FOR FORMATTING AND REASONING:
       )
       if (tagMatch) return this.reportModelFallback(requestedModel, tagMatch)
 
+      // On the personal Mac port prefer the verified smaller model when no requested model is installed.
+      if (isMac && models.includes('qwen3:1.7b')) return this.reportModelFallback(requestedModel, 'qwen3:1.7b')
       // Fallback to first available model in Ollama
       return this.reportModelFallback(requestedModel, models[0])
     } catch {

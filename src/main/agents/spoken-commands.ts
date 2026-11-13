@@ -36,52 +36,44 @@ export function commandKey(text: string): string {
 
 const phrases = (list: string[]) => new Set(list.map(plain))
 
-/** Whole sentences only: "no te muevas del tema" isn't asking her to stay still */
-const HOLD_STILL = phrases([
-  // en
-  'stay still', 'stay there', 'stay here', 'stay put', 'stay right there', 'stay right here', 'hold still', 'keep still', "don't move", 'do not move', 'stop moving', 'stop walking', 'stop walking around', 'stand still',
-  // es
-  'quedate quieta', 'quedate quieto', 'quédate quieta', 'quedate ahi', 'quedate aca', 'quedate ahi quieta', 'quedate aqui', 'quieta', 'quieta ahi', 'no te muevas', 'no te muevas mas', 'para de moverte', 'para de caminar', 'deja de moverte', 'deja de caminar', 'frena', 'estate quieta',
-  // pt
-  'fica quieta', 'fique quieta', 'fica parada', 'fique parada', 'fica ai', 'fica aqui', 'fique ai', 'fique aqui', 'nao se mexa', 'nao se mexe', 'para de andar', 'para de se mexer', 'pare de andar', 'pare de se mexer',
-  // fr
-  'reste la', 'reste ici', 'reste tranquille', 'reste immobile', 'ne bouge pas', 'ne bouge plus', 'arrete de bouger', 'arrete de marcher',
-  // de
-  'bleib stehen', 'bleib hier', 'bleib da', 'bleib dort', 'beweg dich nicht', 'nicht bewegen', 'halt still', 'hor auf dich zu bewegen', 'hor auf zu laufen',
-  // it
-  'stai ferma', 'stai qui', 'stai li', 'resta ferma', 'resta qui', 'resta li', 'non muoverti', 'smetti di muoverti', 'smetti di camminare', 'fermati',
-  // ru
-  'стой', 'стой там', 'стой тут', 'стой здесь', 'замри', 'не двигайся', 'не шевелись', 'оставайся там', 'оставайся здесь', 'оставайся тут', 'перестань двигаться', 'перестань ходить',
-  // ja
-  '動かないで', 'うごかないで', 'じっとして', 'じっとしてて', 'そこにいて', 'ここにいて', '止まって', '歩かないで',
-  // ko
-  '움직이지 마', '움직이지 마요', '움직이지마', '가만히 있어', '가만히 있어줘', '거기 있어', '여기 있어', '멈춰', '걷지 마',
-  // zh
-  '别动', '不要动', '站着别动', '待在那里', '待在这里', '呆在那里', '呆在这里', '停下来', '别走了', '别乱动', '別動', '不要動'
-])
+export type CommandLanguage = 'en' | 'es' | 'pt' | 'fr' | 'de' | 'it' | 'ru' | 'ja' | 'ko' | 'zh'
 
-const MOVE_AGAIN = phrases([
-  // en
-  'you can move', 'you can move now', 'you can move again', 'move around', 'walk around', 'keep walking', 'start walking', 'start moving', 'go ahead and move',
-  // es
-  'podes moverte', 'ya podes moverte', 'puedes moverte', 'ya puedes moverte', 'movete', 'muevete', 'camina', 'segui caminando', 'sigue caminando', 'volve a caminar', 'vuelve a caminar', 'volve a moverte', 'vuelve a moverte',
-  // pt
-  'pode se mexer', 'pode andar', 'pode se mover', 'continua andando', 'continue andando', 'volta a andar', 'anda',
-  // fr
-  'tu peux bouger', 'tu peux marcher', 'bouge', 'continue de marcher', 'recommence a marcher',
-  // de
-  'du kannst dich bewegen', 'du darfst dich bewegen', 'lauf weiter', 'lauf herum', 'beweg dich',
-  // it
-  'puoi muoverti', 'puoi camminare', 'cammina', 'muoviti', 'continua a camminare', 'torna a camminare',
-  // ru
-  'можешь двигаться', 'можешь ходить', 'двигайся', 'иди', 'продолжай ходить', 'снова ходи',
-  // ja
-  '動いていいよ', '動いて', '歩いて', '歩いていいよ',
-  // ko
-  '움직여도 돼', '움직여', '걸어도 돼', '걸어',
-  // zh
-  '可以动了', '你可以动了', '动吧', '走吧', '继续走', '可以走了', '可以動了'
-])
+/** A command's phrases per language: matched all together, and each list also tells the language */
+interface PhrasesByLanguage {
+  all: Set<string>
+  byLanguage: [CommandLanguage, Set<string>][]
+}
+const byLanguage = (lists: Partial<Record<CommandLanguage, string[]>>): PhrasesByLanguage => ({
+  all: phrases(Object.values(lists).flat() as string[]),
+  byLanguage: (Object.entries(lists) as [CommandLanguage, string[]][]).map(([lang, list]) => [lang, phrases(list)])
+})
+
+/** Whole sentences only: "no te muevas del tema" isn't asking her to stay still */
+const HOLD_STILL = byLanguage({
+  en: ['stay still', 'stay there', 'stay here', 'stay put', 'stay right there', 'stay right here', 'hold still', 'keep still', "don't move", 'do not move', 'stop moving', 'stop walking', 'stop walking around', 'stand still'],
+  es: ['quedate quieta', 'quedate quieto', 'quédate quieta', 'quedate ahi', 'quedate aca', 'quedate ahi quieta', 'quedate aqui', 'quieta', 'quieta ahi', 'no te muevas', 'no te muevas mas', 'para de moverte', 'para de caminar', 'deja de moverte', 'deja de caminar', 'frena', 'estate quieta'],
+  pt: ['fica quieta', 'fique quieta', 'fica parada', 'fique parada', 'fica ai', 'fica aqui', 'fique ai', 'fique aqui', 'nao se mexa', 'nao se mexe', 'para de andar', 'para de se mexer', 'pare de andar', 'pare de se mexer'],
+  fr: ['reste la', 'reste ici', 'reste tranquille', 'reste immobile', 'ne bouge pas', 'ne bouge plus', 'arrete de bouger', 'arrete de marcher'],
+  de: ['bleib stehen', 'bleib hier', 'bleib da', 'bleib dort', 'beweg dich nicht', 'nicht bewegen', 'halt still', 'hor auf dich zu bewegen', 'hor auf zu laufen'],
+  it: ['stai ferma', 'stai qui', 'stai li', 'resta ferma', 'resta qui', 'resta li', 'non muoverti', 'smetti di muoverti', 'smetti di camminare', 'fermati'],
+  ru: ['стой', 'стой там', 'стой тут', 'стой здесь', 'замри', 'не двигайся', 'не шевелись', 'оставайся там', 'оставайся здесь', 'оставайся тут', 'перестань двигаться', 'перестань ходить'],
+  ja: ['動かないで', 'うごかないで', 'じっとして', 'じっとしてて', 'そこにいて', 'ここにいて', '止まって', '歩かないで'],
+  ko: ['움직이지 마', '움직이지 마요', '움직이지마', '가만히 있어', '가만히 있어줘', '거기 있어', '여기 있어', '멈춰', '걷지 마'],
+  zh: ['别动', '不要动', '站着别动', '待在那里', '待在这里', '呆在那里', '呆在这里', '停下来', '别走了', '别乱动', '別動', '不要動']
+})
+
+const MOVE_AGAIN = byLanguage({
+  en: ['you can move', 'you can move now', 'you can move again', 'move around', 'walk around', 'keep walking', 'start walking', 'start moving', 'go ahead and move'],
+  es: ['podes moverte', 'ya podes moverte', 'puedes moverte', 'ya puedes moverte', 'movete', 'muevete', 'camina', 'segui caminando', 'sigue caminando', 'volve a caminar', 'vuelve a caminar', 'volve a moverte', 'vuelve a moverte'],
+  pt: ['pode se mexer', 'pode andar', 'pode se mover', 'continua andando', 'continue andando', 'volta a andar', 'anda'],
+  fr: ['tu peux bouger', 'tu peux marcher', 'bouge', 'continue de marcher', 'recommence a marcher'],
+  de: ['du kannst dich bewegen', 'du darfst dich bewegen', 'lauf weiter', 'lauf herum', 'beweg dich'],
+  it: ['puoi muoverti', 'puoi camminare', 'cammina', 'muoviti', 'continua a camminare', 'torna a camminare'],
+  ru: ['можешь двигаться', 'можешь ходить', 'двигайся', 'иди', 'продолжай ходить', 'снова ходи'],
+  ja: ['動いていいよ', '動いて', '歩いて', '歩いていいよ'],
+  ko: ['움직여도 돼', '움직여', '걸어도 돼', '걸어'],
+  zh: ['可以动了', '你可以动了', '动吧', '走吧', '继续走', '可以走了', '可以動了']
+})
 
 /** These may come inside a longer sentence: they're specific enough not to appear by accident */
 const ASK_VERSION = phrases([
@@ -95,6 +87,14 @@ const ASK_VERSION = phrases([
   '今のバージョン', 'バージョンは何', '何のバージョン', 'どのバージョン', 'あなたのバージョン',
   '무슨 버전', '어떤 버전', '몇 버전', '버전이 뭐', '너의 버전',
   '什么版本', '哪个版本', '哪一个版本', '你的版本', '什麼版本', '哪個版本'
+])
+
+/** Whole sentences only: "check the version of node" is not about her */
+const CHECK_VERSION = phrases([
+  'check version', 'check your version', 'check the version', 'version check', 'version', 'current version', 'check what version you are on',
+  'checkea la version', 'chequea la version', 'checkea tu version', 'chequea tu version', 'fijate la version', 'fijate tu version', 'version actual', 'que version', 'version',
+  'verifica a versao', 'verifique a versao', 'versao atual', 'verifie la version', 'version actuelle', 'version prufen', 'aktuelle version', 'controlla la versione', 'versione attuale',
+  'проверь версию', 'текущая версия', 'バージョン確認', 'バージョンを確認して', '버전 확인', '버전 확인해줘', '检查版本', '查看版本', '当前版本'
 ])
 
 const UPDATE = phrases([
@@ -119,15 +119,71 @@ const WHATS_NEW = phrases([
   '有什么新', '更新了什么', '有什麼新'
 ])
 
+/** "What apps do you know?": the ones in Dev Deck > Apps, by the names she is asked for them */
+const KNOWN_APPS = byLanguage({
+  en: ['what apps do you know', 'which apps do you know', 'what apps can you open', 'which apps can you open', 'list my apps', 'list your apps', 'show my apps', 'my apps', 'your apps'],
+  es: ['que apps conoces', 'que apps conocés', 'cuales apps conoces', 'cuales apps conocés', 'que aplicaciones conoces', 'que aplicaciones conocés', 'que apps podes abrir', 'que apps podés abrir', 'que apps puedes abrir', 'mostrame mis apps', 'mostrame las apps', 'decime mis apps', 'mis apps', 'tus apps'],
+  pt: ['quais apps voce conhece', 'que apps voce conhece', 'quais aplicativos voce conhece', 'quais apps voce pode abrir', 'meus apps', 'mostra meus apps'],
+  fr: ['quelles applis connais tu', 'quelles apps connais tu', 'quelles applications connais tu', 'quelles applis peux tu ouvrir', 'mes applis', 'mes apps'],
+  de: ['welche apps kennst du', 'welche programme kennst du', 'welche apps kannst du offnen', 'meine apps', 'zeig meine apps'],
+  it: ['quali app conosci', 'che app conosci', 'quali app puoi aprire', 'le mie app', 'mostra le mie app'],
+  ru: ['какие приложения ты знаешь', 'какие программы ты знаешь', 'какие приложения ты можешь открыть', 'мои приложения'],
+  ja: ['どのアプリを知ってる', '知ってるアプリは', 'アプリ一覧', '開けるアプリは', '私のアプリ'],
+  ko: ['어떤 앱 알아', '아는 앱 뭐야', '열 수 있는 앱', '내 앱 목록', '앱 목록'],
+  zh: ['你知道哪些应用', '你认识哪些应用', '你能打开哪些应用', '我的应用', '应用列表', '你知道哪些軟體']
+})
+
+const WATCH_SCREEN = byLanguage({
+  en: ['watch my screen', 'watch the screen', 'watch screen', 'watch with me', 'look at my screen', 'look at the screen', 'watch this with me', "let's watch together", 'see my screen'],
+  es: ['mira mi pantalla', 'mirá mi pantalla', 'mira la pantalla', 'mirá la pantalla', 'mira esto', 'mirá esto', 'mira conmigo', 'mirá conmigo', 'miremos un video', 'mira lo que juego', 'mirá lo que juego', 'mira mi juego', 'mirá mi juego', 'mira lo que hago', 'mirá lo que hago', 'mira la compu', 'mirá la compu'],
+  pt: ['olha minha tela', 'olhe minha tela', 'veja minha tela', 'assista minha tela', 'assiste comigo', 'assista comigo'],
+  fr: ['regarde mon ecran', 'regarde l ecran', 'regarde avec moi'],
+  de: ['schau dir meinen bildschirm an', 'sieh dir meinen bildschirm an', 'schau meinen bildschirm an', 'schau mit mir'],
+  it: ['guarda il mio schermo', 'guarda lo schermo', 'guarda con me'],
+  ru: ['посмотри на мой экран', 'смотри на экран', 'смотри со мной', 'посмотри экран'],
+  ja: ['画面を見て', '画面見て', '一緒に見て'],
+  ko: ['내 화면 봐줘', '화면 봐줘', '화면 봐', '같이 봐줘'],
+  zh: ['看我的屏幕', '看看我的屏幕', '看屏幕', '帮我看屏幕', '跟我一起看']
+})
+
+const STOP_WATCH_SCREEN = byLanguage({
+  en: ['stop watching my screen', 'stop watching the screen', 'stop watching', "don't watch my screen", "don't watch the screen", 'close screen watch'],
+  es: ['deja de mirar mi pantalla', 'dejá de mirar mi pantalla', 'deja de mirar la pantalla', 'dejá de mirar la pantalla', 'deja de mirar', 'dejá de mirar', 'no mires mas', 'no mires más', 'para de mirar', 'pará de mirar'],
+  pt: ['para de olhar minha tela', 'pare de olhar minha tela', 'para de olhar', 'pare de olhar', 'nao olhe mais'],
+  fr: ['arrete de regarder mon ecran', 'arrete de regarder', 'ne regarde plus'],
+  de: ['hor auf meinen bildschirm anzuschauen', 'hor auf zu schauen', 'nicht mehr schauen'],
+  it: ['smetti di guardare il mio schermo', 'smetti di guardare', 'non guardare piu'],
+  ru: ['перестань смотреть на экран', 'хватит смотреть', 'не смотри'],
+  ja: ['画面を見るのをやめて', '見るのをやめて', '見ないで'],
+  ko: ['화면 그만 봐', '그만 봐', '보지 마'],
+  zh: ['别看屏幕了', '不要看屏幕了', '别看了', '停止看屏幕']
+})
+
 const containsPhrase = (key: string, set: Set<string>) => Array.from(set).some((p) => key === p || (/[^\x00-\x7f]/.test(p) ? key.includes(p) : ` ${key} `.includes(` ${p} `)))
 
 // Both ways: a polite word in one language can be part of the command in another ("che" in Italian)
 const isExactly = (text: string, set: Set<string>) => set.has(commandKey(text)) || set.has(plain(text))
 const mentions = (text: string, set: Set<string>) => containsPhrase(commandKey(text), set) || containsPhrase(plain(text), set)
 
-export const isHoldStillRequest = (text: string) => isExactly(text, HOLD_STILL)
-export const isMoveAgainRequest = (text: string) => isExactly(text, MOVE_AGAIN)
-export const isVersionRequest = (text: string) => mentions(text, ASK_VERSION)
+export const isHoldStillRequest = (text: string) => isExactly(text, HOLD_STILL.all)
+export const isKnownAppsRequest = (text: string) => isExactly(text, KNOWN_APPS.all)
+export const isMoveAgainRequest = (text: string) => isExactly(text, MOVE_AGAIN.all)
+export const isWatchScreenRequest = (text: string) => isExactly(text, WATCH_SCREEN.all) || mentions(text, WATCH_SCREEN.all)
+export const isStopWatchScreenRequest = (text: string) => isExactly(text, STOP_WATCH_SCREEN.all) || mentions(text, STOP_WATCH_SCREEN.all)
+/**
+ * The language of a fixed command these lists know ("quedate quieta" -> es), or null. Short commands
+ * often carry no clue a language detector can use: without this one went to the translator, waited
+ * for it and answered in whatever language came before
+ */
+export function fixedCommandLanguage(text: string): CommandLanguage | null {
+  const keys = [commandKey(text), plain(text)]
+  for (const list of [HOLD_STILL, MOVE_AGAIN, KNOWN_APPS, WATCH_SCREEN, STOP_WATCH_SCREEN]) {
+    for (const [lang, set] of list.byLanguage) if (keys.some((k) => set.has(k))) return lang
+  }
+  return null
+}
+
+export const isVersionRequest = (text: string) => mentions(text, ASK_VERSION) || isExactly(text, CHECK_VERSION)
 export const isUpdateInOtherLanguage = (text: string) => mentions(text, UPDATE)
 export const isWhatsNewInOtherLanguage = (text: string) => mentions(text, WHATS_NEW)
 

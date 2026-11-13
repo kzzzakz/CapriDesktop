@@ -22,5 +22,11 @@ export function useHotkeys(): Hotkeys {
 /** The keys as the interface shows them, ready to fill {talk}, {listen} and {chat} in a text */
 export function useHotkeyLabels(): Record<keyof Hotkeys, string> {
   const hotkeys = useHotkeys()
-  return { talk: formatHotkey(hotkeys.talk), listen: formatHotkey(hotkeys.listen), chat: formatHotkey(hotkeys.chat) }
+  return {
+    talk: formatHotkey(hotkeys.talk),
+    listen: formatHotkey(hotkeys.listen),
+    chat: formatHotkey(hotkeys.chat),
+    gaming: formatHotkey(hotkeys.gaming),
+    away: formatHotkey(hotkeys.away)
+  }
 }

@@ -232,6 +232,7 @@ export class ChampionDatabase {
     }
   }
 
+  /** Only a champion with exactly this name or alias: "Jett" is no champion, even if a fuzzy search finds one */
   public findChampion(query: string): ChampionEntry | null {
     const norm = normalize(query)
     if (!norm) return null

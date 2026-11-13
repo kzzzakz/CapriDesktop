@@ -213,6 +213,7 @@ test('automatic gaming activation preserves manual ownership and can be promoted
 test('entering gaming mode leaves window opacity at full strength for the configured sprite opacity', () => {
   const { WindowManager } = load('windows/window-manager.ts', {
     '../ipc/channels': { IPC_CHANNELS: {} },
+    '../services/consciousness-service': { consciousnessService: { getCompanionScale: () => 1 } },
     '../roaming/roaming-manager': { roamingManager: { setEyeMode() {}, stop() {} } }
   })
   const manager = new WindowManager()
@@ -223,6 +224,7 @@ test('entering gaming mode leaves window opacity at full strength for the config
   manager.companionWin = {
     isDestroyed: () => false,
     isVisible: () => false,
+    webContents: { setZoomFactor() {} },
     setBounds() {},
     setOpacity: (value) => opacities.push(value),
     setVisibleOnAllWorkspaces() {},

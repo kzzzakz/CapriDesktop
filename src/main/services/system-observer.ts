@@ -1,5 +1,6 @@
 import { youtubeMusicTitle, windowsYoutubeMusic } from './youtube-music'
-import { isWindows, listProcessNames, mediaWindowTitles } from './platform'
+import { isMac, isWindows, listProcessNames, mediaWindowTitles } from './platform'
+import { macMemoryPressure } from './mac-usage'
 import os from 'os'
 import { agentManager } from '../agents/agent-manager'
 import { consciousnessService } from './consciousness-service'
@@ -128,6 +129,15 @@ export class SystemObserver {
   }
 
   private async checkRam(): Promise<void> {
+    if (isMac) {
+      // macOS uses spare RAM for reclaimable caches; os.freemem() is not memory pressure.
+      const pressure = await macMemoryPressure()
+      if (pressure !== null && pressure >= 2 && this.canTrigger('ram')) {
+        this.markTriggered('ram')
+        this.triggerCapriReaction('macOS reports elevated memory pressure. Ask me what is using memory for a breakdown.', 'talking')
+      }
+      return
+    }
     const totalBytes = os.totalmem()
     const freeBytes = os.freemem()
     const usedBytes = totalBytes - freeBytes
@@ -156,6 +166,7 @@ export class SystemObserver {
   }
 
   private async checkProcesses(): Promise<void> {
+    if (isMac) return // Mac media context is refreshed on demand by getActiveMediaAsync.
     const detectedMedia = await this.detectActiveMedia()
 
     return new Promise((resolve) => {
@@ -187,9 +198,12 @@ export class SystemObserver {
         const isEs = consciousnessService.getPreferredLanguage() === 'es'
 
         // Check for proactive media comment (YouTube, TikTok, Reels, Twitch, Netflix, Spotify)
+        // Not while she is watching the screen with the user: those reactions come from what she sees,
+        // and a canned "I see you jacking into YouTube..." on top of them reads the page title aloud
         if (
           detectedMedia &&
           !windowManager.isGamingModeActive() &&
+          !windowManager.isScannerFullscreenActive() &&
           (detectedMedia.title !== this.lastCommentedMediaTitle || Date.now() - this.triggers.media_watching.lastTriggered > 4 * 60 * 1000) &&
           this.canTrigger('media_watching')
         ) {
@@ -367,7 +381,8 @@ export class SystemObserver {
         // Gaming Mode a game turned on ends once no game is left. Checked on every tick, not only on the
         // one where the game closed: League's adapter takes a few seconds to notice the match is over,
         // and a single check during that time used to leave her stuck in Gaming Mode (#21)
-        if (!isAnyGameNow && windowManager.isGamingModeFromGame()) {
+        const fromGame = typeof windowManager.isGamingModeFromGame === 'function' ? windowManager.isGamingModeFromGame() : true
+        if (!isAnyGameNow && fromGame) {
           let gameStillThere = false
           try {
             gameStillThere = !!(cyberpunkAdapter?.isCyberpunkActive() || lolLiveAdapter?.isRunning() || valorantAdapter.isRunning() || wutheringWavesAdapter.isRunning() || gamePresenceService.isGameSessionActive())
@@ -570,7 +585,7 @@ export class SystemObserver {
             const proc = row.proc
             const rawTitle = row.title
 
-            if (!rawTitle || rawTitle === 'N/D' || rawTitle === 'OleMainThreadWndName') continue
+            if (!rawTitle || /^(?:N\/D|N\/A)$/i.test(rawTitle) || rawTitle === 'OleMainThreadWndName') continue
             if (proc.includes('nombre de imagen') || proc.includes('image name')) continue
             if (/^(?:Nueva pesta[ñn]a|New Tab|Sin t[ií]tulo)$/i.test(rawTitle)) continue
 

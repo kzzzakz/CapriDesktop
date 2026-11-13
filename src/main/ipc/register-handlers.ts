@@ -1,11 +1,16 @@
+import { featureSettings, saveFeatures } from '../services/mac-feature-settings'
+import { scheduleScreenComments, screenCommentStatus } from '../services/screen-comment-service'
+import { screen as desktopScreen } from 'electron'
+import { setLocalAIEnabled } from '../services/local-ai-policy'
 import { getStorageRoot } from '../services/storage-location'
 import { scriptPlayer } from '../services/script/script-player'
 import { isClaudeCodeInstalled } from '../services/claude-code-runner'
 import { confirmClaudeBypassPermissions, testCodexConnection, testClaudeConnection, getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
 import { setupService, SetupStep } from '../services/setup-service'
+import { supporterReaction, warmSupporterModel } from '../services/supporter-reaction'
 import * as os from 'os'
 import { getUserName } from '../services/user-profile'
-import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
+import { ipcMain, dialog, BrowserWindow, shell, Menu } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { IPC_CHANNELS, CompanionEmotionState } from './channels'
@@ -20,6 +25,9 @@ import { localizeLine } from '../../shared/lines'
 import { ToolExecutor } from '../agents/tools/tool-executor'
 import type { HotkeyAction } from '../../shared/hotkeys'
 import { scannerService } from '../services/scanner-service'
+import { cloudSttProvider, STT_ENGINES, type SttEngine } from '../services/cloud-stt'
+import { watchPartyService } from '../services/watch-party-service'
+import { desktopController } from '../services/desktop-controller-service'
 import { boredomService } from '../services/boredom-service'
 import { cyberpunkAdapter } from '../services/game'
 import { CYBERPUNK_GIGS, getNextGig } from '../services/game/adapters/cyberpunk/gigs'
@@ -27,8 +35,81 @@ import { clipService } from '../services/clip-service'
 import { welcomeSpeech } from '../services/welcome-speech'
 import { getSystemPromptInfo, setSystemPrompt, resetSystemPrompt, setPersonaStyle } from '../services/system-prompt-store'
 import { memoryService } from '../services/memory-service'
+import { addKnownApp, listKnownApps, onKnownAppsChanged, removeKnownApp, renameKnownApp, suggestedAppName } from '../services/known-apps'
+import { openKnownApp } from '../services/app-launcher'
+import { ollamaService } from '../services/ollama-service'
+import { isElevated, relaunchElevated } from '../services/admin-mode'
+import { isAiAppId, listAiApps, testAiApp } from '../services/ai-apps'
+import { deleteLocalModel, listInstalledParts, listLocalModels, removeInstalledPart, type InstalledPartId } from '../services/installed-parts'
+import { cyberpunkFoldersState, markCyberpunkFolder, unmarkCyberpunkFolder } from '../services/game/adapters/cyberpunk/cyberpunk-folders'
 
+import { platformStatus, requestPermission, openPermission } from '../services/mac-permissions'
+import { spotifyService } from '../services/spotify-service'
+import { isMac } from '../services/platform'
+
+import { desktopPreferences, setOpenAtLogin } from '../services/mac-preferences'
+import type { PlacementCommand } from '../../shared/placement'
 export function registerIpcHandlers(): void {
+  const openSettings = (voice = false) => {
+    windowManager.showDeck()
+    const win = windowManager.getDeckWindow()
+    const send = () => win?.webContents.send(voice ? 'desktop:open-voice-settings' : 'desktop:open-settings')
+    if (win?.webContents.isLoading()) win.webContents.once('did-finish-load', send)
+    else send()
+  }
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_OPEN_SETTINGS, (_event, voice) => {
+    if (isMac) openSettings(voice === true)
+  })
+  ipcMain.handle(IPC_CHANNELS.COMPANION_CHAT_ACTIVE, (event, active) => {
+    const win=windowManager.getCompanionWindow()
+    if (isMac && win && event.sender===win.webContents && active===true) {windowManager.setCompanionClickThrough(false);win.focus()}
+  })
+  ipcMain.handle(IPC_CHANNELS.COMPANION_MENU, event => {
+    const win = windowManager.getCompanionWindow()
+    if (!isMac || !win || event.sender !== win.webContents) return
+    const prefs = featureSettings()
+    Menu.buildFromTemplate([
+      { label: 'Chat · ⌘⌥C', click: () => windowManager.broadcast(IPC_CHANNELS.COMPANION_TOGGLE_CHAT) },
+      { label: 'Toggle Hey Capri · ⌘⌥L', click: () => windowManager.broadcast(IPC_CHANNELS.VOICE_TOGGLE_ALWAYS_LISTENING) },
+      { type: 'separator' },
+      { label: 'Game mode', type: 'checkbox', checked: windowManager.isGamingModeActive(), click: item => windowManager.setGamingMode(item.checked) },
+      { label: 'Game-mode comments', submenu: [
+        { label: 'Screenshots go to your cloud vision provider', enabled: false },
+        ...[0,1,3,5,10].map(minutes => ({ label: minutes ? `Every ${minutes} minute${minutes===1 ? '' : 's'}` : 'Off', type: 'radio' as const, checked: prefs.gameCommentMinutes===minutes, click: () => { saveFeatures({gameCommentMinutes:minutes}); scheduleScreenComments() } }))
+      ] },
+      { label: 'Scanner · ⌘⌥S', click: () => scannerService.toggle() },
+      { type: 'separator' },
+      { label: 'Voice & companion settings…', click: () => openSettings(true) },
+      { label: 'Settings…', click: () => openSettings() },
+      { label: 'Open main app', click: () => windowManager.showDeck() }
+    ]).popup({ window: win })
+  })
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_CONFIGURE,(_event,update)=>{
+    if(!isMac || !update || typeof update!=='object') throw new Error('Invalid Mac settings')
+    saveFeatures(update)
+    if(update.speechModel!==undefined) voiceService.stopServer()
+    if(update.screenCommentMinutes!==undefined || update.gameCommentMinutes!==undefined) scheduleScreenComments()
+    return desktopPreferences()
+  })
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_COMMENT_STATUS,()=>screenCommentStatus())
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_PREFERENCES,()=>desktopPreferences())
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_LOGIN,(_event,enabled)=>setOpenAtLogin(enabled))
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_PLACE,(_event,target:PlacementCommand)=>{
+    if (!isMac || !['here','roam','bottom','bottom-left','bottom-right','top','top-left','top-right','left','right','center'].includes(target)) throw new Error('Invalid desktop position')
+    if (target==='roam') roamingManager.start(true); else roamingManager.pinPosition(target)
+    return desktopPreferences()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.PLATFORM_STATUS, () => platformStatus())
+  ipcMain.handle(IPC_CHANNELS.PLATFORM_PERMISSION, (_e, permission) => requestPermission(permission))
+  ipcMain.handle(IPC_CHANNELS.PLATFORM_OPEN_PERMISSION, (_e, permission) => openPermission(permission))
+  ipcMain.handle(IPC_CHANNELS.SPOTIFY_SETTINGS, () => spotifyService.settings())
+  ipcMain.handle(IPC_CHANNELS.SPOTIFY_CONFIGURE, (_e, settings) => { if (!isMac) throw new Error('Mac-only setting'); return spotifyService.configure(settings) })
+  ipcMain.handle(IPC_CHANNELS.SPOTIFY_CONNECT, () => { if (!isMac) throw new Error('Mac-only setting'); return spotifyService.connect() })
+  ipcMain.handle(IPC_CHANNELS.SPOTIFY_DISCONNECT, () => spotifyService.disconnect())
+  ipcMain.handle(IPC_CHANNELS.SPOTIFY_DEVICES, () => spotifyService.devices())
+  ipcMain.handle(IPC_CHANNELS.SPOTIFY_PLAY, (_e, query) => { if (!isMac || typeof query !== 'string' || query.length > 500) throw new Error('Invalid Spotify query'); return spotifyService.play(query) })
+
   // Deck window visibility
   ipcMain.handle(IPC_CHANNELS.DECK_TOGGLE, () => {
     return windowManager.toggleDeck()
@@ -119,11 +200,30 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.COMPANION_SPEAK,
-    (_event, payload: { text: string; durationMs?: number }) => {
-      agentManager.setCompanionSpeech(payload.text, payload.durationMs)
+    (_event, payload: { text: string; durationMs?: number; speakVoice?: boolean; cameo?: boolean }) => {
+      agentManager.setCompanionSpeech(payload.text, payload.durationMs, !!payload.speakVoice, undefined, false, !!payload.cameo)
       return true
     }
   )
+  ipcMain.handle(IPC_CHANNELS.COMPANION_END_CAMEO, () => windowManager.endCompanionCameo())
+  // A supporter's message, read out loud above the Deck, followed by what she has to say about it
+  ipcMain.handle(
+    IPC_CHANNELS.COMPANION_REMEMBER_SUPPORTER,
+    async (_event, payload: { name: string; message: string; line: string }) => {
+      // She starts reading right away; her answer follows as soon as the model has it
+      const line = String(payload.line || '')
+      const message = String(payload.message || '')
+      agentManager.setCompanionSpeech(line, Math.max(5000, line.length * 70), true, undefined, false, message.trim() ? 'hold' : true)
+      const reaction = await supporterReaction(String(payload.name || ''), message, consciousnessService.getPreferredLanguage())
+      if (reaction) {
+        console.log(`[Supporters] Her answer to ${payload.name}: "${reaction}"`)
+        agentManager.setCompanionSpeech(reaction, Math.max(4000, reaction.length * 70), true, undefined, false, true)
+      }
+      if (message.trim()) agentManager.releaseCameoHold()
+      return reaction || ''
+    }
+  )
+  ipcMain.handle(IPC_CHANNELS.COMPANION_WARM_SUPPORTERS, () => warmSupporterModel())
 
   // Top-Right Tab Mode (Modo Pestaña en esquina superior derecha)
   ipcMain.handle(
@@ -166,8 +266,7 @@ export function registerIpcHandlers(): void {
     return { enabled: windowManager.isGamingModeActive(), gameForeground: windowManager.isGameForeground() }
   })
 
-  // Windows scaling drifts the size by a pixel on every move, so keep the size from before the drift
-  let movedSize = { width: 0, height: 0 }
+  // Windows scaling drifts the size by a pixel on every move, so give setBounds the size too.
   // Shift + Drag move Capri across screen
   ipcMain.handle(
     IPC_CHANNELS.COMPANION_MOVE_BY,
@@ -177,9 +276,8 @@ export function registerIpcHandlers(): void {
         const bounds = win.getBounds()
         const newX = bounds.x + payload.dx
         const newY = bounds.y + payload.dy
-        const drifted = Math.abs(bounds.width - movedSize.width) <= 2 && Math.abs(bounds.height - movedSize.height) <= 2
-        if (!drifted) movedSize = { width: bounds.width, height: bounds.height }
-        win.setBounds({ x: newX, y: newY, ...movedSize })
+        // With the size given too: setPosition alone grows the window on scaled screens
+        win.setBounds({ x: newX, y: newY, width: bounds.width, height: bounds.height }, false)
         if (windowManager.isGamingModeActive()) {
           windowManager.setSavedGamingPosition({ x: newX, y: newY })
         } else {
@@ -223,12 +321,15 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.COMPANION_GET_MUSIC_PLATFORM, () => consciousnessService.getMusicPlatform())
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_MUSIC_PLATFORM, (_event, platform) => consciousnessService.setMusicPlatform(platform))
 
-  ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS, () => consciousnessService.getLanguageSettings())
+  // With the cloud service the saved API key opens, so the window can say whether "cloud" will work
+  const languageSettingsView = () => ({ ...consciousnessService.getLanguageSettings(), cloudStt: cloudSttProvider() })
+  ipcMain.handle(IPC_CHANNELS.COMPANION_GET_LANGUAGE_SETTINGS, () => languageSettingsView())
 
   // First-run setup (onboarding window)
   ipcMain.handle(IPC_CHANNELS.SETUP_STATUS, () => setupService.getStatus())
 
   ipcMain.handle(IPC_CHANNELS.SETUP_RUN, async (_event, step: SetupStep) => {
+    if (!['python','ffmpeg','ollama','model','persona','whisper','vision'].includes(step)) throw new Error('Unknown setup step')
     const ok = await setupService.run(step, (s, line) => windowManager.broadcast(IPC_CHANNELS.SETUP_LOG, { step: s, line }))
     return { ok, status: await setupService.getStatus() }
   })
@@ -292,11 +393,15 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_LANGUAGE_SETTINGS, (_event, next: Record<string, string>) => {
-    const saved = consciousnessService.setLanguageSettings(next || {})
+    const { sttEngine, ...langs } = next || {}
+    const saved = consciousnessService.setLanguageSettings({
+      ...langs,
+      ...(STT_ENGINES.includes(sttEngine as SttEngine) ? { sttEngine: sttEngine as SttEngine } : {})
+    })
     // Spoken language differs from the text: load the translation model now, not on the first line
     if (saved.speechLang && saved.speechLang !== 'auto') voiceService.warmTranslator()
     windowManager.broadcast(IPC_CHANNELS.COMPANION_LANGUAGE_CHANGED, consciousnessService.getUiLanguage())
-    return saved
+    return { ...saved, cloudStt: cloudSttProvider() }
   })
 
   ipcMain.handle(IPC_CHANNELS.COMPANION_SET_LANGUAGE, (_event, lang: string) => {
@@ -344,8 +449,58 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.MEMORY_DELETE, (_event, id: string) => memoryService.deleteFact(String(id ?? '')))
   ipcMain.handle(IPC_CHANNELS.MEMORY_CLEAR, () => memoryService.clearAll())
   memoryService.onChanged(() => windowManager.broadcast(IPC_CHANNELS.MEMORY_CHANGED, memoryService.snapshot()))
+
+  // The apps she knows by name
+  ipcMain.handle(IPC_CHANNELS.APPS_LIST, () => listKnownApps())
+  // The file is chosen here, in the main process: the window never gets to pass a path of its own
+  ipcMain.handle(IPC_CHANNELS.APPS_PICK, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const options: Electron.OpenDialogOptions = {
+      properties: ['openFile'],
+      defaultPath: process.platform === 'win32' ? process.env.ProgramFiles || 'C:\\' : os.homedir(),
+      filters: process.platform === 'win32' ? [{ name: 'Apps', extensions: ['exe', 'lnk', 'url', 'bat', 'cmd'] }] : []
+    }
+    const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const file = picked.filePaths[0]
+    if (picked.canceled || !file) return null
+    return addKnownApp(suggestedAppName(file), file)
+  })
+  ipcMain.handle(IPC_CHANNELS.APPS_RENAME, (_event, id: string, name: string) => renameKnownApp(String(id ?? ''), String(name ?? '')))
+  ipcMain.handle(IPC_CHANNELS.APPS_REMOVE, (_event, id: string) => removeKnownApp(String(id ?? '')))
+  ipcMain.handle(IPC_CHANNELS.APPS_OPEN, (_event, id: string) => openKnownApp(String(id ?? '')))
+  onKnownAppsChanged(() => windowManager.broadcast(IPC_CHANNELS.APPS_CHANGED, listKnownApps()))
+
+  // Any model from the Ollama library, downloaded from the settings, with progress
+  ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL, (_event, model: string) =>
+    ollamaService.pullModel(String(model ?? ''), (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
+  )
+  ipcMain.handle(IPC_CHANNELS.OLLAMA_PULL_CANCEL, () => ollamaService.cancelPull())
+  // A .gguf file on this PC, added to Ollama. The file is picked here: the window never passes a path
+  ipcMain.handle(IPC_CHANNELS.OLLAMA_IMPORT_GGUF, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const options: Electron.OpenDialogOptions = { properties: ['openFile'], filters: [{ name: 'GGUF', extensions: ['gguf'] }] }
+    const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const file = picked.filePaths[0]
+    if (picked.canceled || !file) return false
+    return ollamaService.importGguf(file, (progress) => windowManager.broadcast(IPC_CHANNELS.OLLAMA_PULL_PROGRESS, progress))
+  })
+
+  // Cyberpunk 2077 in any folder, or under Mod Organizer: the user can show Capri where
+  ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDERS_GET, () => cyberpunkFoldersState())
+  ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDER_PICK, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const options: Electron.OpenDialogOptions = { properties: ['openDirectory'] }
+    const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    const folder = picked.filePaths[0]
+    if (picked.canceled || !folder) return null
+    const result = markCyberpunkFolder(folder)
+    // With CET in that folder, her mod goes in right away
+    if (result.info.kind !== 'unknown') cyberpunkAdapter.installCetMod()
+    return { ...result, state: cyberpunkFoldersState() }
+  })
+  ipcMain.handle(IPC_CHANNELS.CYBERPUNK_FOLDER_REMOVE, (_event, folder: string) => unmarkCyberpunkFolder(String(folder ?? '')))
   ipcMain.handle(IPC_CHANNELS.LLM_GET_SETTINGS, () => getLlmSettings())
-  ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => setLlmSettings(update))
+  ipcMain.handle(IPC_CHANNELS.LLM_SET_SETTINGS, (_event, update: LlmSettingsUpdate) => { if(isMac) scannerService.setContinuous(false); return setLlmSettings(update) })
   ipcMain.handle(IPC_CHANNELS.LLM_LIST_MODELS, (_event, baseUrl: string, apiKey?: string) => listCloudModels(baseUrl, apiKey))
   ipcMain.handle(IPC_CHANNELS.LLM_CLAUDE_INSTALLED, () => isClaudeCodeInstalled())
   ipcMain.handle(IPC_CHANNELS.LLM_TEST_CODEX, (_event, model: string) =>
@@ -527,6 +682,34 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_SET, (_event, action: HotkeyAction, accelerator: string) => windowManager.setHotkey(action, String(accelerator)))
   ipcMain.handle(IPC_CHANNELS.HOTKEYS_RESET, () => windowManager.resetHotkeys())
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_GET, () => consciousnessService.getGamingOpacity())
+  // Local models, each with its size and whether it sees, and the parts the setup installed
+  ipcMain.handle(IPC_CHANNELS.MODELS_LIST, () => listLocalModels())
+  ipcMain.handle(IPC_CHANNELS.MODEL_DELETE, async (_event, name: string) => (await deleteLocalModel(String(name ?? ''))) ? listLocalModels() : null)
+  ipcMain.handle(IPC_CHANNELS.VISION_MODEL_GET, () => consciousnessService.getScannerVisionModel())
+  ipcMain.handle(IPC_CHANNELS.VISION_MODEL_SET, (_event, model: string) => {
+    consciousnessService.setScannerVisionModel(String(model || 'auto'))
+    return consciousnessService.getScannerVisionModel()
+  })
+  ipcMain.handle(IPC_CHANNELS.PARTS_LIST, () => listInstalledParts())
+  ipcMain.handle(IPC_CHANNELS.PART_REMOVE, (_event, id: string) => (['voiceEnv', 'whisper', 'ffmpeg'].includes(id) ? removeInstalledPart(id as InstalledPartId) : listInstalledParts()))
+
+  // The user's AI apps, as her model
+  ipcMain.handle(IPC_CHANNELS.AI_APPS_LIST, () => listAiApps())
+  ipcMain.handle(IPC_CHANNELS.AI_APPS_TEST, (_event, app: string, model: string) =>
+    isAiAppId(app) ? testAiApp(app, String(model || '')) : { ok: false, error: 'other' }
+  )
+
+  // Running as administrator, for games that run as administrator
+  ipcMain.handle(IPC_CHANNELS.ADMIN_GET, () => ({ enabled: consciousnessService.getRunAsAdmin(), elevated: isElevated() }))
+  ipcMain.handle(IPC_CHANNELS.ADMIN_SET, async (_event, enabled: boolean) => {
+    consciousnessService.setRunAsAdmin(!!enabled)
+    // Turned on: she restarts as administrator now. Turned off: from her next start
+    const relaunching = !!enabled && !isElevated() ? await relaunchElevated() : false
+    return { enabled: consciousnessService.getRunAsAdmin(), elevated: isElevated(), relaunching }
+  })
+  // Her size, normal and in Gaming Mode
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_GET, () => ({ desktop: consciousnessService.getCompanionScale('desktop'), gaming: consciousnessService.getCompanionScale('gaming') }))
+  ipcMain.handle(IPC_CHANNELS.COMPANION_SCALE_SET, (_event, kind: string, value: number) => windowManager.setCompanionScale(kind === 'gaming' ? 'gaming' : 'desktop', Number(value)))
   ipcMain.handle(IPC_CHANNELS.GAMING_OPACITY_SET, (_event, value: number) => {
     consciousnessService.setGamingOpacity(value)
     const saved = consciousnessService.getGamingOpacity()
@@ -600,6 +783,15 @@ export function registerIpcHandlers(): void {
     return scannerService.getStatus()
   })
 
+  ipcMain.handle(IPC_CHANNELS.SCANNER_LOCAL_AI, (_event,enabled:boolean) => setLocalAIEnabled(enabled))
+  ipcMain.handle(IPC_CHANNELS.SCANNER_FIT_SCREEN, () => {
+    const win=windowManager.getScannerWindow()
+    if (!win || win.isDestroyed()) return null
+    const bounds=desktopScreen.getDisplayMatching(win.getBounds()).workArea
+    windowManager.setScannerBounds(bounds)
+    return win.getBounds()
+  })
+
   ipcMain.handle(IPC_CHANNELS.SCANNER_SET_BOUNDS, (_event, bounds) => {
     windowManager.setScannerBounds(bounds)
     return true
@@ -613,8 +805,21 @@ export function registerIpcHandlers(): void {
     return scannerService.setContinuous(enabled)
   })
 
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_START, async () => {
+    return await scannerService.startFullscreenWatch()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_STOP, () => {
+    return scannerService.stopFullscreenWatch()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCANNER_WATCH_SCREEN_TOGGLE, async () => {
+    return await scannerService.toggleFullscreenWatch()
+  })
+
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_LINE_DONE, (_event, id: number) => scriptPlayer.onLineDone(id))
   ipcMain.on(IPC_CHANNELS.COMPANION_SCRIPT_CANCEL, () => scriptPlayer.cancel())
+  ipcMain.on(IPC_CHANNELS.COMPANION_VOICE_BUSY, (_event, busy: boolean) => scannerService.setVoiceBusy(!!busy))
 
   ipcMain.handle(IPC_CHANNELS.SCANNER_SET_IGNORE_MOUSE, (_event, ignore: boolean) => {
     windowManager.setScannerIgnoreMouse(ignore)
@@ -628,6 +833,7 @@ export function registerIpcHandlers(): void {
 
   // Cyberpunk 2077 Integration
   ipcMain.handle(IPC_CHANNELS.CYBERPUNK_MARK_POI, async (_event, target?: string) => {
+    if (isMac) return false
     return cyberpunkAdapter.sendCommand({
       action: 'mark_closest',
       target: target || 'ripperdoc'
@@ -635,6 +841,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.CYBERPUNK_CLEAR_POI, async () => {
+    if (isMac) return false
     await cyberpunkAdapter.sendCommand({
       action: 'clear_marker'
     })
@@ -642,7 +849,58 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.CYBERPUNK_MARK_GIG, async (_event, gigId?: string) => {
+    if (isMac) return false
     const gig = gigId ? CYBERPUNK_GIGS.find((g) => g.id === gigId) || getNextGig() : getNextGig()
     return await cyberpunkAdapter.markGig(gig)
+  })
+
+  // Watch Party & Autonomous PC Control
+  ipcMain.handle('watchParty:getStatus', () => {
+    return watchPartyService.getStatus()
+  })
+
+  ipcMain.handle('watchParty:startTiktok', async () => {
+    return await watchPartyService.startTiktokParty()
+  })
+
+  ipcMain.handle('watchParty:startYoutube', async () => {
+    return await watchPartyService.startYoutubeParty()
+  })
+
+  ipcMain.handle('watchParty:startGaming', async () => {
+    return await watchPartyService.startGamingParty()
+  })
+
+  ipcMain.handle('watchParty:stop', () => {
+    return watchPartyService.stopParty(true)
+  })
+
+  ipcMain.handle('watchParty:next', async () => {
+    return await watchPartyService.nextTiktok()
+  })
+
+  ipcMain.handle('watchParty:like', async () => {
+    return await watchPartyService.likeTiktok()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_CONTROLLER_ACTION, async (_event, action: string, params?: Record<string, unknown>) => {
+    switch (action) {
+      case 'scroll':
+        return await desktopController.scroll((params?.direction as 'down' | 'up') || 'down', typeof params?.amount === 'number' ? params.amount : 360)
+      case 'key':
+        return await desktopController.pressKey(params?.key as any)
+      case 'click':
+        return await desktopController.click(typeof params?.x === 'number' ? params.x : -1, typeof params?.y === 'number' ? params.y : -1)
+      case 'tiktok_next':
+        return await desktopController.tiktokNext()
+      case 'tiktok_like':
+        return await desktopController.tiktokLike()
+      case 'tiktok_prev':
+        return await desktopController.tiktokPrev()
+      case 'tiktok_pause':
+        return await desktopController.tiktokPause()
+      default:
+        return false
+    }
   })
 }

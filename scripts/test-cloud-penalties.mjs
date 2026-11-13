@@ -13,7 +13,7 @@ let rejection = 'Penalty is not enabled for this model'
 const api = {}
 runInNewContext(compiled, {
   exports: api, URL, Response, AbortSignal, Buffer, console,
-  fetch: async (url, init) => {
+  fetch: globalThis.__capriPenaltyFetch = async (url, init) => {
     const body = JSON.parse(init.body)
     requests.push({ url, body, signal: init.signal })
     if (body.presence_penalty !== undefined || body.frequency_penalty !== undefined) {
@@ -22,6 +22,9 @@ runInNewContext(compiled, {
     return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' } }] }))
   },
   require: name => {
+    if (name === '../../shared/capri-style') return { CAPRI_CHAT_STYLE: '' }
+    if (name === './cloud-request-status') return { getCloudRequestStatus: () => null, trackedCloudFetch: (...args) => globalThis.__capriPenaltyFetch(...args) }
+    if (name === './ai-apps') return { closeAiAppSessions() {} }
     if (name === 'electron') return { app: { getPath: () => '/test' }, safeStorage: {} }
     if (name === 'fs') return { readFileSync: () => JSON.stringify(settings), writeFileSync: () => {} }
     if (name === 'path') return path
@@ -66,4 +69,5 @@ assert.equal((await send()).status, 400)
 assert.equal(requests.length, 8, 'Unrelated errors must not strip penalties or retry')
 assert.equal(payload.presence_penalty, 0.4)
 assert.equal(payload.frequency_penalty, 0.4)
+delete globalThis.__capriPenaltyFetch
 console.log('Cloud penalty regression checks passed')
