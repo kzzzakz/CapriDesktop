@@ -17,7 +17,7 @@ import { platformStatus } from '../services/mac-permissions'
 import { scriptPlayer } from '../services/script/script-player'
 import { ensureRequestedLook, requestedLook, splitByLooks, stripLookTags } from '../services/script/look-tags'
 import { listProcessNames, isMac, isWindows } from '../services/platform'
-import { clearLanguageOf, detectLanguage, type DetectedLang } from '../services/language-detect'
+import { clearLanguageOf, detectLanguage, strayLanguageOf, type DetectedLang } from '../services/language-detect'
 import { cloudErrorCode, cloudErrorDetail, isCloudMode, llmFetch, type LlmErrorCode } from '../services/llm-gateway'
 import * as os from 'os'
 import { getUserName, personalize, llmBody } from '../services/user-profile'
@@ -1994,7 +1994,10 @@ LANGUAGE RULE: ${langDirective}`
             !/(?:code|código|homework|tarea|file|archivo|script|create|crea|solve|resuelve|escribe|write|programa|busca|search)/i.test(prompt)
           const sanitized = ensureRequestedLook(this.sanitizeContent(cleanedContent, isShortPrompt), requestedLook(prompt))
           // Models slip into another language, Spanish above all: she gets one chance to answer again
-          const replyLang = targetLangName ? clearLanguageOf(stripLookTags(sanitized)) : null
+          // A single sentence in another language counts too (a Portuguese line inside an English reply)
+          const replyText = stripLookTags(sanitized)
+          const wholeLang = targetLangName ? clearLanguageOf(replyText) : null
+          const replyLang = wholeLang && wholeLang !== effectiveLang ? wholeLang : targetLangName ? strayLanguageOf(replyText, effectiveLang) : null
           const wrongLanguage = !!replyLang && replyLang !== effectiveLang
           if (wrongLanguage && !retriedLanguage) {
             retriedLanguage = true

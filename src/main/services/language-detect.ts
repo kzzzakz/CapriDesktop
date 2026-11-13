@@ -87,3 +87,18 @@ export function clearLanguageOf(text: string): DetectedLang | null {
   const { lang, score } = scoreLanguage(text)
   return lang !== 'unknown' && score >= 3 ? lang : null
 }
+
+/**
+ * A sentence clearly in another language than `lang`, inside a text that is mostly in it (a reply in
+ * English with one line in Portuguese in the middle). The whole text can look right while one
+ * sentence isn't. Quoted text (a song, a video title) doesn't count. Null when every sentence fits.
+ */
+export function strayLanguageOf(text: string, lang: string): DetectedLang | null {
+  const unquoted = text.replace(/["“«][^"”»]*["”»]/g, ' ')
+  for (const sentence of unquoted.split(/(?<=[.!?¡¿…])\s+|\n+/)) {
+    if (sentence.split(/\s+/).filter(Boolean).length < 4) continue
+    const found = clearLanguageOf(sentence)
+    if (found && found !== lang) return found
+  }
+  return null
+}

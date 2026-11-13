@@ -1,5 +1,5 @@
 import { storageDir } from './storage-location'
-import { clearLanguageOf, detectLanguage } from './language-detect'
+import { clearLanguageOf, detectLanguage, strayLanguageOf } from './language-detect'
 import { isCloudMode, llmFetch } from './llm-gateway'
 import { speechModelsDir, envFilePath, localFfmpegPath, pythonPath, scriptPath, voiceDataDir } from './app-paths'
 import { spawn, ChildProcess } from 'child_process'
@@ -432,8 +432,15 @@ export class VoiceService {
     // Spoken language from the settings: if Capri wrote the line in another language,
     // translate it (emotion tags preserved) and speak it in the chosen language
     let spokenText = cleanText
-    const speechLang = consciousnessService.getLanguageSettings().speechLang
-    if (!langOverride && speechLang && speechLang !== 'auto' && targetLang !== speechLang) {
+    // The language chosen for her voice, or else for her texts: she speaks only that one, and a line
+    // written in another one (or with a sentence in another one) is translated first
+    const settings = consciousnessService.getLanguageSettings()
+    const chosenVoice = settings.speechLang && settings.speechLang !== 'auto' ? settings.speechLang : ''
+    const speechLang = chosenVoice || (settings.textLang && settings.textLang !== 'auto' ? settings.textLang : '')
+    // Only the text language set: translated when the line is clearly in another one, so a short
+    // "Woah!" isn't sent to the translator for nothing
+    const clearly = chosenVoice ? targetLang : clearLanguageOf(cleanText)
+    if (!langOverride && speechLang && ((clearly && clearly !== speechLang) || strayLanguageOf(cleanText, speechLang))) {
       // Quoted text (a video title, a song) is said as written, in its own language: the translator
       // only gets markers in its place, and the original goes back afterwards
       const quoted: string[] = []
