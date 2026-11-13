@@ -10,7 +10,20 @@ interface Supporter {
   version?: string
 }
 
-const supporters = (supportersData as Supporter[]).filter((s) => s && typeof s.name === 'string' && s.name.trim())
+// The list comes as it was exported, in English or Spanish keys ({ nombre, mensaje, version })
+type RawSupporter = Partial<Supporter> & { nombre?: string; mensaje?: string; versión?: string }
+const supporters: Supporter[] = (supportersData as RawSupporter[])
+  .map((s) => ({ name: String(s?.name ?? s?.nombre ?? '').trim(), message: String(s?.message ?? s?.mensaje ?? '').trim(), version: String(s?.version ?? s?.versión ?? '').trim() }))
+  .filter((s) => s.name)
+
+/** What she reads out loud: without emojis or faces like (＾▽＾), which the voice would spell out */
+const speakable = (text: string): string =>
+  text
+    .replace(/\([^()]*[^\p{L}\p{N}\s.,!?¡¿'"()-][^()]*\)/gu, '')
+    .replace(/<3/g, '')
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 
 /**
  * Everyone who supported Capri, update by update (the newest first). Clicking a name, she says who
@@ -32,7 +45,7 @@ export const SupportersPanel: React.FC = () => {
 
   const remember = (s: Supporter) => {
     const name = s.name.trim()
-    const message = (s.message || '').trim()
+    const message = speakable(s.message || '')
     const line = isEs
       ? message
         ? `${name} es un donador. Todavía recuerdo lo que dijo: "${message}"`
@@ -66,7 +79,7 @@ export const SupportersPanel: React.FC = () => {
         ) : (
           groups.map((group) => (
             <section key={group.version || 'other'} className="space-y-2">
-              <h3 className="cp-label">{group.version ? `v${group.version.replace(/^v/i, '')}` : isEs ? 'Otros' : 'Others'}</h3>
+              <h3 className="cp-label">{group.version ? `v${group.version.replace(/^v/i, '')}` : isEs ? 'Los primeros en apoyar a Capri' : 'The first to support Capri'}</h3>
               <ul className="grid grid-cols-2 gap-2">
                 {group.people.map((s, i) => (
                   <li key={`${s.name}-${i}`}>
