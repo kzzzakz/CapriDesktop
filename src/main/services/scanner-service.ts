@@ -1551,7 +1551,16 @@ Analyze the drawing, logo, emblem, symbol, or illustration inside this frame car
       // instead of describing first and loading a second model to talk. Measured on an RTX 2060: 0.4s instead of
       // 0.9-1.7s with llava + qwen2.5-coder:7b, and one model (2.9 GB of VRAM) instead of two (9.7 GB)
       if (!reactionResult && visionModel && !isCloudMode() && this.visionModelTalks(visionModel)) {
-        reactionResult = await this.reactToScreenAtOnce(capture.base64, context.join('\n'), lang, 25000, visionModel)
+        // A 4B model takes every hint as what's on screen: the browser's name ("Opera" became an opera
+        // singer), the process, a video still playing in a tab behind the terminal (a mobile MOBA while
+        // only the terminal was on screen). Just the window in front, without the browser's name, and
+        // a little of its text
+        const window = (fg?.title || '').replace(/\s+[-–—]\s+(?:Opera(?: GX)?|Google Chrome|Microsoft​? Edge|Brave|Mozilla Firefox|Vivaldi)\b.*$/i, '').replace(/^\(\d+\)\s*/, '').trim()
+        const small: string[] = []
+        if (window) small.push(`Window in front: "${window}"`)
+        const shortText = screenTextOf(ocrLines, 400)
+        if (shortText) small.push(`Some text on screen (OCR, may have typos):\n${shortText}`)
+        reactionResult = await this.reactToScreenAtOnce(capture.base64, small.join('\n'), lang, 25000, visionModel)
         if (!this.isWatchingScreen) return
       }
 

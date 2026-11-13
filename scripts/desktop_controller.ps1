@@ -124,6 +124,9 @@ public static class DesktopController {
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
+    public static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     [DllImport("kernel32.dll")]
@@ -139,7 +142,8 @@ public static class DesktopController {
     public static bool BringToFront(IntPtr handle) {
         if (handle == IntPtr.Zero) return false;
 
-        ShowWindow(handle, SW_RESTORE);
+        // Only a minimized window: SW_RESTORE takes a maximized one out of full size (a windowed browser)
+        if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
 
         // 1. Momentarily force TopMost to bypass Z-order foreground lock
         SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW);
@@ -258,14 +262,15 @@ try {
             if ($X -ge 0 -and $Y -ge 0) { [DesktopController]::SetCursorPos($X, $Y) | Out-Null }
             Write-Output "MOVED"
         }
-        "focus_youtube_tab" {
-            # An open YouTube tab, so she doesn't open another one. A browser window's title is its
+        { $_ -in @("focus_youtube_tab", "focus_tab") } {
+            # An open YouTube tab (or the site in -Keyword, with focus_tab), so she doesn't open another one. A browser window's title is its
             # active tab; the other tabs are read through UI Automation, as a screen reader would.
             # Prints the title of the tab now in front, or NO_YOUTUBE_TAB.
+            $site = if ($Action.ToLower() -eq 'focus_tab' -and $Keyword) { [regex]::Escape($Keyword) } else { 'YouTube' }
             $found = $null
             $browserNames = @('chrome', 'msedge', 'opera', 'brave', 'firefox', 'vivaldi')
             $browsers = Get-Process -ErrorAction SilentlyContinue | Where-Object { $browserNames -contains $_.ProcessName.ToLower() -and $_.MainWindowHandle -ne [IntPtr]::Zero }
-            $front = $browsers | Where-Object { $_.MainWindowTitle -match 'YouTube' } | Select-Object -First 1
+            $front = $browsers | Where-Object { $_.MainWindowTitle -match $site } | Select-Object -First 1
             if ($front) {
                 [DesktopController]::BringToFront($front.MainWindowHandle) | Out-Null
                 $found = $front.MainWindowTitle
@@ -275,7 +280,7 @@ try {
                     $tabCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)
                     foreach ($b in $browsers) {
                         $win = [System.Windows.Automation.AutomationElement]::FromHandle($b.MainWindowHandle)
-                        $tab = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond) | Where-Object { $_.Current.Name -match 'YouTube' } | Select-Object -First 1
+                        $tab = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond) | Where-Object { $_.Current.Name -match $site } | Select-Object -First 1
                         if ($tab) {
                             [DesktopController]::BringToFront($b.MainWindowHandle) | Out-Null
                             $pattern = $null

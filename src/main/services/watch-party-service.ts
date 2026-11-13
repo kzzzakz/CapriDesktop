@@ -159,11 +159,16 @@ export class WatchPartyService {
     this.isBrowsingFeed = false
     this.tiktok = this.freshTiktok()
 
-    // 1. Open TikTok in default browser
-    try {
-      await shell.openExternal('https://www.tiktok.com')
-    } catch (e) {
-      console.warn('[WatchParty] Failed to open TikTok URL:', e)
+    // 1. TikTok in front: the tab already open if there is one (as it is), a new one only if not
+    const openTab = await desktopController.focusTab('TikTok').catch(() => null)
+    if (openTab) {
+      console.log(`[WatchParty] Reusing the open TikTok tab: "${openTab}"`)
+    } else {
+      try {
+        await shell.openExternal('https://www.tiktok.com')
+      } catch (e) {
+        console.warn('[WatchParty] Failed to open TikTok URL:', e)
+      }
     }
 
     // Bring browser to foreground in front of background windows

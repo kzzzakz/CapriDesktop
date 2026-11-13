@@ -50,13 +50,29 @@ export class DesktopControllerService {
 
   /** Brings an open YouTube tab to the front. Its title, or null when there is none */
   public async focusYoutubeTab(): Promise<string | null> {
+    return this.focusTab('YouTube')
+  }
+
+  /** Brings an open browser tab of a site ("YouTube", "TikTok") to the front. Its title, or null when there is none */
+  public async focusTab(site: string): Promise<string | null> {
     if (process.platform === 'win32') {
-      const out = await this.runWin32Output('focus_youtube_tab', [], 10000)
+      const out = await this.runWin32Output('focus_tab', ['-Keyword', site], 10000)
       const title = (out || '').split(/\r?\n/).pop()?.trim() || ''
       return title && title !== 'NO_YOUTUBE_TAB' ? title : null
     }
-    if (isLinux) return (await this.runLinuxXdotool(['search', '--name', 'YouTube', 'windowactivate'])) ? 'YouTube' : null
+    if (isLinux) return (await this.runLinuxXdotool(['search', '--name', site, 'windowactivate'])) ? site : null
     return null
+  }
+
+  /**
+   * Opens an address in the open tab of that site when there is one (she said "let's watch YouTube"
+   * with YouTube already open), in a new tab only when there isn't. Never a second tab of the same site.
+   */
+  public async openInSiteTab(site: string, url: string): Promise<boolean> {
+    const title = await this.focusTab(site).catch(() => null)
+    if (!title) return false
+    await new Promise((r) => setTimeout(r, 300))
+    return this.openUrlHere(url)
   }
 
   /** Goes to an address in the browser tab in front (address bar, type, Enter) */

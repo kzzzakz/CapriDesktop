@@ -35,6 +35,7 @@ import { clipService } from '../../services/clip-service'
 import { askWhereAppIs, openInstalledApp, protocolIsRegistered } from '../../services/app-launcher'
 import { launchRiotProduct, riotProductFor, RIOT_PRODUCT_NAMES } from '../../services/riot-games'
 import { cleanAppRequest } from '../../services/app-finder'
+import { desktopController } from '../../services/desktop-controller-service'
 
 /** Containers and binary formats: handling them as text destroys them for good */
 const NON_TEXT_EXTENSIONS = /\.(?:docx?|docm|dotx|xlsx?|xlsm|pptx?|pptm|odt|ods|odp|pdf|epub|zip|rar|7z|png|jpe?g|gif|webp|bmp|ico|mp3|wav|ogg|mp4|mkv|avi|exe|dll)$/i
@@ -726,7 +727,9 @@ export class ToolExecutor {
             }
           } catch {}
         }
-        await shell.openExternal(finalUrl).catch(() => { exec(startCommand(finalUrl)) })
+        // In the YouTube tab already open, if there is one, instead of a new tab every time
+        const reused = !isMac && !isMusic && (await desktopController.openInSiteTab('YouTube', finalUrl).catch(() => false))
+        if (!reused) await shell.openExternal(finalUrl).catch(() => { exec(startCommand(finalUrl)) })
         if (songTitle) await startYoutubeMusic(songTitle)
         return { success: true, output: query ? `Playing "${query}" on ${name}: ${finalUrl}` : `Launched ${name} in your browser.` }
       }
