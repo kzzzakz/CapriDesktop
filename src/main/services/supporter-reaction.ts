@@ -22,13 +22,16 @@ export async function supporterReaction(name: string, message: string, lang: str
   const language = LANG_NAMES[lang] || 'English'
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const model = getLocalModel()
+  const started = Date.now()
+  console.log(`[Supporters] Asking ${model} for her answer to ${name} (${lang})...`)
   try {
     const res = await llmFetch('http://127.0.0.1:11434/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({
-        model: getLocalModel(),
+        model,
         stream: false,
         keep_alive: '30m',
         options: { temperature: 0.8, num_predict: 90, quick: true },
@@ -47,8 +50,12 @@ export async function supporterReaction(name: string, message: string, lang: str
         ]
       })
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.warn(`[Supporters] The model answered HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+      return null
+    }
     const data = (await res.json()) as { message?: { content?: string } }
+    console.log(`[Supporters] Raw answer after ${Date.now() - started}ms: "${data.message?.content || ''}"`)
     let out = (data.message?.content || '')
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/^\s*(?:capri\s*[:：])\s*/i, '')

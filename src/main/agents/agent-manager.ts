@@ -211,8 +211,12 @@ export class AgentManager extends EventEmitter {
   /** `live`: a reaction to what's on screen right now. Said only if she's free, never queued (it would be stale) */
   /** `cameo`: said even with the Dev Deck open, with her showing up above it to say it. 'hold': she stays up after it, a follow-up is coming */
   public setCompanionSpeech(text: string, durationMs = 4000, speakVoice = false, why?: string, live = false, cameo: boolean | 'hold' = false): void {
-    if (scriptPlayer.isPlaying() || windowManager.isAway()) return
+    if (scriptPlayer.isPlaying() || windowManager.isAway()) {
+      if (cameo) console.warn('[AgentManager] Cameo line dropped: a script is playing or she is away')
+      return
+    }
     const line = personalize(localizeLine(text, consciousnessService.getPreferredLanguage()))
+    if (cameo) console.log(`[AgentManager] Cameo line${cameo === 'hold' ? ' (more coming)' : ''}: "${line}"`)
     this.capriLocal.noteOwnLine(line, why)
     if (cameo) windowManager.showCompanionCameo()
     windowManager.broadcast(IPC_CHANNELS.COMPANION_SPEECH_CHANGED, { text: line, durationMs, speakVoice, live, ...(cameo ? { cameo: true } : {}), ...(cameo === 'hold' ? { hold: true } : {}) })

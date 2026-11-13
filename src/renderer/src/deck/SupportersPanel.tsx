@@ -33,6 +33,8 @@ export const SupportersPanel: React.FC = () => {
   const isEs = useUiLang() === 'es'
   const [speaking, setSpeaking] = useState<string | null>(null)
   const [thinking, setThinking] = useState<string | null>(null)
+  // What she answered each one, shown under the name too (in case the voice is off)
+  const [answers, setAnswers] = useState<Record<string, string>>({})
 
   // Her model gets loaded while you look at the list, so her answer doesn't wait for a cold start
   useEffect(() => {
@@ -63,7 +65,8 @@ export const SupportersPanel: React.FC = () => {
     // The model reads the message and adds her own take; she shows up above the Deck to say it all
     setThinking(name)
     try {
-      await window.api.companion.rememberSupporter(name, message, line)
+      const answer = await window.api.companion.rememberSupporter(name, message, line)
+      if (answer) setAnswers((prev) => ({ ...prev, [name]: answer }))
     } catch {
       void window.api.companion.speak(line, Math.max(5000, line.length * 70), true, true)
     } finally {
@@ -114,6 +117,7 @@ export const SupportersPanel: React.FC = () => {
                       {thinking === s.name.trim() && <Loader2 size={12} className="ml-auto shrink-0 text-cyan-400 animate-spin" />}
                       {speaking === s.name.trim() && thinking !== s.name.trim() && <Volume2 size={12} className="ml-auto shrink-0 text-cyan-400 animate-pulse" />}
                     </button>
+                    {answers[s.name.trim()] && <p className="mt-1 px-3 text-[12px] italic text-cyan-300/80">Capri: “{answers[s.name.trim()]}”</p>}
                   </li>
                 ))}
               </ul>
