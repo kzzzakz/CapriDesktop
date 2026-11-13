@@ -241,6 +241,8 @@ const api = {
     speak: (text: string, durationMs?: number, speakVoice?: boolean, cameo?: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.COMPANION_SPEAK, { text, durationMs, speakVoice, cameo }),
     endCameo: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.COMPANION_END_CAMEO),
+    rememberSupporter: (name: string, message: string, line: string): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.COMPANION_REMEMBER_SUPPORTER, { name, message, line }),
 
     onStateChanged: (callback: (state: CompanionEmotionState) => void): (() => void) => {
       const subscription = (_event: IpcRendererEvent, state: CompanionEmotionState): void => callback(state)

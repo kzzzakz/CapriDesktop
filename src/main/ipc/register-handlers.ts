@@ -6,6 +6,7 @@ import { getStorageRoot } from '../services/storage-location'
 import { scriptPlayer } from '../services/script/script-player'
 import { getLlmSettings, listCloudModels, setLlmSettings, testCloudConnection, type LlmSettingsUpdate } from '../services/llm-gateway'
 import { setupService, SetupStep } from '../services/setup-service'
+import { supporterReaction } from '../services/supporter-reaction'
 import * as os from 'os'
 import { getUserName } from '../services/user-profile'
 import { ipcMain, dialog, BrowserWindow, shell, Menu } from 'electron'
@@ -204,6 +205,16 @@ export function registerIpcHandlers(): void {
     }
   )
   ipcMain.handle(IPC_CHANNELS.COMPANION_END_CAMEO, () => windowManager.endCompanionCameo())
+  // A supporter's message, read out loud above the Deck, followed by what she has to say about it
+  ipcMain.handle(
+    IPC_CHANNELS.COMPANION_REMEMBER_SUPPORTER,
+    async (_event, payload: { name: string; message: string; line: string }) => {
+      const reaction = await supporterReaction(String(payload.name || ''), String(payload.message || ''), consciousnessService.getPreferredLanguage())
+      const full = reaction ? `${payload.line} ${reaction}` : payload.line
+      agentManager.setCompanionSpeech(full, Math.max(5000, full.length * 70), true, undefined, false, true)
+      return full
+    }
+  )
 
   // Top-Right Tab Mode (Modo Pestaña en esquina superior derecha)
   ipcMain.handle(

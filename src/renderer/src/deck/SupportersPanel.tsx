@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Heart, Volume2 } from 'lucide-react'
+import { Heart, Loader2, Volume2 } from 'lucide-react'
 import supportersData from '../data/supporters.json'
 import { useUiLang } from '../utils/useUiLang'
 
@@ -32,6 +32,7 @@ const speakable = (text: string): string =>
 export const SupportersPanel: React.FC = () => {
   const isEs = useUiLang() === 'es'
   const [speaking, setSpeaking] = useState<string | null>(null)
+  const [thinking, setThinking] = useState<string | null>(null)
 
   // Grouped by the update they came in, newest first; the ones without one go at the end
   const groups: { version: string; people: Supporter[] }[] = []
@@ -43,7 +44,7 @@ export const SupportersPanel: React.FC = () => {
   }
   groups.sort((a, b) => (!a.version ? 1 : !b.version ? -1 : b.version.localeCompare(a.version, undefined, { numeric: true })))
 
-  const remember = (s: Supporter) => {
+  const remember = async (s: Supporter) => {
     const name = s.name.trim()
     const message = speakable(s.message || '')
     const line = isEs
@@ -53,10 +54,18 @@ export const SupportersPanel: React.FC = () => {
       : message
         ? `${name} is a supporter. I still remember what they said: "${message}"`
         : `${name} is a supporter. People like ${name} are why I'm still here.`
+    if (thinking) return
+    // The model reads the message and adds her own take; she shows up above the Deck to say it all
+    setThinking(name)
+    try {
+      await window.api.companion.rememberSupporter(name, message, line)
+    } catch {
+      void window.api.companion.speak(line, Math.max(5000, line.length * 70), true, true)
+    } finally {
+      setThinking(null)
+    }
     setSpeaking(name)
-    setTimeout(() => setSpeaking((current) => (current === name ? null : current)), 4000)
-    // She shows up above the Deck to say it, and goes back when she's done
-    void window.api.companion.speak(line, Math.max(5000, line.length * 70), true, true)
+    setTimeout(() => setSpeaking((current) => (current === name ? null : current)), 6000)
   }
 
   return (
@@ -86,9 +95,10 @@ export const SupportersPanel: React.FC = () => {
                   <li key={`${s.name}-${i}`}>
                     <button
                       type="button"
-                      onClick={() => remember(s)}
+                      onClick={() => void remember(s)}
+                      disabled={!!thinking && thinking !== s.name.trim()}
                       title={s.message || undefined}
-                      className={`cp-cut w-full flex items-center gap-2 px-3 py-2 text-left text-[14px] border transition-colors cursor-pointer ${
+                      className={`cp-cut w-full flex items-center gap-2 px-3 py-2 text-left text-[14px] border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait ${
                         speaking === s.name.trim()
                           ? 'bg-[#3c1c1d] border-[#612f30] text-white'
                           : 'bg-[#210f10] border-[#3c1c1d] text-stone-200 hover:text-white hover:border-[#612f30]'
@@ -96,7 +106,8 @@ export const SupportersPanel: React.FC = () => {
                     >
                       <Heart size={12} className="shrink-0 text-[var(--cp-red)]" />
                       <span className="truncate font-semibold">{s.name}</span>
-                      {speaking === s.name.trim() && <Volume2 size={12} className="ml-auto shrink-0 text-cyan-400 animate-pulse" />}
+                      {thinking === s.name.trim() && <Loader2 size={12} className="ml-auto shrink-0 text-cyan-400 animate-spin" />}
+                      {speaking === s.name.trim() && thinking !== s.name.trim() && <Volume2 size={12} className="ml-auto shrink-0 text-cyan-400 animate-pulse" />}
                     </button>
                   </li>
                 ))}
